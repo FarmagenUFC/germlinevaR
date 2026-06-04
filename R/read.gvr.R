@@ -1,0 +1,978 @@
+#' Convert VEP-annotated germline VCF(s) to a maftools-style MAF data.table
+#'
+#' @description
+#' Converts VEP-annotated, single-sample germline VCFs (GATK HaplotypeCaller ->
+#' CNN tranches -> Ensembl VEP, hg38) into a maftools-style table and returns it as
+#' an in-memory `data.table` for downstream filtering ([gvr_filter()]) and
+#' summarisation ([gvr_summary()]). In folder mode it finds every per-sample VCF,
+#' converts each, and row-binds them into one combined MAF. The conversion uses base R
+#' + \pkg{data.table} only - it does NOT depend on \pkg{maftools}.
+#'
+#' @details
+#' Output and behaviour:
+#' \itemize{
+#'   \item Returns the final MAF `data.table`, one row per variant ALLELE
+#'     (multi-allelic sites are split).
+#'   \item A single most-severe transcript is chosen per allele (VEP severity ->
+#'     `CANONICAL` -> `MANE_SELECT` -> transcript id).
+#'   \item Columns include the MAF core fields, ALL VEP CSQ fields (read from the VCF
+#'     header), and key GATK QC fields. `FILTER` is retained as a column and ALL
+#'     variants (PASS and non-PASS) are kept.
+#'   \item `Tumor_Seq_Allele1`/`Tumor_Seq_Allele2` are zygosity-aware (vcf2maf-style),
+#'     and an optional `Genotype` column (`Tumor_Seq_Allele1/Tumor_Seq_Allele2`, e.g.
+#'     `"T/C"`) is added next to the alleles.
+#'   \item Each variant keeps its source sample in `Tumor_Sample_Barcode`.
+#'   \item Absent values are written as the empty string `""` (not `NA`); downstream
+#'     [gvr_filter()] / [gvr_summary()] treat `NA` and `""` identically as "missing".
+#' }
+#'
+#' Processing options:
+#' \itemize{
+#'   \item MULTI-FILE: in folder mode, every file matching `pattern` (default
+#'     `"*_NN.vep.vcf.gz"`) is converted and row-bound.
+#'   \item HGVS CLEANUP (`strip_hgvs_prefix`): strips the Ensembl feature prefix from
+#'     `HGVSc`/`HGVSp` (e.g. `"ENST00000831140.1:n.1889G>A"` -> `"n.1889G>A"`).
+#'   \item DEDUP (`dedup_columns`): removes duplicate-named columns ONLY when their
+#'     values are byte-for-byte identical across all rows (otherwise keeps + warns).
+#'   \item ABraOM (`add_abraom`): joins the Brazilian ABraOM SABE-609 allele frequency
+#'     as the `ABraOM_SABE609_AF` column (downloaded/cached from `abraom_url`).
+#'   \item GENOTYPE-QUALITY FILTER (`min_DP`/`min_GQ`): keeps a record iff
+#'     `DP > min_DP` AND `GQ > min_GQ`; mirrors
+#'     `bcftools view -e 'FORMAT/DP<=X | FORMAT/GQ<=Y'`. Set either to `NULL` to
+#'     disable that field; set both to `NULL` to disable the genotype filter entirely.
+#'   \item GENE SUBSET (`genes`): restrict to a set of `Hugo_Symbol`s (exact,
+#'     case-insensitive).
+#' }
+#'
+#' @param folder Directory to scan in folder mode; every file matching `pattern` is
+#'   converted and row-bound. Default `"."`. Ignored when `vcf_path` is supplied.
+#' @param vcf_path Path to a single `.vep.vcf.gz` to convert (single-file mode).
+#'   `NULL` (default) selects folder mode.
+#' @param pattern Regular expression identifying per-sample VCFs in folder mode.
+#'   Default `"_\\d+\\.vep\\.vcf\\.gz$"` (matches `_01`, `_02`, ...).
+#' @param write_tsv Logical; if `TRUE`, also write the MAF as a TSV to `out_dir`.
+#'   Default `FALSE`.
+#' @param write_rds Logical; if `TRUE`, also write the MAF as an `.rds` to `out_dir`.
+#'   Default `FALSE`.
+#' @param out_dir Output directory for written TSV/RDS. `NULL` (default) uses the
+#'   input location/working directory. Only used when `write_tsv`/`write_rds` is `TRUE`.
+#' @param out_prefix Filename prefix for written outputs. `NULL` (default) derives one
+#'   from the input.
+#' @param chunk_size Integer; number of VCF records processed per chunk (controls peak
+#'   memory and progress granularity). Default `25000L`.
+#' @param ncbi_build Reference build label recorded in the MAF (`NCBI_Build`). Default
+#'   `"GRCh38"`.
+#' @param add_genotype Logical; if `TRUE` (default) add the `Genotype` column.
+#' @param strip_hgvs_prefix Logical; if `TRUE` (default) strip the Ensembl feature
+#'   prefix from `HGVSc`/`HGVSp`.
+#' @param dedup_columns Logical; if `TRUE` (default) drop duplicate-named columns when
+#'   byte-for-byte identical (otherwise keep and warn).
+#' @param drop_empty_cols Logical; if `TRUE`, drop columns that are entirely `NA`/blank.
+#'   Default `FALSE`.
+#' @param add_abraom Logical; if `TRUE` (default) join the ABraOM SABE-609 allele
+#'   frequency as `ABraOM_SABE609_AF`.
+#' @param abraom_path Path to a local ABraOM annotation file. `NULL` (default) uses an
+#'   auto-managed cache, downloading from `abraom_url` if needed.
+#' @param abraom_url URL of the ABraOM SABE-609 annotated release used when
+#'   `abraom_path` is `NULL`.
+#' @param min_DP Numeric; keep only records with `DP > min_DP`. `NULL` (or `NA`)
+#'   disables the depth filter. Default `10`.
+#' @param min_GQ Numeric; keep only records with `GQ > min_GQ`. `NULL` (or `NA`)
+#'   disables the genotype-quality filter. Default `30`.
+#' @param genes Character vector of `Hugo_Symbol`s to keep (exact, case-insensitive),
+#'   or `NULL` (default) to keep all genes.
+#' @param verbose Logical; if `TRUE` (default) print per-file and per-chunk progress
+#'   (file i/N, cumulative records, elapsed seconds).
+#'
+#' @return A `data.table` MAF: one row per variant allele, with MAF core columns, all
+#'   VEP CSQ fields, key GATK QC fields, `Tumor_Sample_Barcode`, and (when enabled) the
+#'   `Genotype` and `ABraOM_SABE609_AF` columns. TSV/RDS files are written as a side
+#'   effect when `write_tsv`/`write_rds` is `TRUE`.
+#'
+#' @seealso [gvr_filter()] to filter the returned MAF, [gvr_summary()] to summarise it.
+#' @family germlinevaR
+#' @author germlinevaR authors
+#'
+#' @examples
+#' \dontrun{
+#' ## Folder mode: merge ALL *_NN.vep.vcf.gz into one MAF
+#' maf <- read.gvr("/path/to/folder")
+#'
+#' ## Also write TSV + RDS outputs
+#' maf <- read.gvr("/path/to/folder", write_tsv = TRUE, write_rds = TRUE,
+#'                 out_dir = "/path/to/results")
+#'
+#' ## Single-file mode
+#' maf <- read.gvr(vcf_path = "/path/to/SAMPLE_01.vep.vcf.gz")
+#'
+#' ## DP/GQ genotype filter (ON by default; mirrors
+#' ##   bcftools view -e 'FORMAT/DP<=10 | FORMAT/GQ<=30')
+#' maf <- read.gvr("/path/to/folder")                               # DP>10 & GQ>30
+#' maf <- read.gvr("/path/to/folder", min_DP = NULL, min_GQ = NULL) # no DP/GQ filter
+#' maf <- read.gvr("/path/to/folder", min_DP = 20,  min_GQ = 50)    # stricter
+#'
+#' ## Restrict to genes of interest (e.g. an MEN1/parathyroid panel)
+#' maf <- read.gvr("/path/to/folder",
+#'                 genes = c("MEN1", "RET", "CDKN1B", "CDC73", "CASR", "AIP"))
+#'
+#' ## Then filter freely, e.g.:
+#' maf[FILTER == "PASS" & Variant_Classification == "Missense_Mutation"]
+#' }
+#'
+#' @importFrom data.table data.table as.data.table rbindlist fread fwrite setnames
+#'   setcolorder setDT set setattr tstrsplit setkey :=
+#' @importFrom stats setNames
+#' @importFrom utils download.file globalVariables
+#' @export
+read.gvr <- function(folder = ".",
+                           vcf_path   = NULL,
+                           pattern    = "_\\d+\\.vep\\.vcf\\.gz$",   # v2: _01,_02,_03,...
+                           write_tsv  = FALSE,
+                           write_rds  = FALSE,
+                           out_dir    = NULL,
+                           out_prefix = NULL,
+                           chunk_size = 25000L,
+                           ncbi_build = "GRCh38",
+                           add_genotype      = TRUE,   # v2
+                           strip_hgvs_prefix = TRUE,   # v2
+                           dedup_columns     = TRUE,   # v2
+                           drop_empty_cols   = FALSE,  # v3: drop all-NA/blank cols
+                           add_abraom        = TRUE,   # v3: join ABraOM SABE609 AF
+                           abraom_path       = NULL,   # v3: local file; NULL=auto cache
+                           abraom_url        = "https://abraom.ib.usp.br/download/ABRaOM_60+_SABE_609_exomes_annotated.gz",
+                           min_DP            = 10,     # v4: keep only DP > min_DP (NULL = no DP filter)
+                           min_GQ            = 30,     # v4: keep only GQ > min_GQ (NULL = no GQ filter)
+                           genes             = NULL,   # v4: keep only these Hugo_Symbols
+                           verbose    = TRUE) {
+
+  # ==========================================================================
+  # v4 setup: genotype-quality filter flags
+  #   min_DP / min_GQ are thresholds; keep a record iff DP > min_DP AND GQ > min_GQ.
+  #   Set either to NULL (or NA) to disable filtering on that field; set BOTH to
+  #   NULL/NA to disable the genotype filter entirely (equivalent to the old
+  #   filter_genotype = FALSE). Mirrors bcftools -e 'FORMAT/DP<=X | FORMAT/GQ<=Y'.
+  # ==========================================================================
+  filter_dp <- !is.null(min_DP) && !is.na(min_DP)
+  filter_gq <- !is.null(min_GQ) && !is.na(min_GQ)
+  if (filter_dp && !is.numeric(min_DP)) stop("min_DP must be numeric or NULL.")
+  if (filter_gq && !is.numeric(min_GQ)) stop("min_GQ must be numeric or NULL.")
+
+  # ==========================================================================
+  # 0. Locate the input VCF(s)
+  #    - folder mode  : process EVERY file matching `pattern` (multi-file merge).
+  #    - vcf_path mode : process exactly that one file (backward compatible).
+  # ==========================================================================
+  if (is.null(vcf_path)) {
+    if (!dir.exists(folder))
+      stop(sprintf("Folder does not exist: %s", folder))
+    hits <- list.files(folder, pattern = pattern, full.names = TRUE,
+                       ignore.case = FALSE)
+    if (length(hits) == 0L)
+      stop(sprintf("No file matching '%s' found in: %s", pattern, folder))
+    # deterministic order: by filename ascending so _01 precedes _02 precedes _03 ...
+    hits <- hits[order(basename(hits))]
+    vcf_paths <- hits
+  } else {
+    if (!file.exists(vcf_path))
+      stop(sprintf("vcf_path does not exist: %s", vcf_path))
+    vcf_paths <- vcf_path
+  }
+
+  if (verbose) {
+    message(sprintf("Found %d file(s):", length(vcf_paths)))
+    for (p in vcf_paths) message("  - ", basename(p))
+  }
+
+  # ==========================================================================
+  # 1. Local helper definitions (kept inside the function => fully self-contained)
+  #    [UNCHANGED CORE ENGINE from v1]
+  # ==========================================================================
+
+  ## 1a. Ensembl consequence severity priority (vcf2maf-style; lower = more severe)
+  effect_priority <- c(
+    "transcript_ablation"=1,"exon_loss_variant"=2,"splice_donor_variant"=3,
+    "splice_acceptor_variant"=3,"stop_gained"=4,"frameshift_variant"=5,
+    "stop_lost"=6,"start_lost"=7,"initiator_codon_variant"=8,
+    "transcript_amplification"=9,"protein_altering_variant"=10,
+    "missense_variant"=11,"conservative_missense_variant"=11,
+    "rare_amino_acid_variant"=11,"incomplete_terminal_codon_variant"=14,
+    "splice_region_variant"=13,"splice_donor_5th_base_variant"=13,
+    "splice_donor_region_variant"=13,"splice_polypyrimidine_tract_variant"=13,
+    "stop_retained_variant"=15,"synonymous_variant"=15,"coding_sequence_variant"=16,
+    "mature_miRNA_variant"=17,"5_prime_UTR_variant"=18,
+    "5_prime_UTR_premature_start_codon_gain_variant"=18,"3_prime_UTR_variant"=19,
+    "non_coding_transcript_exon_variant"=20,"non_coding_exon_variant"=20,
+    "intron_variant"=21,"non_coding_transcript_variant"=22,"nc_transcript_variant"=22,
+    "NMD_transcript_variant"=23,"upstream_gene_variant"=24,"downstream_gene_variant"=25,
+    "TFBS_ablation"=26,"TFBS_amplification"=27,"TF_binding_site_variant"=28,
+    "regulatory_region_ablation"=29,"regulatory_region_amplification"=30,
+    "regulatory_region_variant"=31,"feature_elongation"=32,"feature_truncation"=33,
+    "intergenic_variant"=34
+  )
+
+  # B2: single pass that returns BOTH the most-severe term AND its rank, so callers
+  # that need both don't strsplit + look up twice. Behaviour is identical to the
+  # original most_severe_term()/consequence_rank() pair (kept as thin wrappers below).
+  most_severe_term_and_rank <- function(consequence) {
+    if (is.na(consequence) || consequence == "")
+      return(list(term = NA_character_, rank = 999L))
+    terms <- strsplit(consequence, "&", fixed = TRUE)[[1]]
+    pr <- effect_priority[terms]; pr[is.na(pr)] <- 999L
+    wm <- which.min(pr)
+    list(term = terms[wm], rank = as.integer(pr[wm]))
+  }
+  most_severe_term <- function(consequence) most_severe_term_and_rank(consequence)$term
+  consequence_rank <- function(consequence) most_severe_term_and_rank(consequence)$rank
+
+  ## 1b. VEP consequence -> MAF Variant_Classification
+  vep_to_maf_class <- function(term, var_type) {
+    m <- switch(term,
+      "splice_acceptor_variant"="Splice_Site","splice_donor_variant"="Splice_Site",
+      "transcript_ablation"="Splice_Site","exon_loss_variant"="Splice_Site",
+      "stop_gained"="Nonsense_Mutation","stop_lost"="Nonstop_Mutation",
+      "start_lost"="Translation_Start_Site","initiator_codon_variant"="Translation_Start_Site",
+      "missense_variant"="Missense_Mutation","conservative_missense_variant"="Missense_Mutation",
+      "rare_amino_acid_variant"="Missense_Mutation","protein_altering_variant"="Missense_Mutation",
+      "transcript_amplification"="Intron","splice_region_variant"="Splice_Region",
+      "splice_donor_5th_base_variant"="Splice_Region","splice_donor_region_variant"="Splice_Region",
+      "splice_polypyrimidine_tract_variant"="Splice_Region","stop_retained_variant"="Silent",
+      "synonymous_variant"="Silent","incomplete_terminal_codon_variant"="Silent",
+      "coding_sequence_variant"="Missense_Mutation","mature_miRNA_variant"="RNA",
+      "5_prime_UTR_variant"="5'UTR","5_prime_UTR_premature_start_codon_gain_variant"="5'UTR",
+      "3_prime_UTR_variant"="3'UTR","non_coding_transcript_exon_variant"="RNA",
+      "non_coding_exon_variant"="RNA","non_coding_transcript_variant"="RNA",
+      "nc_transcript_variant"="RNA","NMD_transcript_variant"="Silent",
+      "intron_variant"="Intron","upstream_gene_variant"="5'Flank",
+      "downstream_gene_variant"="3'Flank","TFBS_ablation"="Targeted_Region",
+      "TFBS_amplification"="Targeted_Region","TF_binding_site_variant"="IGR",
+      "regulatory_region_ablation"="Targeted_Region","regulatory_region_amplification"="Targeted_Region",
+      "regulatory_region_variant"="IGR","feature_elongation"="Targeted_Region",
+      "feature_truncation"="Targeted_Region","intergenic_variant"="IGR",
+      "Targeted_Region"
+    )
+    if (term == "frameshift_variant") m <- if (var_type == "DEL") "Frame_Shift_Del" else "Frame_Shift_Ins"
+    if (term == "inframe_insertion")            m <- "In_Frame_Ins"
+    if (term == "inframe_deletion")             m <- "In_Frame_Del"
+    if (term == "disruptive_inframe_insertion") m <- "In_Frame_Ins"
+    if (term == "disruptive_inframe_deletion")  m <- "In_Frame_Del"
+    m
+  }
+
+  ## 1c. Amino-acid 3->1 and HGVSp_Short
+  aa3to1 <- c(Ala="A",Arg="R",Asn="N",Asp="D",Cys="C",Gln="Q",Glu="E",Gly="G",
+              His="H",Ile="I",Leu="L",Lys="K",Met="M",Phe="F",Pro="P",Ser="S",
+              Thr="T",Trp="W",Tyr="Y",Val="V",Ter="*",Sec="U",Pyl="O",Asx="B",
+              Glx="Z",Xaa="X",Xle="J")
+  url_decode <- function(x) {
+    if (is.na(x) || x == "") return(x)
+    x <- gsub("%3D","=",x,fixed=TRUE); x <- gsub("%3B",";",x,fixed=TRUE)
+    x <- gsub("%2C",",",x,fixed=TRUE); x <- gsub("%3A",":",x,fixed=TRUE); x
+  }
+  ## C2: single-pass 3-letter -> 1-letter amino-acid substitution. The 27 codes are
+  ## mutually non-overlapping (no code is a substring of another) and the 1-letter
+  ## outputs can never re-match a 3-letter code, so a single regex alternation pass is
+  ## order-independent and byte-identical to the original 27 sequential gsub() calls
+  ## (verified: 0 diffs over all 28,686 unique real HGVSp strings). aa3to1_pat is built
+  ## once (all codes are literal alpha, regex-safe).
+  aa3to1_pat <- paste(names(aa3to1), collapse = "|")
+  make_hgvsp_short <- function(hgvsp) {
+    if (is.na(hgvsp) || hgvsp == "") return("")
+    s <- url_decode(hgvsp); s <- sub("^[^:]*:", "", s); s <- gsub("[()]", "", s)
+    m <- gregexpr(aa3to1_pat, s, perl = TRUE)
+    regmatches(s, m) <- lapply(regmatches(s, m), function(hit) unname(aa3to1[hit]))
+    s
+  }
+
+  ## 1c-v2. Strip the leading "feature_id:" prefix from an HGVSc/HGVSp string.
+  ##        "ENST00000831140.1:n.1889G>A" -> "n.1889G>A". Empty/NA pass through.
+  ##        (URL-decoding is applied upstream; this only removes up to first ':'.)
+  strip_feature_prefix <- function(x) {
+    if (is.na(x) || x == "") return(x)
+    sub("^[^:]*:", "", x)
+  }
+
+  ## 1d. Candidate VEP CSQ-allele encodings (priority order: anchor, LCP, bidir, raw)
+  vep_allele_candidates <- function(ref, alt) {
+    if (alt == "*") return("*")
+    if (nchar(ref) == 1 && nchar(alt) == 1) return(alt)            # SNV
+    rl <- nchar(ref); al <- nchar(alt); cand <- character(0)
+    # (a) anchor-trim: drop exactly one leading base
+    r1 <- substr(ref,2,rl); a1 <- substr(alt,2,al)
+    cand <- c(cand, if (nchar(a1)==0) "-" else if (nchar(r1)==0) a1 else a1)
+    # (b) longest-common-prefix trim
+    k <- 0L; mx <- min(rl,al)
+    while (k < mx && substr(ref,k+1,k+1) == substr(alt,k+1,k+1)) k <- k+1L
+    rp <- substr(ref,k+1,rl); ap <- substr(alt,k+1,al)
+    cand <- c(cand, if (nchar(ap)==0) "-" else if (nchar(rp)==0) ap else ap)
+    # (c) bidirectional trim (repeat-aware): common suffix then common prefix
+    rr <- ref; aa <- alt
+    while (nchar(rr)>0 && nchar(aa)>0 &&
+           substr(rr,nchar(rr),nchar(rr)) == substr(aa,nchar(aa),nchar(aa))) {
+      rr <- substr(rr,1,nchar(rr)-1); aa <- substr(aa,1,nchar(aa)-1)
+    }
+    j <- 0L; mx2 <- min(nchar(rr),nchar(aa))
+    while (j < mx2 && substr(rr,j+1,j+1) == substr(aa,j+1,j+1)) j <- j+1L
+    rb <- substr(rr,j+1,nchar(rr)); ab <- substr(aa,j+1,nchar(aa))
+    cand <- c(cand, if (nchar(ab)==0) "-" else if (nchar(rb)==0) ab else ab)
+    # (d) raw ALT
+    cand <- c(cand, alt)
+    unique(cand[cand != ""])
+  }
+
+  ## 1e. MAF coordinate + allele conversion for one REF/ALT pair
+  maf_coords <- function(pos, ref, alt) {
+    pos <- as.integer(pos)
+    if (alt == "*") return(list(var_type="DEL", start=pos, end=pos,
+                                ref_allele=ref, tum_allele2="*"))
+    rl <- nchar(ref); al <- nchar(alt)
+    if (rl == al && rl == 1)
+      return(list(var_type="SNP", start=pos, end=pos, ref_allele=ref, tum_allele2=alt))
+    if (rl == al && rl > 1) {
+      vt <- switch(as.character(rl), "2"="DNP","3"="TNP","ONP")
+      return(list(var_type=vt, start=pos, end=pos+rl-1, ref_allele=ref, tum_allele2=alt))
+    }
+    if (al > rl) {                                   # insertion
+      ins <- substr(alt, rl+1, al)
+      return(list(var_type="INS", start=pos+rl-1, end=pos+rl,
+                  ref_allele="-", tum_allele2=ins))
+    } else {                                         # deletion
+      del <- substr(ref, al+1, rl)
+      return(list(var_type="DEL", start=pos+al, end=pos+rl-1,
+                  ref_allele=del, tum_allele2="-"))
+    }
+  }
+
+  ## 1f. INFO field accessor
+  info_get <- function(info_str, key) {
+    pat <- paste0("(^|;)", key, "=([^;]*)")
+    m <- regmatches(info_str, regexec(pat, info_str))[[1]]
+    if (length(m) >= 3) m[3] else NA_character_
+  }
+  ## C1: parse an INFO string ONCE into a named character vector, then look keys up
+  ## by name. Equivalent to calling info_get() per key (verified 0 mismatches over
+  ## 35,000 real comparisons): only "key=value" tokens are kept, so a missing key OR a
+  ## bare flag returns NA exactly as info_get() does. ~5.7x faster than 6+ regex scans.
+  info_parse <- function(info_str) {
+    if (is.na(info_str) || info_str == "") return(setNames(character(0), character(0)))
+    kv  <- strsplit(info_str, ";", fixed = TRUE)[[1]]
+    eq  <- regexpr("=", kv, fixed = TRUE)
+    has <- eq > 0L
+    keys <- substr(kv, 1L, eq - 1L)            # only meaningful where has==TRUE
+    vals <- substr(kv, eq + 1L, nchar(kv))
+    setNames(vals[has], keys[has])
+  }
+
+  ## 1g. Zygosity-aware genotype allele CODES for a split row (Allele2 = this ALT)
+  gt_codes_for_alt <- function(gt, ai) {
+    ai <- as.integer(ai)
+    gidx <- suppressWarnings(as.integer(strsplit(gt, "[/|]")[[1]]))
+    gidx <- gidx[!is.na(gidx)]
+    if (length(gidx) == 0L) return(list(c1 = NA_integer_, c2 = ai))
+    others <- gidx[gidx != ai]
+    if (length(others) == 0L) return(list(c1 = ai, c2 = ai))   # hom-alt
+    partner <- if (0L %in% others) 0L else others[1]
+    list(c1 = partner, c2 = ai)
+  }
+
+  ## 1h. Header parsers
+  get_csq_fields <- function(path) {
+    con <- gzfile(path, "r"); on.exit(close(con))
+    repeat {
+      line <- readLines(con, n = 1L)
+      if (length(line) == 0L) stop("CSQ header not found")
+      if (startsWith(line, "##INFO=<ID=CSQ")) {
+        fmt <- sub('.*Format: ', '', line); fmt <- sub('">$', '', fmt)
+        return(strsplit(fmt, "|", fixed = TRUE)[[1]])
+      }
+      if (startsWith(line, "#CHROM")) stop("Reached #CHROM before CSQ header")
+    }
+  }
+  get_sample_name <- function(path) {
+    con <- gzfile(path, "r"); on.exit(close(con))
+    repeat {
+      line <- readLines(con, n = 1L)
+      if (length(line) == 0L) stop("#CHROM not found")
+      if (startsWith(line, "#CHROM")) {
+        cols <- strsplit(line, "\t", fixed = TRUE)[[1]]
+        return(cols[length(cols)])
+      }
+    }
+  }
+
+  ## 1i. Convert one chunk (data.table of raw VCF rows) -> MAF rows
+  ## C3 (conservative): the per-record control flow is UNCHANGED (the CSQ-block -> ALT
+  ## assignment and per-ALT selection are genuinely irregular and were measured to be
+  ## slower, not faster, when forced through flat strsplit + regroup). The one safe,
+  ## byte-identical structural change kept here is pre-extracting the 10 VCF columns to
+  ## plain atomic vectors ONCE per chunk, so the hot loop indexes vectors (chrom_v[r])
+  ## instead of doing data.table `$`/is.factor dispatch on every field of every record
+  ## (~4.7x faster for the indexing step in isolation). Output is identical.
+  convert_chunk <- function(dt, csq_fields, sample_name) {
+    n_csq <- length(csq_fields)
+    ci <- function(name) match(name, csq_fields)
+    P_Allele <- ci("Allele"); P_Cons <- ci("Consequence"); P_SYMBOL <- ci("SYMBOL")
+    P_Feature <- ci("Feature"); P_HGVSc <- ci("HGVSc"); P_HGVSp <- ci("HGVSp")
+    P_Existing <- ci("Existing_variation"); P_CANONICAL <- ci("CANONICAL")
+    P_MANESEL <- ci("MANE_SELECT")
+
+    # C3: hoist columns to plain vectors once (kills per-record `$`/is.factor overhead)
+    CHROM_v <- dt$CHROM; POS_v <- dt$POS; ID_v <- dt$ID; REF_v <- dt$REF; ALT_v <- dt$ALT
+    QUAL_v <- dt$QUAL; FILTER_v <- dt$FILTER; INFO_v <- dt$INFO
+    FORMAT_v <- dt$FORMAT; SAMPLE_v <- dt$SAMPLE
+    nrow_dt <- nrow(dt)
+
+    out <- vector("list", nrow_dt); oi <- 0L
+    n_dropped <- 0L   # v4: records skipped by the DP/GQ genotype filter
+    for (r in seq_len(nrow_dt)) {
+      chrom <- CHROM_v[r]; pos <- POS_v[r]; vid <- ID_v[r]
+      ref <- REF_v[r]; altf <- ALT_v[r]; qual <- QUAL_v[r]; filt <- FILTER_v[r]
+      info <- INFO_v[r]; fmt <- FORMAT_v[r]; smp <- SAMPLE_v[r]
+      alts <- strsplit(altf, ",", fixed = TRUE)[[1]]
+
+      ip <- info_parse(info)                       # C1: parse INFO once, then index
+      info_DP <- unname(ip["DP"]); info_AC <- unname(ip["AC"])
+      info_AF <- unname(ip["AF"]); info_MQ <- unname(ip["MQ"])
+      info_QD <- unname(ip["QD"]); info_CNN <- unname(ip["CNN_1D"])
+      ac_vec <- if (!is.na(info_AC)) strsplit(info_AC,",",fixed=TRUE)[[1]] else NA
+      af_vec <- if (!is.na(info_AF)) strsplit(info_AF,",",fixed=TRUE)[[1]] else NA
+
+      csq_raw <- unname(ip["CSQ"])
+      csq_blocks <- if (!is.na(csq_raw)) strsplit(csq_raw,",",fixed=TRUE)[[1]] else character(0)
+      block_fields <- lapply(csq_blocks, function(b) {
+        f <- strsplit(b,"|",fixed=TRUE)[[1]]; length(f) <- n_csq; f
+      })
+      block_allele <- vapply(block_fields, function(f) {
+        a <- f[P_Allele]; if (is.na(a)) "" else a }, character(1))
+
+      # rank-aware CSQ block -> ALT owner assignment
+      cand_by_alt <- lapply(alts, function(a) vep_allele_candidates(ref, a))
+      block_owner <- integer(length(block_allele))
+      if (length(block_allele) > 0L) {
+        for (bi in seq_along(block_allele)) {
+          bs <- block_allele[bi]; best_alt <- 0L; best_rank <- .Machine$integer.max
+          for (ai2 in seq_along(alts)) {
+            rk <- match(bs, cand_by_alt[[ai2]])
+            if (!is.na(rk) && rk < best_rank) { best_rank <- rk; best_alt <- ai2 }
+          }
+          block_owner[bi] <- best_alt
+        }
+      }
+
+      fmt_keys <- strsplit(fmt,":",fixed=TRUE)[[1]]
+      smp_vals <- strsplit(smp,":",fixed=TRUE)[[1]]
+      names(smp_vals) <- fmt_keys[seq_along(smp_vals)]
+      gt  <- if ("GT" %in% names(smp_vals)) smp_vals[["GT"]] else "./."
+      ad  <- if ("AD" %in% names(smp_vals)) smp_vals[["AD"]] else NA_character_
+      sdp <- if ("DP" %in% names(smp_vals)) smp_vals[["DP"]] else NA_character_
+      gq  <- if ("GQ" %in% names(smp_vals)) smp_vals[["GQ"]] else NA_character_
+      ad_vec <- if (!is.na(ad)) strsplit(ad,",",fixed=TRUE)[[1]] else NA
+
+      # --- v4: genotype-quality filter (mirrors bcftools -e 'DP<=min_DP | GQ<=min_GQ') ---
+      # Keep iff DP > min_DP AND GQ > min_GQ, using the SAME per-record DP/GQ that
+      # become the output columns sample_DP / GQ (verified byte-identical to the raw
+      # FORMAT fields). DP/GQ are per-record, so skipping the whole record here is
+      # identical to filtering the assembled rows on sample_DP/GQ (all allele-rows of
+      # a record share the same DP/GQ) and matches bcftools' whole-line drop.
+      # min_DP / min_GQ = NULL disables that field's filter. Missing/non-numeric
+      # DP or GQ never causes a drop (that field is treated as "pass").
+      if (filter_dp || filter_gq) {
+        fail_dp <- FALSE; fail_gq <- FALSE
+        if (filter_dp) { dp_num <- suppressWarnings(as.numeric(sdp))
+                         fail_dp <- !is.na(dp_num) && dp_num <= min_DP }
+        if (filter_gq) { gq_num <- suppressWarnings(as.numeric(gq))
+                         fail_gq <- !is.na(gq_num) && gq_num <= min_GQ }
+        if (fail_dp || fail_gq) { n_dropped <- n_dropped + 1L; next }  # skip whole record
+      }
+
+      for (ai in seq_along(alts)) {
+        alt <- alts[ai]
+        sel <- which(block_owner == ai)
+        coords <- maf_coords(pos, ref, alt); vt <- coords$var_type
+
+        if (length(sel) > 0L) {
+          ranks <- vapply(sel, function(k) consequence_rank(block_fields[[k]][P_Cons]), integer(1))
+          canon <- vapply(sel, function(k) { v <- block_fields[[k]][P_CANONICAL]
+            if (!is.na(v) && v=="YES") 0L else 1L }, integer(1))
+          mane  <- vapply(sel, function(k) { v <- block_fields[[k]][P_MANESEL]
+            if (!is.na(v) && v!="") 0L else 1L }, integer(1))
+          feat  <- vapply(sel, function(k) { v <- block_fields[[k]][P_Feature]
+            if (is.na(v)) "zzz" else v }, character(1))
+          ord <- order(ranks, canon, mane, feat)
+          chosen <- block_fields[[ sel[ord[1]] ]]
+        } else {
+          chosen <- rep(NA_character_, n_csq)
+        }
+
+        cons_str <- chosen[P_Cons]; top_term <- most_severe_term(cons_str)
+        var_class <- if (is.na(top_term)) "Targeted_Region" else vep_to_maf_class(top_term, vt)
+        symbol <- chosen[P_SYMBOL]
+        hugo <- if (is.na(symbol) || symbol == "") "Unknown" else symbol
+
+        gc <- gt_codes_for_alt(gt, ai)
+        map_code <- function(code) {
+          if (is.na(code)) return(".")
+          if (code == 0L)  return(coords$ref_allele)
+          if (code == ai)  return(coords$tum_allele2)
+          if (code >= 1L && code <= length(alts)) return(maf_coords(pos, ref, alts[code])$tum_allele2)
+          "."
+        }
+        t_allele1 <- map_code(gc$c1); t_allele2 <- map_code(gc$c2)
+
+        t_ref_count <- if (length(ad_vec) >= 1 && !any(is.na(ad_vec))) ad_vec[1] else NA_character_
+        t_alt_count <- if (length(ad_vec) >= (ai+1) && !any(is.na(ad_vec))) ad_vec[ai+1] else NA_character_
+
+        exist <- chosen[P_Existing]; dbsnp <- NA_character_
+        if (!is.na(exist) && exist != "") {
+          rs <- grep("^rs", strsplit(exist,"&",fixed=TRUE)[[1]], value = TRUE)
+          if (length(rs)) dbsnp <- rs[1]
+        }
+        if (is.na(dbsnp) && !is.na(vid) && vid != ".") {
+          rs <- grep("^rs", strsplit(vid,";",fixed=TRUE)[[1]], value = TRUE)
+          if (length(rs)) dbsnp <- rs[1]
+        }
+
+        hgvsp <- url_decode(chosen[P_HGVSp]); hgvsc <- url_decode(chosen[P_HGVSc])
+        vep_vals <- as.list(chosen); names(vep_vals) <- csq_fields
+
+        oi <- oi + 1L
+        out[[oi]] <- c(
+          list(
+            Hugo_Symbol=hugo, Entrez_Gene_Id="0", Center=".", NCBI_Build=ncbi_build,
+            Chromosome=chrom, Start_Position=coords$start, End_Position=coords$end,
+            Strand="+", Variant_Classification=var_class, Variant_Type=vt,
+            Reference_Allele=coords$ref_allele, Tumor_Seq_Allele1=t_allele1,
+            Tumor_Seq_Allele2=t_allele2, dbSNP_RS=if (is.na(dbsnp)) "" else dbsnp,
+            Tumor_Sample_Barcode=sample_name, Match_Norm_Seq_Allele1="",
+            Match_Norm_Seq_Allele2="", HGVSc=if (is.na(hgvsc)) "" else hgvsc,
+            HGVSp=if (is.na(hgvsp)) "" else hgvsp, HGVSp_Short=make_hgvsp_short(hgvsp),
+            Transcript_ID={ v <- chosen[P_Feature]; if (is.na(v)) "" else v },
+            Consequence=if (is.na(cons_str)) "" else cons_str,
+            t_depth=if (is.na(sdp)) "" else sdp,
+            t_ref_count=if (is.na(t_ref_count)) "" else t_ref_count,
+            t_alt_count=if (is.na(t_alt_count)) "" else t_alt_count
+          ),
+          vep_vals,
+          list(
+            FILTER=filt,
+            QUAL=qual,
+            INFO_DP=if (is.na(info_DP)) "" else info_DP,
+            INFO_AC=if (length(ac_vec)>=ai && !any(is.na(ac_vec))) ac_vec[ai] else if (!is.na(info_AC)) info_AC else "",
+            INFO_AF=if (length(af_vec)>=ai && !any(is.na(af_vec))) af_vec[ai] else if (!is.na(info_AF)) info_AF else "",
+            INFO_MQ=if (is.na(info_MQ)) "" else info_MQ,
+            INFO_QD=if (is.na(info_QD)) "" else info_QD,
+            CNN_1D=if (is.na(info_CNN)) "" else info_CNN,
+            GT=gt, AD=if (is.na(ad)) "" else ad,
+            sample_DP=if (is.na(sdp)) "" else sdp, GQ=if (is.na(gq)) "" else gq
+          )
+        )
+      }
+    }
+    res <- rbindlist(out[seq_len(oi)], use.names = TRUE, fill = TRUE)
+    setattr(res, "n_dropped", n_dropped)   # v4: carry filter drop count to caller
+    res
+  }
+
+  ## 1j-v2. Convert ONE vcf file end-to-end (header parse + chunked streaming).
+  ##        Returns a per-file MAF data.table. Progress printed if verbose.
+  convert_one_vcf <- function(path, file_idx, file_total, file_total_records = NA_integer_) {
+    csq_fields  <- get_csq_fields(path)
+    sample_name <- get_sample_name(path)
+    if (verbose)
+      message(sprintf("[file %d/%d] Converting %s (sample: %s) | CSQ fields: %d",
+                      file_idx, file_total, basename(path), sample_name, length(csq_fields)))
+
+    con <- gzfile(path, "r")
+    repeat { l <- readLines(con, 1L); if (length(l)==0L || startsWith(l, "#CHROM")) break }
+
+    chunks <- list(); ci2 <- 0L; total_in <- 0L; n_drop_file <- 0L; t0 <- Sys.time()
+    file_done <- 0L   # per-file running record counter (numerator of progress line)
+    repeat {
+      lines <- readLines(con, chunk_size)
+      if (length(lines) == 0L) break
+      ci2 <- ci2 + 1L
+      mat <- tstrsplit(lines, "\t", fixed = TRUE)
+      dtc <- data.table(CHROM=mat[[1]], POS=mat[[2]], ID=mat[[3]], REF=mat[[4]],
+                        ALT=mat[[5]], QUAL=mat[[6]], FILTER=mat[[7]], INFO=mat[[8]],
+                        FORMAT=mat[[9]], SAMPLE=mat[[10]])
+      ck <- convert_chunk(dtc, csq_fields, sample_name)
+      nd <- attr(ck, "n_dropped"); if (is.null(nd)) nd <- 0L
+      n_drop_file <- n_drop_file + nd
+      chunks[[ci2]] <- ck
+      total_in <- total_in + nrow(dtc)
+      file_done <- file_done + nrow(dtc)        # per-file running count (numerator)
+      global_done <<- global_done + nrow(dtc)   # update shared global counter (drives global %)
+      if (verbose) {
+        # Per-file count (file_done / this file's total), GLOBAL percentage
+        # (global_done / grand_total), GLOBAL elapsed (since whole-run start, t_global).
+        el <- as.numeric(difftime(Sys.time(), t_global, units = "secs"))
+        if (!is.na(file_total_records) && !is.na(grand_total) && grand_total > 0L) {
+          message(sprintf("    %s/%s (%.0f%%) | %.0fs",
+                          format(file_done, big.mark = ","),
+                          format(file_total_records, big.mark = ","),
+                          100 * global_done / grand_total, el))
+        } else {
+          message(sprintf("    %s records | %.0fs",
+                          format(file_done, big.mark = ","), el))
+        }
+      }
+    }
+    close(con)
+
+    maf_one <- rbindlist(chunks, use.names = TRUE, fill = TRUE)
+    if (verbose) {
+      # "records" = raw VCF variant records read for this file (pre DP/GQ filter,
+      # pre multi-allelic split). The genotype-filter line below reports how many
+      # of these were kept/dropped. (Final allele-row count is in the COMBINED /
+      # Final Table Dimensions lines.)
+      message(sprintf("[file %d/%d] done: %s records",
+                      file_idx, file_total, format(total_in, big.mark = ",")))
+      if (filter_dp || filter_gq) {
+        kept <- total_in - n_drop_file
+        crit <- paste(c(if (filter_dp) sprintf("DP>%g", min_DP),
+                        if (filter_gq) sprintf("GQ>%g", min_GQ)), collapse = " & ")
+        message(sprintf("    genotype filter (%s): kept %s / %s records (dropped %s; %.1f%%).",
+                        crit,
+                        format(kept, big.mark = ","), format(total_in, big.mark = ","),
+                        format(n_drop_file, big.mark = ","),
+                        if (total_in > 0L) 100 * n_drop_file / total_in else 0))
+      }
+    }
+    attr(maf_one, "sample_name") <- sample_name
+    attr(maf_one, "n_dropped")   <- n_drop_file
+    maf_one
+  }
+
+  # ==========================================================================
+  # 2. Convert every file and ROW-BIND into one combined MAF
+  # ==========================================================================
+  t_all <- Sys.time()
+
+  ## 2a. Pre-count variant (non-header) lines for EACH file (and their sum, the
+  ##     grand total) to drive the progress display. Streams each gzip once
+  ##     counting lines after #CHROM. `per_file_total[i]` = records in file i;
+  ##     `grand_total` = sum(per_file_total) for the GLOBAL percentage.
+  ##     On any failure we fall back to NA (count-only mode) for ALL files.
+  per_file_total <- tryCatch({
+    cnt <- integer(length(vcf_paths))
+    for (fi in seq_along(vcf_paths)) {
+      p <- vcf_paths[fi]
+      cc <- gzfile(p, "r"); seen_chrom <- FALSE; n <- 0L
+      repeat {
+        ll <- readLines(cc, 100000L)
+        if (length(ll) == 0L) break
+        if (!seen_chrom) {
+          h <- which(startsWith(ll, "#CHROM"))
+          if (length(h) > 0L) {
+            seen_chrom <- TRUE
+            n <- n + sum(!startsWith(ll[(h[1] + 1L):length(ll)], "#"))
+          }
+        } else {
+          n <- n + length(ll)   # past #CHROM: all remaining lines are variants
+        }
+      }
+      close(cc); cnt[fi] <- n
+    }
+    cnt
+  }, error = function(e) rep(NA_integer_, length(vcf_paths)))
+  grand_total <- if (any(is.na(per_file_total))) NA_integer_ else sum(per_file_total)
+
+  if (verbose) {
+    if (!is.na(grand_total))
+      message(sprintf("Pre-count: %d variant records across %d file(s).",
+                      grand_total, length(vcf_paths)))
+    else
+      message("Pre-count unavailable; progress will show cumulative count only.")
+  }
+
+  # global running counter + timer shared with convert_one_vcf (via <<-)
+  global_done <- 0L
+  t_global    <- t_all
+
+  per_file <- vector("list", length(vcf_paths))
+  sample_names <- character(length(vcf_paths))
+  for (i in seq_along(vcf_paths)) {
+    per_file[[i]] <- convert_one_vcf(vcf_paths[i], i, length(vcf_paths),
+                                     per_file_total[i])
+    sample_names[i] <- attr(per_file[[i]], "sample_name")
+  }
+  # collision guard: warn if two files map to the same sample barcode
+  dup_samp <- sample_names[duplicated(sample_names)]
+  if (length(dup_samp) > 0L)
+    warning(sprintf("Duplicate Tumor_Sample_Barcode(s) across files: %s",
+                    paste(unique(dup_samp), collapse=", ")))
+
+  maf <- rbindlist(per_file, use.names = TRUE, fill = TRUE)
+  if (verbose) message(sprintf("COMBINED: %d file(s) | %d MAF rows (%d cols) in %.0fs",
+                               length(vcf_paths), nrow(maf), ncol(maf),
+                               as.numeric(difftime(Sys.time(), t_all, units="secs"))))
+
+  # ==========================================================================
+  # 3. POST-PROCESSING (v2)
+  # ==========================================================================
+
+  ## 3a. Remove VERIFIED-IDENTICAL duplicate-named columns -------------------
+  ##     For each repeated name: compare columns elementwise (NA==NA). If all
+  ##     rows identical, keep the FIRST occurrence and drop the rest. If any
+  ##     row differs, keep both and rename later copies "<name>.csq" + warn.
+  ##     NOTE: run BEFORE HGVS stripping, so identity is checked on raw values
+  ##     (otherwise stripping the core copy would make it differ from the CSQ
+  ##     copy and the strict check would refuse to drop it).
+  if (dedup_columns) {
+    cn <- names(maf)
+    dup_names <- unique(cn[duplicated(cn)])
+    dropped <- character(0); renamed <- character(0)
+    # Vectorized URL-decode (fast; mirrors the per-element url_decode helper).
+    url_decode_vec <- function(x) {
+      x <- gsub("%3D","=",x,fixed=TRUE); x <- gsub("%3B",";",x,fixed=TRUE)
+      x <- gsub("%2C",",",x,fixed=TRUE); x <- gsub("%3A",":",x,fixed=TRUE); x
+    }
+    for (nm in dup_names) {
+      idx <- which(cn == nm)
+      keep <- idx[1]
+      # Columns are "identical" iff, after URL-decoding and treating ""/NA as the
+      # SAME 'missing' token, every row matches. This is the correct equivalence:
+      # the MAF-core copy writes "" for missing while the raw CSQ copy writes NA,
+      # so a naive (a==b) leaves NA at those rows and must not count as a difference.
+      identical_to_keep <- function(j) {
+        a <- url_decode_vec(maf[[keep]]); b <- url_decode_vec(maf[[j]])
+        a[is.na(a)] <- ""        # normalize NA -> "" (missing)
+        b[is.na(b)] <- ""
+        all(a == b)              # no NA left, so all() is unambiguous
+      }
+      to_drop <- integer(0)
+      for (j in idx[-1]) {
+        if (identical_to_keep(j)) to_drop <- c(to_drop, j)
+        else renamed <- c(renamed, nm)
+      }
+      if (length(to_drop) > 0L) {
+        maf[, (to_drop) := NULL]
+        dropped <- c(dropped, nm)
+        cn <- names(maf)  # refresh after deletion
+      }
+    }
+    # rename any surviving same-named-but-differing duplicates to avoid collision
+    cn <- names(maf)
+    if (any(duplicated(cn))) {
+      for (nm in unique(cn[duplicated(cn)])) {
+        idx <- which(cn == nm)
+        for (k in seq_along(idx)[-1]) {
+          new <- paste0(nm, ".csq", if (k > 2) k - 1 else "")
+          setnames(maf, idx[k], new)
+        }
+        cn <- names(maf)
+      }
+    }
+  }
+
+  ## 3b. Strip Ensembl feature prefix from HGVSc / HGVSp ---------------------
+  ##     "ENST...:n.1889G>A" -> "n.1889G>A". Applied to the surviving core cols.
+  if (strip_hgvs_prefix) {
+    # Vectorized strip: remove up to first ':'. Empty/NA pass through unchanged.
+    strip_prefix_vec <- function(x) ifelse(is.na(x) | x == "", x, sub("^[^:]*:", "", x))
+    for (col in c("HGVSc", "HGVSp")) {
+      if (col %in% names(maf)) {
+        set(maf, j = col, value = strip_prefix_vec(maf[[col]]))   # in-place, no copy
+      }
+    }
+  }
+
+  ## 3c. Add Genotype = Tumor_Seq_Allele1 / Tumor_Seq_Allele2 ----------------
+  if (add_genotype) {
+    setDT(maf)   # ensure a clean data.table (prior := NULL may have left a shallow copy)
+    if (all(c("Tumor_Seq_Allele1","Tumor_Seq_Allele2") %in% names(maf))) {
+      maf[, Genotype := paste(Tumor_Seq_Allele1, Tumor_Seq_Allele2, sep = "/")]
+      # place Genotype directly after Tumor_Seq_Allele2
+      nm <- names(maf)
+      after <- which(nm == "Tumor_Seq_Allele2")
+      neworder <- append(setdiff(nm, "Genotype"), "Genotype", after = after)
+      setcolorder(maf, neworder)
+    }
+  }
+
+  ## 3d. ABraOM Brazilian allele frequency (SABE-609-WES) --------------------
+  ##     Adds ONE column `ABraOM_SABE609_AF` = the ABraOM `Frequencies` value.
+  ##
+  ##     CRITICAL: the ABraOM 609-exome file is hg19/GRCh37 while these VCFs are
+  ##     GRCh38. Positions are therefore NOT comparable (same rsID can sit >60 kb
+  ##     apart between builds). We join on dbSNP rsID + alleles, which ARE
+  ##     build-stable: MAF.dbSNP_RS == ABraOM.avsnp147 AND Ref/Alt agree.
+  ##     (rsID alone is ambiguous at multi-allelic sites; alleles disambiguate.)
+  ##     Blank "" where there is no rsID+allele match. Frequency only.
+  if (add_abraom) {
+    setDT(maf)
+    maf[, ABraOM_SABE609_AF := ""]          # default blank (no-match convention)
+    ok <- TRUE
+    # Resolve the ABraOM file: explicit path, else cached copy, else download.
+    apath <- abraom_path
+    if (is.null(apath)) {
+      cache_dir <- "/mnt/shared-workspace/abraom"
+      apath <- file.path(cache_dir, "ABRaOM_60plus_SABE_609_exomes_annotated.gz")
+      if (!file.exists(apath) || file.info(apath)$size < 1e7) {
+        ok <- tryCatch({
+          dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+          if (verbose) message("ABraOM: downloading reference file (one-time) ...")
+          utils::download.file(abraom_url, apath, mode = "wb", quiet = TRUE)
+          file.exists(apath) && file.info(apath)$size > 1e7
+        }, error = function(e) { if (verbose) message("ABraOM: download failed: ",
+                                                      conditionMessage(e)); FALSE })
+      }
+    } else if (!file.exists(apath)) {
+      if (verbose) message("ABraOM: abraom_path not found: ", apath); ok <- FALSE
+    }
+
+    if (ok) {
+      ab <- tryCatch(fread(apath, sep = "\t", header = TRUE, quote = "",
+                           showProgress = FALSE), error = function(e) NULL)
+      if (is.null(ab)) {
+        if (verbose) message("ABraOM: could not read file; ABraOM_SABE609_AF left blank.")
+      } else {
+        setnames(ab, make.names(names(ab)))
+        need <- c("avsnp147","Ref","Alt","Frequencies")
+        if (!all(need %in% names(ab))) {
+          if (verbose) message("ABraOM: unexpected columns; expected avsnp147/Ref/Alt/",
+                               "Frequencies. Left blank.")
+        } else {
+          # Build keyed lookup: distinct (rsID, REF, ALT) -> Frequencies (as char).
+          lut <- unique(ab[avsnp147 != "NA" & !is.na(avsnp147) & avsnp147 != "",
+                           .(rs = avsnp147,
+                             ref = toupper(Ref), alt = toupper(Alt),
+                             af  = as.character(Frequencies))])
+          setkey(lut, rs, ref, alt)
+          # MAF join keys (uppercased; both sides use '-' for indel empty allele).
+          maf[, `:=`(.rs  = dbSNP_RS,
+                     .ref = toupper(Reference_Allele),
+                     .alt = toupper(Tumor_Seq_Allele2))]
+          hit <- lut[maf[, .(.rs, .ref, .alt)],
+                     on = c(rs = ".rs", ref = ".ref", alt = ".alt"),
+                     x.af]            # vector of matched AF, NA where no match
+          maf[, ABraOM_SABE609_AF := ifelse(is.na(hit), "", hit)]
+          maf[, c(".rs",".ref",".alt") := NULL]
+          # Place the new column with the other population-frequency columns:
+          # right after MAX_AF_POPS / MAX_AF / the last gnomAD column (whichever
+          # exists). This groups it with gnomAD/1000G AFs, NOT the INFO_* block.
+          nm <- names(maf)
+          anchors <- c(grep("^MAX_AF_POPS$", nm), grep("^MAX_AF$", nm),
+                       grep("^gnomAD", nm))
+          after <- if (length(anchors)) max(anchors) else length(nm) - 1L
+          neworder <- append(setdiff(nm, "ABraOM_SABE609_AF"),
+                              "ABraOM_SABE609_AF", after = after)
+          setcolorder(maf, neworder)
+          if (verbose) message(sprintf(
+            "ABraOM: annotated %d/%d rows (%.1f%%) with SABE609 frequency (rsID+allele join).",
+            sum(nzchar(maf$ABraOM_SABE609_AF)), nrow(maf),
+            100*mean(nzchar(maf$ABraOM_SABE609_AF))))
+        }
+      }
+    } else if (verbose) {
+      message("ABraOM: file unavailable; ABraOM_SABE609_AF left blank for all rows.")
+    }
+  }
+
+  ## 3d-bis. Gene-of-interest subset (opt-in) -------------------------------
+  ##     Keep only rows whose Hugo_Symbol matches the user-supplied `genes`
+  ##     vector (exact, case-insensitive). NULL = keep all genes. Applied as a
+  ##     FINAL row filter, AFTER all annotation but BEFORE drop_empty_cols, so
+  ##     emptiness is evaluated on the subsetted rows.
+  if (!is.null(genes)) {
+    setDT(maf)
+    genes_chr <- as.character(genes)
+    genes_chr <- genes_chr[!is.na(genes_chr) & nzchar(genes_chr)]
+    want <- unique(toupper(trimws(genes_chr)))
+    n_before <- nrow(maf)
+    have <- toupper(trimws(as.character(maf$Hugo_Symbol)))
+    maf <- maf[have %in% want]
+    if (verbose) {
+      found    <- intersect(want, unique(have))
+      notfound <- setdiff(want, unique(have))
+      message(sprintf(
+        "gene subset: kept %s / %s rows across %d / %d requested gene(s)%s.",
+        format(nrow(maf), big.mark = ","), format(n_before, big.mark = ","),
+        length(found), length(want),
+        if (length(notfound)) paste0(" (not found: ", paste(notfound, collapse = ", "), ")") else ""))
+    }
+  }
+
+  ## 3e. Drop all-empty columns (opt-in) ------------------------------------
+  ##     Remove any column whose values are ALL missing (NA or "") across the
+  ##     entire combined table. Default FALSE = keep full schema.
+  if (drop_empty_cols) {
+    setDT(maf)
+    is_all_empty <- function(col) {
+      v <- maf[[col]]; vc <- as.character(v)
+      all(is.na(v) | vc == "")
+    }
+    empty_cols <- names(maf)[vapply(names(maf), is_all_empty, logical(1))]
+    if (length(empty_cols) > 0L) {
+      maf[, (empty_cols) := NULL]
+      if (verbose) message(sprintf("drop_empty_cols: removed %d all-empty column(s): %s",
+                                   length(empty_cols), paste(empty_cols, collapse=", ")))
+    } else if (verbose) {
+      message("drop_empty_cols: no all-empty columns found.")
+    }
+  }
+
+  if (verbose) message(sprintf("Final Table Dimensions: %d rows x %d columns.", nrow(maf), ncol(maf)))
+
+  # ==========================================================================
+  # 4. Optional file outputs
+  # ==========================================================================
+  if (write_tsv || write_rds) {
+    if (is.null(out_dir)) out_dir <- if (is.null(vcf_path)) folder else dirname(vcf_path)
+    if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+    if (is.null(out_prefix)) {
+      if (length(vcf_paths) > 1L) {
+        out_prefix <- "combined.maf"                                  # multi-file
+      } else {
+        out_prefix <- sub("\\.vcf\\.gz$", "", basename(vcf_paths[1])) # single file
+        out_prefix <- paste0(out_prefix, ".maf")
+      }
+    }
+    if (write_tsv) {
+      tsv_path <- file.path(out_dir, paste0(out_prefix, ".tsv"))
+      fwrite(maf, tsv_path, sep = "\t", quote = FALSE, na = "")
+      if (verbose) message("Wrote TSV: ", tsv_path)
+    }
+    if (write_rds) {
+      # IMPORTANT: on S3-backed mounts (e.g. /mnt/results), R's file.copy() can
+      # silently produce a 0-byte file. The ONLY reliable route is to saveRDS to
+      # a local POSIX path (tempdir / /workspace) and then shell `cp` it over.
+      rds_final <- file.path(out_dir, paste0(out_prefix, ".rds"))
+      tmp_rds   <- file.path(tempdir(), paste0(out_prefix, ".rds"))
+      saveRDS(maf, tmp_rds, compress = TRUE)
+      system2("cp", c(shQuote(tmp_rds), shQuote(rds_final)))   # always shell-cp
+      sz <- suppressWarnings(file.info(rds_final)$size)
+      if (is.na(sz) || sz == 0)
+        warning(sprintf("RDS write may have failed (0 bytes): %s", rds_final))
+      else if (verbose)
+        message(sprintf("Wrote RDS: %s (%.0f MB)", rds_final, sz/1e6))
+    }
+  }
+
+  # set a friendly key-less data.table and return
+  setDT(maf)
+  maf[]
+}
+
+# If sourced interactively this just defines read.gvr().
+# Example (commented):
+#   maf <- read.gvr("/mnt/user-uploads")                # merge all *_NN.vep.vcf.gz
+#   maf_pass <- maf[FILTER == "PASS"]
+#   # genes of interest only, no DP/GQ filter:
+#   maf_goi <- read.gvr("/mnt/user-uploads", min_DP = NULL, min_GQ = NULL,
+#                       genes = c("MEN1","RET","CDKN1B"))
+
+# Silence R CMD check NOTEs for data.table non-standard-evaluation symbols
+# (column references and join keys used bare inside `dt[...]`, `:=`, `.(...)`,
+# `setkey()` and `on=`). These are not undefined globals; this is the idiomatic
+# data.table remedy.
+if (getRversion() >= "2.15.1") {
+  utils::globalVariables(c(
+    # temp/internal columns created via :=
+    ".rs", ".ref", ".alt",
+    # MAF columns referenced bare inside data.table calls
+    "Genotype", "Tumor_Seq_Allele1", "Tumor_Seq_Allele2", "ABraOM_SABE609_AF",
+    "dbSNP_RS", "Reference_Allele",
+    # ABraOM lookup-table columns (built then keyed/joined)
+    "avsnp147", "Ref", "Alt", "Frequencies", "rs", "ref", "alt", "af", "x.af"
+  ))
+}
