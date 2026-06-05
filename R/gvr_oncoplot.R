@@ -220,13 +220,5 @@ gvr_oncoplot <- function(maf,
   invisible(path)
 }
 
-# Silence R CMD check NOTEs for data.table non-standard-evaluation symbols
-# (column references and special symbols used inside `dt[...]`). These are not
-# undefined globals; this is the idiomatic data.table remedy.
-if (getRversion() >= "2.15.1") {
-  utils::globalVariables(c(
-    ".", ".N", ".SD", ".__sample__", ".sr",
-    "Hugo_Symbol", "Variant_Classification",
-    "n_var", "n_samp", "N"
-  ))
-}
+# NOTE: globalVariables() declarations for this package are consolidated in
+# R/globals.R (one package-scoped block covering all functions).

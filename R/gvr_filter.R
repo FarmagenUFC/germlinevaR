@@ -13,7 +13,7 @@
 #' \enumerate{
 #'   \item gnomAD exome AF        - `gnomADe_AF`        (+ `gnomADe_AF_keep_missing`)
 #'   \item gnomAD genome / VCF AF - `AF`                (+ `AF_keep_missing`)
-#'   \item ABraOM (SABE 609) AF   - `ABraOM_SABE609_AF` (+ `ABraOM_SABE609_AF_keep_missing`)
+#'   \item ABraOM AF             - `ABraOM_AF`         (+ `ABraOM_AF_keep_missing`)
 #'   \item Clinical significance  - `clin_sig_terms`    (+ `clin_sig_keep_missing`)
 #'   \item Biotype                - `biotype_keep`
 #'   \item Genotype exclusion     - `gt_exclude`
@@ -45,17 +45,17 @@
 #'   Default 0.01.
 #' @param AF Numeric upper threshold for the `AF` column (gnomAD genome / VCF allele
 #'   frequency). `NULL` disables this filter. Default 0.01.
-#' @param ABraOM_SABE609_AF Numeric upper threshold for the Brazilian-cohort column
-#'   `ABraOM_SABE609_AF`. `NULL` disables this filter. Default 0.01.
+#' @param ABraOM_AF Numeric upper threshold for the Brazilian-cohort (ABraOM SABE 609)
+#'   column `ABraOM_AF`. `NULL` disables this filter. Default 0.01.
 #' @param gnomADe_AF_keep_missing Logical; if TRUE, keep rows whose `gnomADe_AF` is
 #'   missing (NA or ""); if FALSE (default) drop them. Matches the literal dplyr example
 #'   (missing -> dropped). Ignored when `gnomADe_AF` is NULL.
 #' @param AF_keep_missing Logical; missing-value handling for the `AF` filter. FALSE
 #'   (default) drops missing. Ignored when `AF` is NULL.
-#' @param ABraOM_SABE609_AF_keep_missing Logical; missing-value handling for the ABraOM
+#' @param ABraOM_AF_keep_missing Logical; missing-value handling for the ABraOM
 #'   filter. FALSE (default) drops missing. Set TRUE to retain variants absent from the
 #'   Brazilian cohort (where absence often means "not catalogued", not "common").
-#'   Ignored when `ABraOM_SABE609_AF` is NULL.
+#'   Ignored when `ABraOM_AF` is NULL.
 #'
 #' @param clin_sig_terms Character vector of clinical-significance terms to keep
 #'   (substring, case-insensitive, OR-combined). `NULL` disables the CLIN_SIG filter.
@@ -88,10 +88,10 @@
 #' maf_clean <- gvr_filter(maf)
 #'
 #' ## Strict gnomAD, but keep variants absent from ABraOM:
-#' gvr_filter(maf, ABraOM_SABE609_AF_keep_missing = TRUE)
+#' gvr_filter(maf, ABraOM_AF_keep_missing = TRUE)
 #'
 #' ## Only the rarity filter on gnomAD exome AF, nothing else:
-#' gvr_filter(maf, gnomADe_AF = 0.001, AF = NULL, ABraOM_SABE609_AF = NULL,
+#' gvr_filter(maf, gnomADe_AF = 0.001, AF = NULL, ABraOM_AF = NULL,
 #'            clin_sig_terms = NULL, biotype_keep = NULL, gt_exclude = NULL)
 #'
 #' ## Pathogenic-only (drop uncertain_significance), exact protein_coding:
@@ -104,10 +104,10 @@
 gvr_filter <- function(maf,
                        gnomADe_AF = 0.01,
                        AF = 0.01,
-                       ABraOM_SABE609_AF = 0.01,
+                       ABraOM_AF = 0.01,
                        gnomADe_AF_keep_missing = FALSE,
                        AF_keep_missing = FALSE,
-                       ABraOM_SABE609_AF_keep_missing = FALSE,
+                       ABraOM_AF_keep_missing = FALSE,
                        clin_sig_terms = c("likely_pathogenic",
                                           "pathogenic",
                                           "uncertain_significance"),
@@ -143,7 +143,7 @@ gvr_filter <- function(maf,
   af_specs <- list(
     list(col = "gnomADe_AF",        thr = gnomADe_AF,        keep_miss = isTRUE(gnomADe_AF_keep_missing)),
     list(col = "AF",                thr = AF,                keep_miss = isTRUE(AF_keep_missing)),
-    list(col = "ABraOM_SABE609_AF", thr = ABraOM_SABE609_AF, keep_miss = isTRUE(ABraOM_SABE609_AF_keep_missing))
+    list(col = "ABraOM_AF",         thr = ABraOM_AF,         keep_miss = isTRUE(ABraOM_AF_keep_missing))
   )
   af_active <- Filter(function(s) !is.null(s$thr), af_specs)
 
