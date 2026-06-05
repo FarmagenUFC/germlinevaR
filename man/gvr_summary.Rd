@@ -10,6 +10,7 @@ gvr_summary(
   top_n_genes = 20,
   save_excel = TRUE,
   save_pdf = TRUE,
+  save_html = TRUE,
   out_dir = ".",
   file_prefix = "gvr_summary",
   verbose = TRUE
@@ -40,15 +41,28 @@ samples; see the examples). Requires \pkg{gridExtra}, \pkg{ggplot2} and
 \pkg{scales}; if unavailable, the PDF is skipped with a warning and the sections
 are still returned. Pass \code{FALSE} for a compute-only run.}
 
-\item{out_dir}{Parent output directory. All written outputs (Excel and/or PDF) are
-placed in a \verb{gvr_summary/} subfolder created inside \code{out_dir}. The subfolder is
-created only when \code{save_excel} or \code{save_pdf} is \code{TRUE}. Default \code{"."} (current
-working directory), i.e. outputs go to \verb{./gvr_summary/}.}
+\item{save_html}{Logical; if \code{TRUE} (default), write an interactive HTML dashboard
+(\verb{<file_prefix>_report.html}) into the \verb{gvr_summary/} subfolder of \code{out_dir}. It
+mirrors the PDF dashboard - a row of KPI cards, the same three bar charts (top
+genes, variant classification, functional impact) as interactive \pkg{plotly}
+charts (grouped for \eqn{\le 6} samples, faceted small-multiples for \eqn{> 6}),
+and all six section tables as sortable, searchable \pkg{DT} tables. By default a
+single self-contained file is produced (assets inlined via pandoc); if pandoc is
+unavailable the report is written as \verb{<file_prefix>_report.html} plus a sibling
+\verb{<file_prefix>_report_files/} asset folder (a \code{verbose} message notes this).
+Requires \pkg{plotly}, \pkg{DT}, \pkg{htmlwidgets} and \pkg{htmltools}; if any are
+unavailable the HTML is skipped with a warning and the sections are still
+returned. Pass \code{FALSE} for a compute-only run.}
+
+\item{out_dir}{Parent output directory. All written outputs (Excel, PDF and/or
+HTML) are placed in a \verb{gvr_summary/} subfolder created inside \code{out_dir}. The
+subfolder is created only when \code{save_excel}, \code{save_pdf} or \code{save_html} is \code{TRUE}.
+Default \code{"."} (current working directory), i.e. outputs go to \verb{./gvr_summary/}.}
 
 \item{file_prefix}{Base filename for written outputs. Default \code{"gvr_summary"}, giving
-\verb{<file_prefix>.xlsx} and \verb{<file_prefix>_report.pdf} (no timestamp). Filenames are
-fixed, so re-running into the same \code{out_dir} overwrites the previous files (a
-message is printed when \code{verbose = TRUE}).}
+\verb{<file_prefix>.xlsx}, \verb{<file_prefix>_report.pdf} and \verb{<file_prefix>_report.html}
+(no timestamp). Filenames are fixed, so re-running into the same \code{out_dir}
+overwrites the previous files (a message is printed when \code{verbose = TRUE}).}
 
 \item{verbose}{Logical; if \code{TRUE} (default) print a compact console digest and the
 path(s) of any file(s) written.}
@@ -56,7 +70,7 @@ path(s) of any file(s) written.}
 \value{
 Invisibly, a named list of \code{data.table}s: \code{overview}, \code{top_genes},
 \code{variant_classification}, \code{variant_type}, \code{clin_sig}, \code{impact}. The return value
-is identical regardless of whether the Excel/PDF files are written.
+is identical regardless of whether the Excel/PDF/HTML files are written.
 }
 \description{
 Produces a multi-section overview of a MAF-style table - the output of
@@ -107,7 +121,11 @@ retained hits.
 Core summary uses \pkg{data.table}. The optional Excel export uses \pkg{openxlsx};
 the optional PDF dashboard uses \pkg{gridExtra} + \pkg{ggplot2} + \pkg{scales},
 rendered via the \code{grDevices::cairo_pdf} device (full Unicode, so en-dashes,
-multiplication signs and similar punctuation render correctly). Each optional
+multiplication signs and similar punctuation render correctly). The optional
+interactive HTML dashboard uses \pkg{plotly} (charts), \pkg{DT} (tables) and
+\pkg{htmlwidgets} + \pkg{htmltools} (assembly); a single self-contained file is
+produced when \pkg{pandoc} is available (used only for the optional asset-inlining
+step), otherwise a \code{.html} + \verb{_files/} asset folder is written. Each optional
 output degrades gracefully: if its package(s) are unavailable, that output is
 skipped with a warning and the section tables are still returned.
 }
@@ -117,9 +135,10 @@ skipped with a warning and the section tables are still returned.
 maf <- read.gvr("/path/to/vcf_folder")
 
 ## ---- Default run -------------------------------------------------------
-## Returns the six section tables AND writes two files into ./gvr_summary/:
+## Returns the six section tables AND writes three files into ./gvr_summary/:
 ##   * gvr_summary.xlsx         - one sheet per section
-##   * gvr_summary_report.pdf   - the dashboard report (see below)
+##   * gvr_summary_report.pdf   - the print dashboard report (see below)
+##   * gvr_summary_report.html  - the interactive dashboard (see below)
 s <- gvr_summary(maf)
 s$variant_classification          # inspect a section
 s$impact                          # HIGH -> MODIFIER, in severity order
@@ -134,24 +153,36 @@ s$impact                          # HIGH -> MODIFIER, in severity order
 ##                   fit the page width and stacked full-width otherwise, plus
 ##                   the Functional-impact (VEP IMPACT) bar chart.
 ## Distinct-gene / HIGH-impact KPIs and chart values mirror the returned tables.
-s <- gvr_summary(maf)                       # 2-sample cohort -> ~3 pages
+s <- gvr_summary(maf)                       # 2-sample cohort -> ~3 PDF pages
+
+## ---- The interactive HTML dashboard ------------------------------------
+## gvr_summary_report.html is the same dashboard, interactive: the four KPI
+## cards, the three bar charts as plotly (hover for exact counts, click the
+## legend to toggle samples, drag to zoom), and all six section tables as DT
+## widgets (per-column sort, a global search box, and pagination). By default
+## it is a single self-contained file you can email or open offline; if pandoc
+## is unavailable it is written alongside a gvr_summary_report_files/ folder.
+s <- gvr_summary(maf)                       # writes gvr_summary_report.html
+gvr_summary(maf, save_html = FALSE)          # opt out of the HTML report
 
 ## ---- Multi-sample / cohort behaviour -----------------------------------
-## The same call scales to any number of samples; the report adapts itself:
-##   * <= 6 samples : hero charts are GROUPED bars (one bar per sample).
-##   * >  6 samples : hero charts switch to small-multiple FACETS (one panel
-##                    per sample) so labels stay legible.
-##   * Wide tables  : when per-sample columns no longer fit the page width,
-##                    reference tables are COLUMN-PAGINATED - the category and
-##                    Total columns repeat on each part, titled e.g.
-##                    "Top genes (samples 1-7 of 8)".
+## The same call scales to any number of samples; both reports adapt:
+##   * <= 6 samples : charts are GROUPED bars (one bar per sample).
+##   * >  6 samples : charts switch to small-multiple FACETS (one panel per
+##                    sample) so labels stay legible - in the PDF and, via
+##                    plotly::subplot, in the HTML.
+##   * Wide tables  : in the PDF, when per-sample columns no longer fit the
+##                    page width, reference tables are COLUMN-PAGINATED - the
+##                    category and Total columns repeat on each part, titled
+##                    e.g. "Top genes (samples 1-7 of 8)". The HTML DT tables
+##                    instead keep every sample column and scroll horizontally.
 ## No argument controls this; layout is chosen automatically from sample count
-## and measured table widths. A 20-sample cohort typically spans ~8 pages.
+## and measured table widths. A 20-sample cohort typically spans ~8 PDF pages.
 s <- gvr_summary(maf, sample_col = "Tumor_Sample_Barcode")
 
 ## ---- Other modes -------------------------------------------------------
 ## Compute only (no files written); still prints a console digest:
-s <- gvr_summary(maf, save_excel = FALSE, save_pdf = FALSE)
+s <- gvr_summary(maf, save_excel = FALSE, save_pdf = FALSE, save_html = FALSE)
 
 ## Summarise filtered hits, writing into results/summary/gvr_summary/:
 gvr_summary(gvr_filter(maf), out_dir = "results/summary")

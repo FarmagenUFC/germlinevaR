@@ -14,8 +14,8 @@ Description:
     maftools, optionally applying a depth/genotype-quality filter and a Brazilian
     ABraOM SABE-609 allele-frequency annotation. Provides population-frequency,
     clinical-significance and biotype filtering, a multi-section cohort summary
-    with optional Excel and multi-page PDF report export, and a maftools-style
-    oncoplot of the most-mutated genes.
+    with optional Excel, multi-page PDF and interactive HTML report export, and a
+    maftools-style oncoplot of the most-mutated genes.
 License: MIT + file LICENSE
 URL: https://github.com/AKKDataAnalysis/germlinevaR
 BugReports: https://github.com/AKKDataAnalysis/germlinevaR/issues
@@ -29,8 +29,13 @@ Imports:
     utils
 Suggests: 
     ComplexHeatmap,
+    DT,
     ggplot2,
     gridExtra,
+    htmltools,
+    htmlwidgets,
+    plotly,
+    rmarkdown,
     scales,
     testthat (>= 3.0.0)
 Encoding: UTF-8

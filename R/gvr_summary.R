@@ -63,26 +63,42 @@
 #'   samples; see the examples). Requires \pkg{gridExtra}, \pkg{ggplot2} and
 #'   \pkg{scales}; if unavailable, the PDF is skipped with a warning and the sections
 #'   are still returned. Pass `FALSE` for a compute-only run.
-#' @param out_dir Parent output directory. All written outputs (Excel and/or PDF) are
-#'   placed in a `gvr_summary/` subfolder created inside `out_dir`. The subfolder is
-#'   created only when `save_excel` or `save_pdf` is `TRUE`. Default `"."` (current
-#'   working directory), i.e. outputs go to `./gvr_summary/`.
+#' @param save_html Logical; if `TRUE` (default), write an interactive HTML dashboard
+#'   (`<file_prefix>_report.html`) into the `gvr_summary/` subfolder of `out_dir`. It
+#'   mirrors the PDF dashboard - a row of KPI cards, the same three bar charts (top
+#'   genes, variant classification, functional impact) as interactive \pkg{plotly}
+#'   charts (grouped for \eqn{\le 6} samples, faceted small-multiples for \eqn{> 6}),
+#'   and all six section tables as sortable, searchable \pkg{DT} tables. By default a
+#'   single self-contained file is produced (assets inlined via pandoc); if pandoc is
+#'   unavailable the report is written as `<file_prefix>_report.html` plus a sibling
+#'   `<file_prefix>_report_files/` asset folder (a `verbose` message notes this).
+#'   Requires \pkg{plotly}, \pkg{DT}, \pkg{htmlwidgets} and \pkg{htmltools}; if any are
+#'   unavailable the HTML is skipped with a warning and the sections are still
+#'   returned. Pass `FALSE` for a compute-only run.
+#' @param out_dir Parent output directory. All written outputs (Excel, PDF and/or
+#'   HTML) are placed in a `gvr_summary/` subfolder created inside `out_dir`. The
+#'   subfolder is created only when `save_excel`, `save_pdf` or `save_html` is `TRUE`.
+#'   Default `"."` (current working directory), i.e. outputs go to `./gvr_summary/`.
 #' @param file_prefix Base filename for written outputs. Default `"gvr_summary"`, giving
-#'   `<file_prefix>.xlsx` and `<file_prefix>_report.pdf` (no timestamp). Filenames are
-#'   fixed, so re-running into the same `out_dir` overwrites the previous files (a
-#'   message is printed when `verbose = TRUE`).
+#'   `<file_prefix>.xlsx`, `<file_prefix>_report.pdf` and `<file_prefix>_report.html`
+#'   (no timestamp). Filenames are fixed, so re-running into the same `out_dir`
+#'   overwrites the previous files (a message is printed when `verbose = TRUE`).
 #' @param verbose Logical; if `TRUE` (default) print a compact console digest and the
 #'   path(s) of any file(s) written.
 #'
 #' @return Invisibly, a named list of `data.table`s: `overview`, `top_genes`,
 #'   `variant_classification`, `variant_type`, `clin_sig`, `impact`. The return value
-#'   is identical regardless of whether the Excel/PDF files are written.
+#'   is identical regardless of whether the Excel/PDF/HTML files are written.
 #'
 #' @section Dependencies:
 #' Core summary uses \pkg{data.table}. The optional Excel export uses \pkg{openxlsx};
 #' the optional PDF dashboard uses \pkg{gridExtra} + \pkg{ggplot2} + \pkg{scales},
 #' rendered via the \code{grDevices::cairo_pdf} device (full Unicode, so en-dashes,
-#' multiplication signs and similar punctuation render correctly). Each optional
+#' multiplication signs and similar punctuation render correctly). The optional
+#' interactive HTML dashboard uses \pkg{plotly} (charts), \pkg{DT} (tables) and
+#' \pkg{htmlwidgets} + \pkg{htmltools} (assembly); a single self-contained file is
+#' produced when \pkg{pandoc} is available (used only for the optional asset-inlining
+#' step), otherwise a `.html` + `_files/` asset folder is written. Each optional
 #' output degrades gracefully: if its package(s) are unavailable, that output is
 #' skipped with a warning and the section tables are still returned.
 #'
@@ -96,9 +112,10 @@
 #' maf <- read.gvr("/path/to/vcf_folder")
 #'
 #' ## ---- Default run -------------------------------------------------------
-#' ## Returns the six section tables AND writes two files into ./gvr_summary/:
+#' ## Returns the six section tables AND writes three files into ./gvr_summary/:
 #' ##   * gvr_summary.xlsx         - one sheet per section
-#' ##   * gvr_summary_report.pdf   - the dashboard report (see below)
+#' ##   * gvr_summary_report.pdf   - the print dashboard report (see below)
+#' ##   * gvr_summary_report.html  - the interactive dashboard (see below)
 #' s <- gvr_summary(maf)
 #' s$variant_classification          # inspect a section
 #' s$impact                          # HIGH -> MODIFIER, in severity order
@@ -113,24 +130,36 @@
 #' ##                   fit the page width and stacked full-width otherwise, plus
 #' ##                   the Functional-impact (VEP IMPACT) bar chart.
 #' ## Distinct-gene / HIGH-impact KPIs and chart values mirror the returned tables.
-#' s <- gvr_summary(maf)                       # 2-sample cohort -> ~3 pages
+#' s <- gvr_summary(maf)                       # 2-sample cohort -> ~3 PDF pages
+#'
+#' ## ---- The interactive HTML dashboard ------------------------------------
+#' ## gvr_summary_report.html is the same dashboard, interactive: the four KPI
+#' ## cards, the three bar charts as plotly (hover for exact counts, click the
+#' ## legend to toggle samples, drag to zoom), and all six section tables as DT
+#' ## widgets (per-column sort, a global search box, and pagination). By default
+#' ## it is a single self-contained file you can email or open offline; if pandoc
+#' ## is unavailable it is written alongside a gvr_summary_report_files/ folder.
+#' s <- gvr_summary(maf)                       # writes gvr_summary_report.html
+#' gvr_summary(maf, save_html = FALSE)          # opt out of the HTML report
 #'
 #' ## ---- Multi-sample / cohort behaviour -----------------------------------
-#' ## The same call scales to any number of samples; the report adapts itself:
-#' ##   * <= 6 samples : hero charts are GROUPED bars (one bar per sample).
-#' ##   * >  6 samples : hero charts switch to small-multiple FACETS (one panel
-#' ##                    per sample) so labels stay legible.
-#' ##   * Wide tables  : when per-sample columns no longer fit the page width,
-#' ##                    reference tables are COLUMN-PAGINATED - the category and
-#' ##                    Total columns repeat on each part, titled e.g.
-#' ##                    "Top genes (samples 1-7 of 8)".
+#' ## The same call scales to any number of samples; both reports adapt:
+#' ##   * <= 6 samples : charts are GROUPED bars (one bar per sample).
+#' ##   * >  6 samples : charts switch to small-multiple FACETS (one panel per
+#' ##                    sample) so labels stay legible - in the PDF and, via
+#' ##                    plotly::subplot, in the HTML.
+#' ##   * Wide tables  : in the PDF, when per-sample columns no longer fit the
+#' ##                    page width, reference tables are COLUMN-PAGINATED - the
+#' ##                    category and Total columns repeat on each part, titled
+#' ##                    e.g. "Top genes (samples 1-7 of 8)". The HTML DT tables
+#' ##                    instead keep every sample column and scroll horizontally.
 #' ## No argument controls this; layout is chosen automatically from sample count
-#' ## and measured table widths. A 20-sample cohort typically spans ~8 pages.
+#' ## and measured table widths. A 20-sample cohort typically spans ~8 PDF pages.
 #' s <- gvr_summary(maf, sample_col = "Tumor_Sample_Barcode")
 #'
 #' ## ---- Other modes -------------------------------------------------------
 #' ## Compute only (no files written); still prints a console digest:
-#' s <- gvr_summary(maf, save_excel = FALSE, save_pdf = FALSE)
+#' s <- gvr_summary(maf, save_excel = FALSE, save_pdf = FALSE, save_html = FALSE)
 #'
 #' ## Summarise filtered hits, writing into results/summary/gvr_summary/:
 #' gvr_summary(gvr_filter(maf), out_dir = "results/summary")
@@ -152,6 +181,7 @@ gvr_summary <- function(maf,
                         top_n_genes    = 20,
                         save_excel     = TRUE,
                         save_pdf       = TRUE,
+                        save_html      = TRUE,
                         out_dir        = ".",
                         file_prefix    = "gvr_summary",
                         verbose        = TRUE) {
@@ -317,10 +347,22 @@ gvr_summary <- function(maf,
   # The subfolder is created only when something is actually written.
   # ============================================================================
   out_subdir <- file.path(out_dir, "gvr_summary")
-  if (isTRUE(save_excel) || isTRUE(save_pdf)) {
+  if (isTRUE(save_excel) || isTRUE(save_pdf) || isTRUE(save_html)) {
     if (!dir.exists(out_subdir))
       dir.create(out_subdir, recursive = TRUE, showWarnings = FALSE)
   }
+
+  # --------------------------------------------------------------------------
+  # Shared report metadata (built once; consumed by BOTH the PDF and HTML
+  # renderers so the two reports show identical cohort figures).
+  # --------------------------------------------------------------------------
+  meta <- list(
+    out_dir   = normalizePath(out_dir, mustWork = FALSE),
+    n_samples = length(samples), samples = samples,
+    n_total   = n_total,
+    n_genes   = data.table::uniqueN(dt$Hugo_Symbol[is_known_gene]),
+    n_nogene  = sum(!is_known_gene),
+    generated = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
 
   # ============================================================================
   # Optional Excel export  ->  <out_dir>/gvr_summary/<file_prefix>.xlsx
@@ -726,19 +768,263 @@ gvr_summary <- function(maf,
       final_pdf <- file.path(out_subdir, pdf_name)
       if (file.exists(final_pdf) && isTRUE(verbose))
         message(sprintf("  Overwriting existing PDF report: %s", final_pdf))
-      meta <- list(
-        out_dir   = normalizePath(out_dir, mustWork = FALSE),
-        n_samples = length(samples), samples = samples,
-        n_total   = n_total,
-        n_genes   = data.table::uniqueN(dt$Hugo_Symbol[is_known_gene]),
-        n_nogene  = sum(!is_known_gene),
-        generated = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
       ok_pdf <- tryCatch({
         .gvr_summary_pdf(sections, samples, meta, final_pdf, file_prefix)
         file.exists(final_pdf) && file.info(final_pdf)$size > 0
       }, error = function(e) {
         warning(sprintf("gvr_summary: PDF report failed: %s", conditionMessage(e))); FALSE })
       if (isTRUE(ok_pdf) && isTRUE(verbose)) message(sprintf("  PDF report written: %s", final_pdf))
+    }
+  }
+
+  # ============================================================================
+  # Optional interactive HTML report
+  #   -> <out_dir>/gvr_summary/<file_prefix>_report.html (fixed name).
+  # An interactive dashboard mirroring the PDF: KPI cards, the same three bar
+  # charts (Top genes / Variant classification / Functional impact) as plotly
+  # (grouped <=6 samples, faceted small-multiples >6), and all six section
+  # tables as searchable/sortable DT widgets. Self-contained single file when
+  # pandoc is available; otherwise a <prefix>_report.html + <prefix>_report_files/
+  # asset folder (fallback) with a note. Requires plotly + DT + htmlwidgets +
+  # htmltools; if unavailable the HTML is skipped with a warning (sections,
+  # Excel and PDF are still produced).
+  # ============================================================================
+  if (isTRUE(save_html)) {
+    have_html <- requireNamespace("plotly",      quietly = TRUE) &&
+                 requireNamespace("DT",          quietly = TRUE) &&
+                 requireNamespace("htmlwidgets", quietly = TRUE) &&
+                 requireNamespace("htmltools",   quietly = TRUE)
+    if (!have_html) {
+      warning("gvr_summary: 'plotly'/'DT'/'htmlwidgets' not installed; skipping HTML report.")
+    } else {
+      # Pandoc availability probe (kept local so a test can mask it to force the
+      # sidecar fallback). Needs both 'rmarkdown' (the pandoc wrapper used for
+      # asset-inlining) and a working pandoc; if either is missing we return FALSE
+      # and the renderer writes the sidecar (.html + _files/) form instead.
+      .gvr_pandoc_ok <- function() {
+        requireNamespace("rmarkdown", quietly = TRUE) &&
+          isTRUE(tryCatch(rmarkdown::pandoc_available(), error = function(e) FALSE))
+      }
+
+      # Internal renderer for the interactive HTML (nested: single-use, not exported).
+      # Reuses the PDF palette / KPI / chart logic so both reports stay consistent.
+      # Returns the path actually written, with attr "sidecar" (TRUE when pandoc was
+      # unavailable and assets live in a sibling <prefix>_report_files/ folder) and
+      # attr "files_dir" (that folder, or NA when self-contained).
+      .gvr_summary_html <- function(sections, samples, meta, final_html, file_prefix = "gvr_summary") {
+
+        PHYLO_BLUE <- "#0279EE"; PHYLO_GREEN <- "#75A025"; CREAM <- "#FAF9F3"; STONE <- "#ECE9E2"
+        INK <- "#000000"; ORANGE <- "#E69F00"; VERMIL <- "#D55E00"
+
+        # 24-colour qualitative palette: first 9 match the PDF dashboard's palette
+        # exactly (Okabe-Ito ordering), then Paul Tol "muted" + extras for cohorts
+        # up to 24 (it cycles only beyond that - an acceptable edge case).
+        pal <- c("#0279EE", "#E69F00", "#009E73", "#CC79A7", "#56B4E9", "#75A025",
+                 "#D55E00", "#332288", "#AA4499", "#117733", "#882255", "#88CCEE",
+                 "#999933", "#661100", "#6699CC", "#DDCC77", "#44AA99", "#AA4466",
+                 "#4477AA", "#228833", "#EE6677", "#BBBBBB", "#000000", "#EE3377")
+        fill_vals <- stats::setNames(pal[((seq_along(samples) - 1L) %% length(pal)) + 1L], samples)
+
+        fmt <- function(x) format(x, big.mark = ",", trim = TRUE)
+
+        # common-prefix stripper for facet/group sample labels (matches PDF)
+        .lab_fun <- local({
+          sn <- as.character(samples); pre <- ""
+          if (length(sn) > 1L) {
+            mn <- min(nchar(sn)); i <- 0L
+            while (i < mn && length(unique(substr(sn, 1L, i + 1L))) == 1L) i <- i + 1L
+            if (i >= 3L) pre <- substr(sn[1], 1L, i)
+          }
+          function(x) if (nzchar(pre)) sub(paste0("^", pre), "", x) else x
+        })
+
+        # one interactive plotly bar chart: GROUPED horizontal bars (one bar per
+        # sample) at every cohort size. Unlike the static PDF (which facets >6
+        # samples because print cannot toggle), the HTML keeps a single grouped
+        # plot and leans on plotly's interactivity - click a legend entry to
+        # isolate/hide a sample, hover for exact counts - which stays legible and
+        # useful even for large cohorts. Sample legend labels reuse the PDF's
+        # common-prefix stripping so they stay compact.
+        .plt_bar <- function(dt, cat_col, top = NULL, title = NULL) {
+          d <- as.data.frame(dt, stringsAsFactors = FALSE)
+          d <- d[d[[cat_col]] != "" & !is.na(d[[cat_col]]), , drop = FALSE]
+          if (!is.null(top) && nrow(d) > top) d <- d[order(-d$Total)[seq_len(top)], , drop = FALSE]
+          lev <- d[[cat_col]][order(d$Total)]          # ascending so biggest sits on top
+          slab <- .lab_fun(samples)                    # compact (prefix-stripped) labels
+
+          long <- do.call(rbind, lapply(seq_along(samples), function(k)
+            data.frame(Category = factor(d[[cat_col]], levels = lev),
+                       Sample   = factor(slab[k], levels = slab),
+                       n        = d[[samples[k]]], stringsAsFactors = FALSE)))
+
+          # Plot height grows with the number of categories (so grouped bars stay
+          # readable) AND with the number of samples (so the per-sample legend shows
+          # every entry instead of collapsing into a short scrollable box). Measured
+          # in-browser, plotly's vertical legend needs ~20 px/entry of *content*, and
+          # it only avoids engaging its internal scrollbox when the plotting area is
+          # comfortably taller than that content. We therefore budget ~22 px/entry plus
+          # generous top/bottom padding so all samples stay visible without scrolling.
+          h_cat <- 90 + 26 * length(lev)
+          h_leg <- 120 + 22 * length(samples)
+          h_px  <- max(360, h_cat, h_leg)
+          p <- plotly::plot_ly(long, x = ~n, y = ~Category, color = ~Sample,
+                               colors = unname(fill_vals), type = "bar", orientation = "h",
+                               height = h_px,
+                               hovertemplate = "%{y}: %{x:,}<extra>%{fullData.name}</extra>")
+          plotly::layout(p, barmode = "group",
+                         title  = list(text = title, x = 0, font = list(color = PHYLO_BLUE, size = 16)),
+                         xaxis  = list(title = "", tickformat = ","),
+                         yaxis  = list(title = ""),
+                         legend = list(title = list(text = "Sample"), font = list(size = 9)),
+                         margin = list(l = 8, r = 8, t = 50, b = 8))
+        }
+
+        # one DT table for a section (sort/search/paginate; comma-formatted numerics)
+        .dt_tbl <- function(dt, caption = NULL) {
+          df <- as.data.frame(dt, stringsAsFactors = FALSE)
+          num_cols <- names(df)[vapply(df, is.numeric, logical(1))]
+          dtbl <- DT::datatable(
+            df, rownames = FALSE, caption = caption,
+            class = "stripe hover compact", filter = "none",
+            options = list(pageLength = 10, lengthMenu = c(5, 10, 25, 50),
+                           dom = "ftip", scrollX = TRUE,
+                           columnDefs = list(list(className = "dt-right",
+                                                  targets = which(names(df) %in% num_cols) - 1L))))
+          if (length(num_cols))
+            dtbl <- DT::formatCurrency(dtbl, num_cols, currency = "", interval = 3, mark = ",", digits = 0)
+          dtbl
+        }
+
+        # KPI card (styled div mirroring the PDF cards)
+        .kpi_card <- function(value, label, fill = PHYLO_BLUE, fg = "white") {
+          htmltools::tags$div(
+            style = sprintf(paste0("flex:1; min-width:150px; background:%s; color:%s; border-radius:6px;",
+                                   "padding:14px 16px; box-shadow:0 1px 3px rgba(0,0,0,.12);"), fill, fg),
+            htmltools::tags$div(value, style = "font-size:30px; font-weight:700; line-height:1.1;"),
+            htmltools::tags$div(label, style = "font-size:12px; opacity:.92; margin-top:4px;"))
+        }
+
+        hi <- sections$impact$Total[sections$impact$IMPACT == "HIGH"]; if (!length(hi)) hi <- 0L
+        cards <- htmltools::tags$div(
+          style = "display:flex; gap:12px; flex-wrap:wrap; margin:14px 0 22px 0;",
+          .kpi_card(fmt(meta$n_total),   "Total variants",         PHYLO_BLUE),
+          .kpi_card(fmt(meta$n_samples), "Samples",                PHYLO_GREEN),
+          .kpi_card(fmt(meta$n_genes),   "Distinct genes (known)", ORANGE, fg = INK),
+          .kpi_card(fmt(hi),             "HIGH-impact variants",   VERMIL))
+
+        header <- htmltools::tags$div(
+          htmltools::tags$h1("germlinevaR \u2013 Cohort Summary",
+                             style = sprintf("color:%s; margin:0; font-size:26px;", PHYLO_BLUE)),
+          htmltools::tags$div(
+            sprintf("%d sample%s \u00b7 %s total variants \u00b7 %s distinct genes \u00b7 generated %s",
+                    meta$n_samples, if (meta$n_samples == 1L) "" else "s",
+                    fmt(meta$n_total), fmt(meta$n_genes), meta$generated),
+            style = sprintf("color:%s; font-size:13px; margin-top:4px;", INK)))
+
+        sec_h <- function(txt) htmltools::tags$h2(
+          txt, style = sprintf("color:%s; border-bottom:2px solid %s; padding-bottom:4px; margin-top:30px;",
+                               PHYLO_GREEN, STONE))
+
+        charts <- htmltools::tagList(
+          sec_h("Charts"),
+          .plt_bar(sections$top_genes, "Hugo_Symbol", top = 10L, title = "Top genes by variant count (top 10)"),
+          .plt_bar(sections$variant_classification, "Variant_Classification", top = 10L,
+                   title = "Variant classification (top 10)"),
+          .plt_bar(sections$impact, "IMPACT", top = NULL, title = "Functional impact (VEP IMPACT)"))
+
+        tbl_specs <- list(
+          list(s = "overview",               t = "Overview"),
+          list(s = "top_genes",              t = "Top genes"),
+          list(s = "variant_classification", t = "Variant classification"),
+          list(s = "variant_type",           t = "Variant type"),
+          list(s = "clin_sig",               t = "Clinical significance"),
+          list(s = "impact",                 t = "Functional impact"))
+        tables <- htmltools::tagList(c(
+          list(sec_h("Tables")),
+          lapply(tbl_specs, function(sp)
+            htmltools::tags$div(style = "margin:14px 0 26px 0;",
+                                htmltools::tags$h3(sp$t,
+                                  style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
+                                .dt_tbl(sections[[sp$s]])))))
+
+        page <- htmltools::tags$div(
+          style = paste0("max-width:1100px; margin:24px auto; padding:0 18px;",
+                         " font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"),
+          header, cards, charts, tables,
+          htmltools::tags$div(style = "margin-top:40px; color:#888; font-size:11px;",
+                              "Generated by germlinevaR \u00b7 gvr_summary()"))
+
+        # ---- write ---------------------------------------------------------------
+        # A composite page (HTML tags + several plotly/DT widgets) cannot go through
+        # htmlwidgets::saveWidget() (it expects ONE widget; dependency resolution
+        # fails on the plain tags). htmltools::save_html() handles arbitrary tag
+        # trees and writes the widget JS/CSS into a sidecar lib folder. For a single
+        # portable file we then inline that folder with pandoc
+        # (rmarkdown::pandoc_self_contained_html). If pandoc is unavailable we keep
+        # the sidecar form (<prefix>_report_files/) and flag it. All work happens
+        # under tempdir() (the S3-backed mount has no random-access / file locking);
+        # the caller shell-copies the finished artifact(s) out.
+        widget   <- htmltools::browsable(page)
+        base_nm  <- sub("\\.html$", "", basename(final_html))
+        files_nm <- paste0(base_nm, "_files")
+        work_dir <- file.path(tempdir(), paste0("gvrhtml_", as.integer(Sys.time())))
+        if (dir.exists(work_dir)) unlink(work_dir, recursive = TRUE)
+        dir.create(work_dir, showWarnings = FALSE, recursive = TRUE)
+
+        staged_html <- file.path(work_dir, basename(final_html))
+        htmltools::save_html(widget, staged_html, libdir = files_nm)
+
+        # Strip the leading "<!DOCTYPE html>" before pandoc: pandoc treats the input
+        # as an HTML fragment and would otherwise escape the doctype into a visible
+        # "<p>&lt;!DOCTYPE html&gt;</p>" text node atop the self-contained page.
+        # Removing the line lets pandoc's --standalone wrapper emit one clean
+        # document. (Sidecar mode keeps the original file, so its doctype is fine.)
+        sc_html  <- file.path(work_dir, paste0(base_nm, ".selfcontained.html"))
+        sidecar  <- FALSE
+        ok_sc <- tryCatch({
+          if (isTRUE(.gvr_pandoc_ok())) {
+            pre_html <- file.path(work_dir, paste0(base_nm, ".prepandoc.html"))
+            raw <- paste(readLines(staged_html, warn = FALSE), collapse = "\n")
+            raw <- sub("(?is)^\\s*<!DOCTYPE[^>]*>\\s*", "", raw, perl = TRUE)
+            writeLines(raw, pre_html)
+            rmarkdown::pandoc_self_contained_html(pre_html, sc_html)
+            file.exists(sc_html) && file.info(sc_html)$size > 0
+          } else FALSE
+        }, error = function(e) FALSE)
+
+        if (isTRUE(ok_sc)) {
+          out_path <- sc_html
+        } else {
+          sidecar  <- TRUE
+          out_path <- staged_html
+        }
+        attr(out_path, "sidecar")   <- sidecar
+        attr(out_path, "files_dir") <- if (sidecar) file.path(work_dir, files_nm) else NA_character_
+        out_path
+      }
+
+      html_name  <- sprintf("%s_report.html", file_prefix)
+      final_html <- file.path(out_subdir, html_name)
+      files_dest <- file.path(out_subdir, sprintf("%s_report_files", file_prefix))
+      if (file.exists(final_html) && isTRUE(verbose))
+        message(sprintf("  Overwriting existing HTML report: %s", final_html))
+
+      ok_html <- tryCatch({
+        rendered <- .gvr_summary_html(sections, samples, meta, final_html, file_prefix)
+        # FUSE-safe: copy the finished .html (and, in sidecar mode, its _files/ folder)
+        # from tempdir() to out_subdir via shell cp (R file.copy() can 0-byte on S3).
+        system2("cp", c("-f", shQuote(rendered), shQuote(final_html)))
+        if (isTRUE(attr(rendered, "sidecar"))) {
+          # refresh any stale assets from a previous run, then copy the folder
+          if (dir.exists(files_dest)) unlink(files_dest, recursive = TRUE)
+          system2("cp", c("-r", shQuote(attr(rendered, "files_dir")), shQuote(files_dest)))
+          if (isTRUE(verbose))
+            message(sprintf("  HTML report is NOT self-contained; assets in: %s", files_dest))
+        }
+        file.exists(final_html) && file.info(final_html)$size > 0
+      }, error = function(e) {
+        warning(sprintf("gvr_summary: HTML report failed: %s", conditionMessage(e))); FALSE })
+      if (isTRUE(ok_html) && isTRUE(verbose)) message(sprintf("  HTML report written: %s", final_html))
     }
   }
 
