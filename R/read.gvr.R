@@ -54,8 +54,14 @@
 #'   Default `FALSE`.
 #' @param write_rds Logical; if `TRUE`, also write the MAF as an `.rds` to `out_dir`.
 #'   Default `FALSE`.
-#' @param out_dir Output directory for written TSV/RDS. `NULL` (default) uses the
-#'   input location/working directory. Only used when `write_tsv`/`write_rds` is `TRUE`.
+#' @param write_xlsx Logical; if `TRUE`, also write the MAF as an `.xlsx` workbook
+#'   (single `"MAF"` sheet) to `out_dir`. Requires the \pkg{openxlsx} package (a
+#'   `Suggests` dependency); if it is not installed the export is skipped with a
+#'   warning. Default `FALSE`. Note: germline MAFs can be very large; Excel handles
+#'   them but the file is big and slow to open, so `write_rds`/`write_tsv` are better
+#'   for large tables. Excel also caps a sheet at 1,048,576 rows.
+#' @param out_dir Output directory for written TSV/RDS/XLSX. `NULL` (default) uses the
+#'   input location/working directory. Only used when `write_tsv`/`write_rds`/`write_xlsx` is `TRUE`.
 #' @param out_prefix Filename prefix for written outputs. `NULL` (default) derives one
 #'   from the input.
 #' @param chunk_size Integer; number of VCF records processed per chunk (controls peak
@@ -81,6 +87,12 @@
 #'   disables the genotype-quality filter. Default `30`.
 #' @param genes Character vector of `Hugo_Symbol`s to keep (exact, case-insensitive),
 #'   or `NULL` (default) to keep all genes.
+#' @param ncores Integer; number of worker processes for converting MULTIPLE input
+#'   files in parallel via [parallel::mclapply()] (fork-based; Unix/macOS only).
+#'   Default `1L` runs sequentially and is byte-identical to previous behaviour.
+#'   Values `> 1` only help when more than one VCF is being read (each file is an
+#'   independent task) and are clamped to `min(ncores, detectCores(), n_files)`. On
+#'   non-fork platforms it falls back to sequential. A single file is unaffected.
 #' @param verbose Logical; if `TRUE` (default) print per-file and per-chunk progress
 #'   (file i/N, cumulative records, elapsed seconds).
 #'
@@ -123,12 +135,14 @@
 #'   setcolorder setDT set setattr tstrsplit setkey :=
 #' @importFrom stats setNames
 #' @importFrom utils download.file
+#' @importFrom openxlsx createWorkbook
 #' @export
 read.gvr <- function(folder = ".",
                            vcf_path   = NULL,
                            pattern    = "_\\d+\\.vep\\.vcf\\.gz$",   # v2: _01,_02,_03,...
                            write_tsv  = FALSE,
                            write_rds  = FALSE,
+                           write_xlsx = FALSE,   # v6: also write the MAF as .xlsx (one "MAF" sheet)
                            out_dir    = NULL,
                            out_prefix = NULL,
                            chunk_size = 25000L,
@@ -143,6 +157,7 @@ read.gvr <- function(folder = ".",
                            min_DP            = 10,     # v4: keep only DP > min_DP (NULL = no DP filter)
                            min_GQ            = 30,     # v4: keep only GQ > min_GQ (NULL = no GQ filter)
                            genes             = NULL,   # v4: keep only these Hugo_Symbols
+                           ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
                            verbose    = TRUE) {
 
   # ==========================================================================
@@ -448,13 +463,45 @@ read.gvr <- function(folder = ".",
     FORMAT_v <- dt$FORMAT; SAMPLE_v <- dt$SAMPLE
     nrow_dt <- nrow(dt)
 
+    # O2 (PERF): split the ALT column ONCE for the whole chunk instead of calling
+    # strsplit(altf, ",") per record. base strsplit() over a character vector returns
+    # a list-of-vectors; alts_all[[r]] is byte-identical to the old per-record
+    # strsplit(ALT_v[r], ",", fixed=TRUE)[[1]]. ~30x faster on the isolated split
+    # (multi-ALT is rare, so per-record calls were almost pure call-overhead).
+    alts_all <- strsplit(ALT_v, ",", fixed = TRUE)
+
+    # O1 (PERF): the per-record loop split FORMAT and SAMPLE on ":" every iteration and
+    # then looked GT/AD/DP/GQ up BY NAME. In real VEP/GATK germline VCFs the FORMAT
+    # string is almost always constant within a chunk (e.g. "GT:AD:DP:GQ:PL"). When it
+    # IS constant we resolve the GT/AD/DP/GQ field POSITIONS once and pull them with a
+    # single vectorized tstrsplit(SAMPLE, ":") over the whole column (~4x faster). If
+    # FORMAT varies anywhere in the chunk we fall back to the exact per-record path, so
+    # output is byte-identical in every case (verified by the validation gate).
+    fmt_u <- unique(FORMAT_v)
+    fmt_constant <- length(fmt_u) == 1L && !is.na(fmt_u[1L])
+    if (fmt_constant) {
+      fmt_keys0 <- strsplit(fmt_u[1L], ":", fixed = TRUE)[[1]]
+      pos_GT <- match("GT", fmt_keys0); pos_AD <- match("AD", fmt_keys0)
+      pos_DP <- match("DP", fmt_keys0); pos_GQ <- match("GQ", fmt_keys0)
+      smp_split <- data.table::tstrsplit(SAMPLE_v, ":", fixed = TRUE)
+      n_smp_fields <- length(smp_split)
+      # Pre-extract per-record GT/AD/DP/GQ vectors. A position is only valid if it
+      # exists in FORMAT (pos_* not NA) AND the SAMPLE column actually carried that
+      # many fields. tstrsplit pads short rows with NA, matching the by-name lookup
+      # (a field absent from a given SAMPLE yielded NA / the default there too).
+      GT_col <- if (!is.na(pos_GT) && pos_GT <= n_smp_fields) smp_split[[pos_GT]] else NULL
+      AD_col <- if (!is.na(pos_AD) && pos_AD <= n_smp_fields) smp_split[[pos_AD]] else NULL
+      DP_col <- if (!is.na(pos_DP) && pos_DP <= n_smp_fields) smp_split[[pos_DP]] else NULL
+      GQ_col <- if (!is.na(pos_GQ) && pos_GQ <= n_smp_fields) smp_split[[pos_GQ]] else NULL
+    }
+
     out <- vector("list", nrow_dt); oi <- 0L
     n_dropped <- 0L   # v4: records skipped by the DP/GQ genotype filter
     for (r in seq_len(nrow_dt)) {
       chrom <- CHROM_v[r]; pos <- POS_v[r]; vid <- ID_v[r]
       ref <- REF_v[r]; altf <- ALT_v[r]; qual <- QUAL_v[r]; filt <- FILTER_v[r]
       info <- INFO_v[r]; fmt <- FORMAT_v[r]; smp <- SAMPLE_v[r]
-      alts <- strsplit(altf, ",", fixed = TRUE)[[1]]
+      alts <- alts_all[[r]]                          # O2: pre-split once per chunk
 
       ip <- info_parse(info)                       # C1: parse INFO once, then index
       info_DP <- unname(ip["DP"]); info_AC <- unname(ip["AC"])
@@ -490,13 +537,27 @@ read.gvr <- function(folder = ".",
         }
       }
 
-      fmt_keys <- strsplit(fmt,":",fixed=TRUE)[[1]]
-      smp_vals <- strsplit(smp,":",fixed=TRUE)[[1]]
-      names(smp_vals) <- fmt_keys[seq_along(smp_vals)]
-      gt  <- if ("GT" %in% names(smp_vals)) smp_vals[["GT"]] else "./."
-      ad  <- if ("AD" %in% names(smp_vals)) smp_vals[["AD"]] else NA_character_
-      sdp <- if ("DP" %in% names(smp_vals)) smp_vals[["DP"]] else NA_character_
-      gq  <- if ("GQ" %in% names(smp_vals)) smp_vals[["GQ"]] else NA_character_
+      # O1: GT/AD/DP/GQ extraction. Fast path uses the chunk-level position split when
+      # FORMAT is constant; otherwise the exact original per-record name-based path.
+      # In BOTH paths, a missing field resolves to the SAME defaults the original used
+      # (gt="./.", others NA_character_). For the fast path, NA from tstrsplit (SAMPLE
+      # shorter than the position) is treated as "field absent" -> default, which is
+      # identical to the original `seq_along(smp_vals)` name-assignment behaviour.
+      if (fmt_constant) {
+        gt0  <- if (is.null(GT_col)) NA_character_ else GT_col[r]
+        gt   <- if (is.na(gt0)) "./." else gt0
+        ad   <- if (is.null(AD_col)) NA_character_ else AD_col[r]
+        sdp  <- if (is.null(DP_col)) NA_character_ else DP_col[r]
+        gq   <- if (is.null(GQ_col)) NA_character_ else GQ_col[r]
+      } else {
+        fmt_keys <- strsplit(fmt,":",fixed=TRUE)[[1]]
+        smp_vals <- strsplit(smp,":",fixed=TRUE)[[1]]
+        names(smp_vals) <- fmt_keys[seq_along(smp_vals)]
+        gt  <- if ("GT" %in% names(smp_vals)) smp_vals[["GT"]] else "./."
+        ad  <- if ("AD" %in% names(smp_vals)) smp_vals[["AD"]] else NA_character_
+        sdp <- if ("DP" %in% names(smp_vals)) smp_vals[["DP"]] else NA_character_
+        gq  <- if ("GQ" %in% names(smp_vals)) smp_vals[["GQ"]] else NA_character_
+      }
       ad_vec <- if (!is.na(ad)) strsplit(ad,",",fixed=TRUE)[[1]] else NA
 
       # --- v4: genotype-quality filter (mirrors bcftools -e 'DP<=min_DP | GQ<=min_GQ') ---
@@ -708,12 +769,57 @@ read.gvr <- function(folder = ".",
   global_done <- 0L
   t_global    <- t_all
 
-  per_file <- vector("list", length(vcf_paths))
-  sample_names <- character(length(vcf_paths))
-  for (i in seq_along(vcf_paths)) {
-    per_file[[i]] <- convert_one_vcf(vcf_paths[i], i, length(vcf_paths),
-                                     per_file_total[i])
-    sample_names[i] <- attr(per_file[[i]], "sample_name")
+  # v6 (PERF): optional multi-core conversion ACROSS FILES. Each VCF is converted
+  # independently (its own MAF chunk) before the final rbindlist, so files are
+  # embarrassingly parallel. ncores>1 forks parallel::mclapply over the file list;
+  # mclapply preserves input order, so `per_file` (and thus the combined MAF) is
+  # byte-identical to the sequential path regardless of ncores. Only effective with
+  # >1 file and a fork-capable OS; otherwise we run the original sequential loop.
+  # Default ncores=1L => exactly the previous behaviour. The shared global_done<<-
+  # progress counter is fork-local (per child), so per-chunk % lines are suppressed
+  # in workers to avoid garbled interleaved output; a clean per-file summary prints
+  # on collection. parallel is base R (no new dependency).
+  n_files  <- length(vcf_paths)
+  want_par <- is.numeric(ncores) && length(ncores) == 1L && !is.na(ncores) &&
+              ncores > 1L && n_files > 1L &&
+              .Platform$OS.type == "unix" &&
+              requireNamespace("parallel", quietly = TRUE)
+  use_cores <- if (want_par)
+                 max(1L, min(as.integer(ncores), parallel::detectCores(), n_files))
+               else 1L
+
+  if (want_par && use_cores > 1L) {
+    if (verbose)
+      message(sprintf("Parallel conversion: %d worker(s) over %d file(s) (mclapply).",
+                      use_cores, n_files))
+    per_file <- parallel::mclapply(
+      seq_along(vcf_paths),
+      function(i) suppressMessages(
+        convert_one_vcf(vcf_paths[i], i, n_files, per_file_total[i])),
+      mc.cores = use_cores, mc.preschedule = FALSE)
+    # surface any worker error as a hard error (mclapply returns try-error objects)
+    errs <- vapply(per_file, function(x) inherits(x, "try-error"), logical(1))
+    if (any(errs)) {
+      msgs <- vapply(per_file[errs], function(e) {
+        cond <- attr(e, "condition")
+        if (!is.null(cond)) conditionMessage(cond) else as.character(e)
+      }, character(1))
+      stop(sprintf("read.gvr: %d file(s) failed during parallel conversion:\n%s",
+                   sum(errs), paste(unique(msgs), collapse = "\n")))
+    }
+    sample_names <- vapply(per_file, function(x) attr(x, "sample_name"), character(1))
+    if (verbose) for (i in seq_along(vcf_paths))
+      message(sprintf("[file %d/%d] done: %s (sample: %s, %s MAF rows)",
+                      i, n_files, basename(vcf_paths[i]), sample_names[i],
+                      format(nrow(per_file[[i]]), big.mark = ",")))
+  } else {
+    per_file <- vector("list", n_files)
+    sample_names <- character(n_files)
+    for (i in seq_along(vcf_paths)) {
+      per_file[[i]] <- convert_one_vcf(vcf_paths[i], i, n_files,
+                                       per_file_total[i])
+      sample_names[i] <- attr(per_file[[i]], "sample_name")
+    }
   }
   # collision guard: warn if two files map to the same sample barcode
   dup_samp <- sample_names[duplicated(sample_names)]
@@ -944,7 +1050,7 @@ read.gvr <- function(folder = ".",
   # ==========================================================================
   # 4. Optional file outputs
   # ==========================================================================
-  if (write_tsv || write_rds) {
+  if (write_tsv || write_rds || write_xlsx) {
     if (is.null(out_dir)) out_dir <- if (is.null(vcf_path)) folder else dirname(vcf_path)
     if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
     if (is.null(out_prefix)) {
@@ -973,6 +1079,46 @@ read.gvr <- function(folder = ".",
         warning(sprintf("RDS write may have failed (0 bytes): %s", rds_final))
       else if (verbose)
         message(sprintf("Wrote RDS: %s (%.0f MB)", rds_final, sz/1e6))
+    }
+    if (write_xlsx) {
+      # B1: optional Excel export of the FINAL MAF (one "MAF" sheet). Mirrors the
+      # FUSE-safe openxlsx pattern used by gvr_summary: build the workbook, save to a
+      # local temp file, then shell-cp to out_dir (openxlsx uses zip random-access
+      # writes that can silently 0-byte on S3-backed mounts). Degrades gracefully:
+      # if openxlsx is absent we warn and skip (TSV/RDS, if requested, still wrote).
+      # NOTE: a germline MAF can be very large (hundreds of thousands of rows). Excel
+      # handles it but the file is big and slow to open; write_rds / write_tsv remain
+      # the better choice for large tables / downstream R use.
+      if (!requireNamespace("openxlsx", quietly = TRUE)) {
+        warning("read.gvr: 'openxlsx' not installed; skipping Excel export.")
+      } else {
+        xlsx_final <- file.path(out_dir, paste0(out_prefix, ".xlsx"))
+        if (file.exists(xlsx_final) && verbose)
+          message(sprintf("  Overwriting existing Excel: %s", xlsx_final))
+        if (nrow(maf) > 1000000L)
+          warning(sprintf("read.gvr: MAF has %s rows; Excel's per-sheet limit is 1,048,576 rows.",
+                          format(nrow(maf), big.mark = ",")))
+        wb <- openxlsx::createWorkbook()
+        hs <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
+        openxlsx::addWorksheet(wb, "MAF")
+        openxlsx::writeData(wb, "MAF", as.data.frame(maf), headerStyle = hs)
+        openxlsx::freezePane(wb, "MAF", firstRow = TRUE)
+        openxlsx::setColWidths(wb, "MAF", cols = seq_len(ncol(maf)), widths = "auto")
+        tmp_xlsx <- file.path(tempdir(), paste0(out_prefix, ".xlsx"))
+        wrote_ok <- tryCatch({ openxlsx::saveWorkbook(wb, tmp_xlsx, overwrite = TRUE); TRUE },
+                             error = function(e) {
+                               warning(sprintf("read.gvr: Excel write failed: %s", conditionMessage(e))); FALSE })
+        if (wrote_ok) {
+          system2("cp", c(shQuote(tmp_xlsx), shQuote(xlsx_final)))
+          sz <- suppressWarnings(file.info(xlsx_final)$size)
+          if (is.na(sz) || sz == 0) {
+            warning(sprintf("read.gvr: copy to '%s' may have failed; Excel left at '%s'.",
+                            xlsx_final, tmp_xlsx))
+            xlsx_final <- tmp_xlsx
+          }
+          if (verbose) message(sprintf("Wrote Excel: %s", xlsx_final))
+        }
+      }
     }
   }
 

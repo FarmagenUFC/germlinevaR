@@ -10,6 +10,7 @@ read.gvr(
   pattern = "_\\\\d+\\\\.vep\\\\.vcf\\\\.gz$",
   write_tsv = FALSE,
   write_rds = FALSE,
+  write_xlsx = FALSE,
   out_dir = NULL,
   out_prefix = NULL,
   chunk_size = 25000L,
@@ -25,6 +26,7 @@ read.gvr(
   min_DP = 10,
   min_GQ = 30,
   genes = NULL,
+  ncores = 1L,
   verbose = TRUE
 )
 }
@@ -44,8 +46,15 @@ Default \code{FALSE}.}
 \item{write_rds}{Logical; if \code{TRUE}, also write the MAF as an \code{.rds} to \code{out_dir}.
 Default \code{FALSE}.}
 
-\item{out_dir}{Output directory for written TSV/RDS. \code{NULL} (default) uses the
-input location/working directory. Only used when \code{write_tsv}/\code{write_rds} is \code{TRUE}.}
+\item{write_xlsx}{Logical; if \code{TRUE}, also write the MAF as an \code{.xlsx} workbook
+(single \code{"MAF"} sheet) to \code{out_dir}. Requires the \pkg{openxlsx} package (a
+\code{Suggests} dependency); if it is not installed the export is skipped with a
+warning. Default \code{FALSE}. Note: germline MAFs can be very large; Excel handles
+them but the file is big and slow to open, so \code{write_rds}/\code{write_tsv} are better
+for large tables. Excel also caps a sheet at 1,048,576 rows.}
+
+\item{out_dir}{Output directory for written TSV/RDS/XLSX. \code{NULL} (default) uses the
+input location/working directory. Only used when \code{write_tsv}/\code{write_rds}/\code{write_xlsx} is \code{TRUE}.}
 
 \item{out_prefix}{Filename prefix for written outputs. \code{NULL} (default) derives one
 from the input.}
@@ -84,6 +93,13 @@ disables the genotype-quality filter. Default \code{30}.}
 
 \item{genes}{Character vector of \code{Hugo_Symbol}s to keep (exact, case-insensitive),
 or \code{NULL} (default) to keep all genes.}
+
+\item{ncores}{Integer; number of worker processes for converting MULTIPLE input
+files in parallel via \code{\link[parallel:mcdummies]{parallel::mclapply()}} (fork-based; Unix/macOS only).
+Default \code{1L} runs sequentially and is byte-identical to previous behaviour.
+Values \verb{> 1} only help when more than one VCF is being read (each file is an
+independent task) and are clamped to \code{min(ncores, detectCores(), n_files)}. On
+non-fork platforms it falls back to sequential. A single file is unaffected.}
 
 \item{verbose}{Logical; if \code{TRUE} (default) print per-file and per-chunk progress
 (file i/N, cumulative records, elapsed seconds).}

@@ -67,6 +67,16 @@
 #'   Default: c("protein_coding","protein_coding_LoF").
 #' @param gt_exclude Character vector of GT values to remove (exact match). `NULL`
 #'   disables the genotype filter. Default: c("0","0/0").
+#' @param save_excel Logical; if TRUE, also write the FILTERED table to an `.xlsx`
+#'   workbook (single `"Filtered"` sheet) at `<out_dir>/<file_prefix>.xlsx`. Requires
+#'   the \pkg{openxlsx} package (a `Suggests` dependency); if it is not installed the
+#'   export is skipped with a warning. Default FALSE. The write is a side effect only:
+#'   the returned `data.table` is identical whether or not `save_excel` is TRUE.
+#' @param out_dir Output directory for the Excel file. `NULL` (default) uses the
+#'   current working directory. Created if it does not exist. Only used when
+#'   `save_excel = TRUE`.
+#' @param file_prefix Filename prefix (without extension) for the Excel file. Default
+#'   `"gvr_filter"` -> `gvr_filter.xlsx`. Only used when `save_excel = TRUE`.
 #' @param verbose Logical; if TRUE (default) print a per-filter breakdown (rows in -> out
 #'   and rows removed by each active step).
 #'
@@ -100,6 +110,7 @@
 #' }
 #'
 #' @importFrom data.table as.data.table
+#' @importFrom openxlsx createWorkbook
 #' @export
 gvr_filter <- function(maf,
                        gnomADe_AF = 0.01,
@@ -114,6 +125,9 @@ gvr_filter <- function(maf,
                        clin_sig_keep_missing = TRUE,
                        biotype_keep = c("protein_coding", "protein_coding_LoF"),
                        gt_exclude = c("0", "0/0"),
+                       save_excel = FALSE,
+                       out_dir = NULL,
+                       file_prefix = "gvr_filter",
                        verbose = TRUE) {
 
   if (!requireNamespace("data.table", quietly = TRUE)) {
@@ -227,6 +241,51 @@ gvr_filter <- function(maf,
     message(sprintf("gvr_filter: %d rows out (%.1f%% of input, %d removed total)",
                     kept, if (n_in_total > 0) 100 * kept / n_in_total else 0,
                     n_in_total - kept))
+  }
+
+  # ============================================================================
+  # 7. Optional Excel export of the FILTERED table  ->  <out_dir>/<file_prefix>.xlsx
+  # ============================================================================
+  # Off by default: save_excel = FALSE returns the filtered data.table exactly as
+  # before (write is a pure side effect; the return value is identical either way).
+  # Mirrors the FUSE-safe openxlsx pattern from gvr_summary/read.gvr: build workbook,
+  # save to a local temp file, then shell-cp to out_dir (openxlsx uses zip random-
+  # access writes that can silently 0-byte on S3-backed mounts). Degrades gracefully:
+  # if openxlsx is absent we warn and skip (the filtered table is still returned).
+  if (isTRUE(save_excel)) {
+    if (!requireNamespace("openxlsx", quietly = TRUE)) {
+      warning("gvr_filter: 'openxlsx' not installed; skipping Excel export.")
+    } else {
+      if (is.null(out_dir)) out_dir <- "."
+      if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+      xlsx_name  <- sprintf("%s.xlsx", file_prefix)
+      final_xlsx <- file.path(out_dir, xlsx_name)
+      if (file.exists(final_xlsx) && isTRUE(verbose))
+        message(sprintf("  Overwriting existing Excel: %s", final_xlsx))
+      if (nrow(dt) > 1000000L)
+        warning(sprintf("gvr_filter: filtered table has %d rows; Excel's per-sheet limit is 1,048,576 rows.",
+                        nrow(dt)))
+      wb <- openxlsx::createWorkbook()
+      hs <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
+      openxlsx::addWorksheet(wb, "Filtered")
+      openxlsx::writeData(wb, "Filtered", as.data.frame(dt), headerStyle = hs)
+      openxlsx::freezePane(wb, "Filtered", firstRow = TRUE)
+      openxlsx::setColWidths(wb, "Filtered", cols = seq_len(ncol(dt)), widths = "auto")
+      tmp_xlsx <- file.path(tempdir(), xlsx_name)
+      wrote_ok <- tryCatch({ openxlsx::saveWorkbook(wb, tmp_xlsx, overwrite = TRUE); TRUE },
+                           error = function(e) {
+                             warning(sprintf("gvr_filter: Excel write failed: %s", conditionMessage(e))); FALSE })
+      if (wrote_ok) {
+        system2("cp", c(shQuote(tmp_xlsx), shQuote(final_xlsx)))
+        sz <- suppressWarnings(file.info(final_xlsx)$size)
+        if (is.na(sz) || sz == 0) {
+          warning(sprintf("gvr_filter: copy to '%s' may have failed; Excel left at '%s'.",
+                          final_xlsx, tmp_xlsx))
+          final_xlsx <- tmp_xlsx
+        }
+        if (isTRUE(verbose)) message(sprintf("  Excel written: %s", final_xlsx))
+      }
+    }
   }
 
   dt[]

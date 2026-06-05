@@ -16,6 +16,9 @@ gvr_filter(
   clin_sig_keep_missing = TRUE,
   biotype_keep = c("protein_coding", "protein_coding_LoF"),
   gt_exclude = c("0", "0/0"),
+  save_excel = FALSE,
+  out_dir = NULL,
+  file_prefix = "gvr_filter",
   verbose = TRUE
 )
 }
@@ -58,6 +61,19 @@ Default: c("protein_coding","protein_coding_LoF").}
 
 \item{gt_exclude}{Character vector of GT values to remove (exact match). \code{NULL}
 disables the genotype filter. Default: c("0","0/0").}
+
+\item{save_excel}{Logical; if TRUE, also write the FILTERED table to an \code{.xlsx}
+workbook (single \code{"Filtered"} sheet) at \verb{<out_dir>/<file_prefix>.xlsx}. Requires
+the \pkg{openxlsx} package (a \code{Suggests} dependency); if it is not installed the
+export is skipped with a warning. Default FALSE. The write is a side effect only:
+the returned \code{data.table} is identical whether or not \code{save_excel} is TRUE.}
+
+\item{out_dir}{Output directory for the Excel file. \code{NULL} (default) uses the
+current working directory. Created if it does not exist. Only used when
+\code{save_excel = TRUE}.}
+
+\item{file_prefix}{Filename prefix (without extension) for the Excel file. Default
+\code{"gvr_filter"} -> \code{gvr_filter.xlsx}. Only used when \code{save_excel = TRUE}.}
 
 \item{verbose}{Logical; if TRUE (default) print a per-filter breakdown (rows in -> out
 and rows removed by each active step).}

@@ -25,6 +25,7 @@ Imports:
     grDevices,
     grid,
     openxlsx,
+    parallel,
     stats,
     utils
 Suggests: 
