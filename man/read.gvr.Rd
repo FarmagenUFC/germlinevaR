@@ -68,7 +68,7 @@ byte-for-byte identical (otherwise keep and warn).}
 Default \code{FALSE}.}
 
 \item{add_abraom}{Logical; if \code{TRUE} (default) join the ABraOM SABE-609 allele
-frequency as \code{ABraOM_SABE609_AF}.}
+frequency as \code{ABraOM_AF}.}
 
 \item{abraom_path}{Path to a local ABraOM annotation file. \code{NULL} (default) uses an
 auto-managed cache, downloading from \code{abraom_url} if needed.}
@@ -91,7 +91,7 @@ or \code{NULL} (default) to keep all genes.}
 \value{
 A \code{data.table} MAF: one row per variant allele, with MAF core columns, all
 VEP CSQ fields, key GATK QC fields, \code{Tumor_Sample_Barcode}, and (when enabled) the
-\code{Genotype} and \code{ABraOM_SABE609_AF} columns. TSV/RDS files are written as a side
+\code{Genotype} and \code{ABraOM_AF} columns. TSV/RDS files are written as a side
 effect when \code{write_tsv}/\code{write_rds} is \code{TRUE}.
 }
 \description{
@@ -131,7 +131,7 @@ Processing options:
 \item DEDUP (\code{dedup_columns}): removes duplicate-named columns ONLY when their
 values are byte-for-byte identical across all rows (otherwise keeps + warns).
 \item ABraOM (\code{add_abraom}): joins the Brazilian ABraOM SABE-609 allele frequency
-as the \code{ABraOM_SABE609_AF} column (downloaded/cached from \code{abraom_url}).
+as the \code{ABraOM_AF} column (downloaded/cached from \code{abraom_url}).
 \item GENOTYPE-QUALITY FILTER (\code{min_DP}/\code{min_GQ}): keeps a record iff
 \code{DP > min_DP} AND \code{GQ > min_GQ}; mirrors
 \verb{bcftools view -e 'FORMAT/DP<=X | FORMAT/GQ<=Y'}. Set either to \code{NULL} to

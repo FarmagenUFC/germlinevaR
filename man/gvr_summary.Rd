@@ -8,7 +8,8 @@ gvr_summary(
   maf,
   sample_col = "Tumor_Sample_Barcode",
   top_n_genes = 20,
-  save_excel = FALSE,
+  save_excel = TRUE,
+  save_pdf = TRUE,
   out_dir = ".",
   file_prefix = "gvr_summary",
   verbose = TRUE
@@ -25,29 +26,43 @@ If absent, all rows are pooled into a single sample \code{"All"} (with a warning
 \item{top_n_genes}{Integer; number of genes to report in \code{top_genes} (by total
 variant count). Default \code{20}.}
 
-\item{save_excel}{Logical; if \code{TRUE}, write a multi-sheet \code{.xlsx} to \code{out_dir}.
-Default \code{FALSE}.}
+\item{save_excel}{Logical; if \code{TRUE} (default), write a multi-sheet \code{.xlsx}.
+The workbook is written into the \verb{gvr_summary/} subfolder of \code{out_dir}
+(see \code{out_dir}). Pass \code{FALSE} for a compute-only run.}
 
-\item{out_dir}{Output directory for the Excel workbook. Created if it does not
-exist. Default \code{"."} (current working directory).}
+\item{save_pdf}{Logical; if \code{TRUE} (default), write a multi-page PDF report into
+the \verb{gvr_summary/} subfolder of \code{out_dir}. The report has a title/metadata page,
+the charted sections (top genes, variant classification, predicted impact) each
+shown as a table together with its bar chart, and the remaining tables grouped on
+their own page(s). Requires \pkg{gridExtra} and \pkg{ggplot2}; if unavailable, the
+PDF is skipped with a warning and the sections are still returned. Pass \code{FALSE}
+for a compute-only run.}
 
-\item{file_prefix}{Filename prefix for the written workbook. Default
-\code{"gvr_summary"}; a \code{YYYYMMDD_HHMMSS} timestamp is appended.}
+\item{out_dir}{Parent output directory. All written outputs (Excel and/or PDF) are
+placed in a \verb{gvr_summary/} subfolder created inside \code{out_dir}. The subfolder is
+created only when \code{save_excel} or \code{save_pdf} is \code{TRUE}. Default \code{"."} (current
+working directory), i.e. outputs go to \verb{./gvr_summary/}.}
+
+\item{file_prefix}{Base filename for written outputs. Default \code{"gvr_summary"}, giving
+\verb{<file_prefix>.xlsx} and \verb{<file_prefix>_report.pdf} (no timestamp). Filenames are
+fixed, so re-running into the same \code{out_dir} overwrites the previous files (a
+message is printed when \code{verbose = TRUE}).}
 
 \item{verbose}{Logical; if \code{TRUE} (default) print a compact console digest and the
-path of the Excel file when written.}
+path(s) of any file(s) written.}
 }
 \value{
 Invisibly, a named list of \code{data.table}s: \code{overview}, \code{top_genes},
 \code{variant_classification}, \code{variant_type}, \code{clin_sig}, \code{impact}. The return value
-is identical whether or not the Excel file is written.
+is identical regardless of whether the Excel/PDF files are written.
 }
 \description{
 Produces a multi-section overview of a MAF-style table - the output of
 \code{\link[=read.gvr]{read.gvr()}}, or of \code{\link[=gvr_filter]{gvr_filter()}} - covering variant burden, affected genes,
 functional classes, clinical significance and predicted impact. Every section is
 returned as a tidy \code{data.table} with one column per sample plus a \code{Total} column.
-Optionally writes a multi-sheet Excel workbook. For a cohort oncoplot, see
+Optionally writes a multi-sheet Excel workbook and/or a multi-page PDF report
+(both into a \verb{gvr_summary/} subfolder of \code{out_dir}). For a cohort oncoplot, see
 \code{\link[=gvr_oncoplot]{gvr_oncoplot()}}.
 }
 \details{
@@ -68,9 +83,10 @@ number of variants. A \code{missing/unclassified} row counts NA/"" \code{CLIN_SI
 severity order rather than count order.
 }
 
-This function is purely tabular: its only side effect is the optional Excel
-workbook (written when \code{save_excel = TRUE}). It produces no plots; the cohort
-oncoplot now lives in \code{\link[=gvr_oncoplot]{gvr_oncoplot()}}.
+The section tables are the core return value. By default the function also writes
+an Excel workbook (\code{save_excel = TRUE}) and a PDF report (\code{save_pdf = TRUE}) into
+\verb{out_dir/gvr_summary/}; set either to \code{FALSE} to skip it. The cohort oncoplot lives
+in \code{\link[=gvr_oncoplot]{gvr_oncoplot()}}.
 
 Data conventions:
 \itemize{
@@ -86,22 +102,28 @@ retained hits.
 }
 \section{Dependencies}{
 
-Core summary uses \pkg{data.table}; the optional Excel export uses \pkg{openxlsx}.
-If \pkg{openxlsx} is unavailable, the Excel export is skipped with a warning and the
-sections are still returned.
+Core summary uses \pkg{data.table}. The optional Excel export uses \pkg{openxlsx};
+the optional PDF report uses \pkg{gridExtra} + \pkg{ggplot2} (rendered via the base
+\code{grDevices::pdf} device). Each optional output degrades gracefully: if its
+package(s) are unavailable, that output is skipped with a warning and the section
+tables are still returned. PDF text is ASCII-only (the base \code{pdf()} device does not
+embed glyphs for non-ASCII punctuation).
 }
 
 \examples{
 \dontrun{
 maf <- read.gvr("/path/to/vcf_folder")
 
-## compute only (no files written); print a console digest
+## default: writes gvr_summary.xlsx + gvr_summary_report.pdf into ./gvr_summary/
 s <- gvr_summary(maf)
 s$variant_classification          # inspect a section
 s$impact                          # HIGH -> MODIFIER, severity order
 
-## summarise filtered hits and write the Excel workbook
-gvr_summary(gvr_filter(maf), save_excel = TRUE, out_dir = "results/summary")
+## compute only (no files written); print a console digest
+s <- gvr_summary(maf, save_excel = FALSE, save_pdf = FALSE)
+
+## summarise filtered hits, writing into results/summary/gvr_summary/
+gvr_summary(gvr_filter(maf), out_dir = "results/summary")
 }
 
 }
