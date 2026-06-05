@@ -30,13 +30,15 @@ variant count). Default \code{20}.}
 The workbook is written into the \verb{gvr_summary/} subfolder of \code{out_dir}
 (see \code{out_dir}). Pass \code{FALSE} for a compute-only run.}
 
-\item{save_pdf}{Logical; if \code{TRUE} (default), write a multi-page PDF report into
-the \verb{gvr_summary/} subfolder of \code{out_dir}. The report has a title/metadata page,
-the charted sections (top genes, variant classification, predicted impact) each
-shown as a table together with its bar chart, and the remaining tables grouped on
-their own page(s). Requires \pkg{gridExtra} and \pkg{ggplot2}; if unavailable, the
-PDF is skipped with a warning and the sections are still returned. Pass \code{FALSE}
-for a compute-only run.}
+\item{save_pdf}{Logical; if \code{TRUE} (default), write a multi-page PDF dashboard
+report into the \verb{gvr_summary/} subfolder of \code{out_dir}. Page 1 is a hero page (a
+row of KPI cards above two grouped/faceted bar charts - top genes and variant
+classification); the following pages hold the section tables (packed
+two-per-row where they fit, else full-width) plus the functional-impact chart.
+The layout adapts to cohort size (faceting and column pagination for many
+samples; see the examples). Requires \pkg{gridExtra}, \pkg{ggplot2} and
+\pkg{scales}; if unavailable, the PDF is skipped with a warning and the sections
+are still returned. Pass \code{FALSE} for a compute-only run.}
 
 \item{out_dir}{Parent output directory. All written outputs (Excel and/or PDF) are
 placed in a \verb{gvr_summary/} subfolder created inside \code{out_dir}. The subfolder is
@@ -103,27 +105,59 @@ retained hits.
 \section{Dependencies}{
 
 Core summary uses \pkg{data.table}. The optional Excel export uses \pkg{openxlsx};
-the optional PDF report uses \pkg{gridExtra} + \pkg{ggplot2} (rendered via the base
-\code{grDevices::pdf} device). Each optional output degrades gracefully: if its
-package(s) are unavailable, that output is skipped with a warning and the section
-tables are still returned. PDF text is ASCII-only (the base \code{pdf()} device does not
-embed glyphs for non-ASCII punctuation).
+the optional PDF dashboard uses \pkg{gridExtra} + \pkg{ggplot2} + \pkg{scales},
+rendered via the \code{grDevices::cairo_pdf} device (full Unicode, so en-dashes,
+multiplication signs and similar punctuation render correctly). Each optional
+output degrades gracefully: if its package(s) are unavailable, that output is
+skipped with a warning and the section tables are still returned.
 }
 
 \examples{
 \dontrun{
 maf <- read.gvr("/path/to/vcf_folder")
 
-## default: writes gvr_summary.xlsx + gvr_summary_report.pdf into ./gvr_summary/
+## ---- Default run -------------------------------------------------------
+## Returns the six section tables AND writes two files into ./gvr_summary/:
+##   * gvr_summary.xlsx         - one sheet per section
+##   * gvr_summary_report.pdf   - the dashboard report (see below)
 s <- gvr_summary(maf)
 s$variant_classification          # inspect a section
-s$impact                          # HIGH -> MODIFIER, severity order
+s$impact                          # HIGH -> MODIFIER, in severity order
 
-## compute only (no files written); print a console digest
+## ---- The PDF dashboard -------------------------------------------------
+## gvr_summary_report.pdf is a single A4-portrait dashboard:
+##   Page 1 (hero):  a row of four KPI cards - total variants, number of
+##                   samples, distinct known genes, and HIGH-impact variants -
+##                   above two grouped bar charts: "Top genes (top 10)" and
+##                   "Variant classification (top 10)".
+##   Page 2+ (reference): the six section tables, packed two-per-row when both
+##                   fit the page width and stacked full-width otherwise, plus
+##                   the Functional-impact (VEP IMPACT) bar chart.
+## Distinct-gene / HIGH-impact KPIs and chart values mirror the returned tables.
+s <- gvr_summary(maf)                       # 2-sample cohort -> ~3 pages
+
+## ---- Multi-sample / cohort behaviour -----------------------------------
+## The same call scales to any number of samples; the report adapts itself:
+##   * <= 6 samples : hero charts are GROUPED bars (one bar per sample).
+##   * >  6 samples : hero charts switch to small-multiple FACETS (one panel
+##                    per sample) so labels stay legible.
+##   * Wide tables  : when per-sample columns no longer fit the page width,
+##                    reference tables are COLUMN-PAGINATED - the category and
+##                    Total columns repeat on each part, titled e.g.
+##                    "Top genes (samples 1-7 of 8)".
+## No argument controls this; layout is chosen automatically from sample count
+## and measured table widths. A 20-sample cohort typically spans ~8 pages.
+s <- gvr_summary(maf, sample_col = "Tumor_Sample_Barcode")
+
+## ---- Other modes -------------------------------------------------------
+## Compute only (no files written); still prints a console digest:
 s <- gvr_summary(maf, save_excel = FALSE, save_pdf = FALSE)
 
-## summarise filtered hits, writing into results/summary/gvr_summary/
+## Summarise filtered hits, writing into results/summary/gvr_summary/:
 gvr_summary(gvr_filter(maf), out_dir = "results/summary")
+
+## Report more genes and silence the console digest:
+gvr_summary(maf, top_n_genes = 30, verbose = FALSE)
 }
 
 }

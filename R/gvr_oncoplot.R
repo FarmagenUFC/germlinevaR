@@ -42,10 +42,10 @@
 #'   If absent, all rows are pooled into a single sample `"All"` (with a warning).
 #' @param out_dir Output directory for the PNG. Created if it does not exist.
 #'   Default `"."` (current working directory).
-#' @param file_prefix Filename prefix for the written PNG. Default `"gvr_oncoplot"`;
-#'   the file is written as `<file_prefix>_oncoplot.png` (fixed name, no timestamp).
-#'   An existing file at that path is overwritten (a message is emitted when
-#'   `verbose = TRUE`).
+#' @param file_prefix Base filename for the written PNG. Default `"gvr_oncoplot"`;
+#'   the file is written as `<file_prefix>.png` (fixed name, no timestamp), e.g.
+#'   `gvr_oncoplot.png`. An existing file at that path is overwritten (a message is
+#'   emitted when `verbose = TRUE`).
 #' @param verbose Logical; if `TRUE` (default) print the path of the file written.
 #'
 #' @return Invisibly, the path of the written PNG (character), or `NA_character_` if
@@ -211,7 +211,7 @@ gvr_oncoplot <- function(maf,
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   # Fixed output name (no timestamp), mirroring gvr_summary; re-runs overwrite in
   # place and announce the overwrite when verbose.
-  final_path <- file.path(out_dir, sprintf("%s_oncoplot.png", file_prefix))
+  final_path <- file.path(out_dir, sprintf("%s.png", file_prefix))
   if (file.exists(final_path) && isTRUE(verbose))
     message(sprintf("gvr_oncoplot: overwriting existing %s", final_path))
   path <- .fuse_save_png(final_path, function(tmp) {

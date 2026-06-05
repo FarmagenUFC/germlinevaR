@@ -26,10 +26,10 @@ If absent, all rows are pooled into a single sample \code{"All"} (with a warning
 \item{out_dir}{Output directory for the PNG. Created if it does not exist.
 Default \code{"."} (current working directory).}
 
-\item{file_prefix}{Filename prefix for the written PNG. Default \code{"gvr_oncoplot"};
-the file is written as \verb{<file_prefix>_oncoplot.png} (fixed name, no timestamp).
-An existing file at that path is overwritten (a message is emitted when
-\code{verbose = TRUE}).}
+\item{file_prefix}{Base filename for the written PNG. Default \code{"gvr_oncoplot"};
+the file is written as \verb{<file_prefix>.png} (fixed name, no timestamp), e.g.
+\code{gvr_oncoplot.png}. An existing file at that path is overwritten (a message is
+emitted when \code{verbose = TRUE}).}
 
 \item{verbose}{Logical; if \code{TRUE} (default) print the path of the file written.}
 }
