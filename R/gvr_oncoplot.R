@@ -43,7 +43,9 @@
 #' @param out_dir Output directory for the PNG. Created if it does not exist.
 #'   Default `"."` (current working directory).
 #' @param file_prefix Filename prefix for the written PNG. Default `"gvr_oncoplot"`;
-#'   a `YYYYMMDD_HHMMSS` timestamp is appended.
+#'   the file is written as `<file_prefix>_oncoplot.png` (fixed name, no timestamp).
+#'   An existing file at that path is overwritten (a message is emitted when
+#'   `verbose = TRUE`).
 #' @param verbose Logical; if `TRUE` (default) print the path of the file written.
 #'
 #' @return Invisibly, the path of the written PNG (character), or `NA_character_` if
@@ -207,8 +209,11 @@ gvr_oncoplot <- function(maf,
     column_title_gp = grid::gpar(fontsize = 11))
 
   if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-  ts <- format(Sys.time(), "%Y%m%d_%H%M%S")
-  final_path <- file.path(out_dir, sprintf("%s_%s_oncoplot.png", file_prefix, ts))
+  # Fixed output name (no timestamp), mirroring gvr_summary; re-runs overwrite in
+  # place and announce the overwrite when verbose.
+  final_path <- file.path(out_dir, sprintf("%s_oncoplot.png", file_prefix))
+  if (file.exists(final_path) && isTRUE(verbose))
+    message(sprintf("gvr_oncoplot: overwriting existing %s", final_path))
   path <- .fuse_save_png(final_path, function(tmp) {
     grDevices::png(tmp, width = max(1100, 360 + 150 * length(samples)),
                    height = max(720, 110 + 34 * length(top_g)), res = 150)

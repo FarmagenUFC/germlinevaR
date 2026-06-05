@@ -343,29 +343,35 @@ gvr_summary <- function(maf,
   if (isTRUE(save_pdf)) {
     have_pkgs <- requireNamespace("gridExtra", quietly = TRUE) &&
                  requireNamespace("ggplot2",   quietly = TRUE) &&
-                 requireNamespace("grid",      quietly = TRUE)
+                 requireNamespace("grid",      quietly = TRUE) &&
+                 requireNamespace("scales",    quietly = TRUE)
     if (!have_pkgs) {
-      warning("gvr_summary: 'gridExtra'/'ggplot2' not installed; skipping PDF report.")
+      warning("gvr_summary: 'gridExtra'/'ggplot2'/'scales' not installed; skipping PDF report.")
     } else {
       # Internal renderer for the multi-page PDF (nested: single-use, not exported).
       # ASCII-only text (base pdf() substitutes non-ASCII glyphs); writes to a POSIX
       # temp path then shell-cp to final_pdf (R file.copy() can 0-byte on S3 FUSE).
       .gvr_summary_pdf <- function(sections, samples, meta, final_pdf, file_prefix = "gvr_summary") {
         PHYLO_BLUE <- "#0279EE"; PHYLO_GREEN <- "#75A025"; CREAM <- "#FAF9F3"; STONE <- "#ECE9E2"
-        # bar-chart fill palette: Okabe-Ito-style, colorblind-safe ordering. Blue + orange
-        # lead (the safest 2-class pair) so the common 2-sample case is maximally legible.
+        INK <- "#000000"; ORANGE <- "#E69F00"; VERMIL <- "#D55E00"
+
+        W <- 8.27; H <- 11.69                       # A4 portrait inches
+        USABLE_W_IN <- 7.3                          # printable body width (matches shipped)
+        CEX_CORE_FLOOR <- 0.50                      # min table body font scale before col-paginate
+        CEX_HEAD_FLOOR <- 0.55
+        FACET_THRESHOLD <- 6L                       # > this many samples -> facet charts
+
         pal <- c("#0279EE", "#E69F00", "#009E73", "#CC79A7", "#56B4E9", "#75A025",
                  "#D55E00", "#332288", "#AA4499", "#888888")
         fill_vals <- stats::setNames(pal[((seq_along(samples) - 1L) %% length(pal)) + 1L], samples)
 
-        # ---- Layout constants (A4 portrait), tunable in one place ---------------
-        USABLE_W_IN    <- 7.3    # printable body width  (A4 8.27in - margins)
-        USABLE_H_IN    <- 9.0    # printable body height (A4 11.69in - header/footer)
-        CEX_CORE_FLOOR <- 0.50   # smallest table body font scale before paginating cols
-        CEX_HEAD_FLOOR <- 0.55   # smallest table header font scale
-        FACET_THRESHOLD <- 6L    # > this many samples -> facet charts instead of dodge
+        fmt <- function(x) format(x, big.mark = ",", trim = TRUE)
 
-        # table theme at a given font scale (core cex). header scales in proportion.
+        # ---- measured grob size in inches (drive fit by measurement, not guesses) --------
+        .grob_w_in <- function(g) grid::convertWidth(sum(g$widths),  "in", valueOnly = TRUE)
+        .grob_h_in <- function(g) grid::convertHeight(sum(g$heights), "in", valueOnly = TRUE)
+
+        # ---- dashboard table theme at a given core font scale ----------------------------
         .mk_theme <- function(cex_core = 0.72) {
           cex_head <- max(CEX_HEAD_FLOOR, cex_core + 0.06)
           gridExtra::ttheme_minimal(
@@ -374,39 +380,19 @@ gvr_summary <- function(maf,
             colhead = list(fg_params = list(col = "white", fontface = "bold", cex = cex_head),
                            bg_params = list(fill = PHYLO_BLUE, col = NA)))
         }
-        .tt <- .mk_theme(0.72)
 
-        # measured grob size in inches (used to drive fit decisions, not guesses)
-        .grob_w_in <- function(g) grid::convertWidth(sum(g$widths),  "in", valueOnly = TRUE)
-        .grob_h_in <- function(g) grid::convertHeight(sum(g$heights), "in", valueOnly = TRUE)
-        # Draw a (short) table grob anchored to the TOP of the body viewport instead of
-        # vertically centred, so short tables don't leave a large empty band above them.
-        # The page body is ~0.86 of an 11.69in A4 page (~10.05in); we cap the grob's
-        # natural height at the body and pin it to the top edge.
-        .body_in <- 0.86 * 11.69
-        .draw_table_top <- function(g) {
-          frac <- min(1, .grob_h_in(g) / .body_in)
-          vp <- grid::viewport(y = 1, just = "top", height = frac)
-          grid::pushViewport(vp); grid::grid.draw(g); grid::popViewport()
-        }
-
-        # Build one or more tableGrobs for a section. Robust to MANY samples:
-        #   1) ROW pagination (rows_per_page) as before;
-        #   2) FONT auto-scale: shrink core cex toward CEX_CORE_FLOOR while the grob is
-        #      wider than USABLE_W_IN;
-        #   3) COLUMN pagination: if still too wide at the font floor, split the
-        #      per-sample columns into groups, repeating the FIRST column (category) and
-        #      the LAST column ("Total") on every column-page; pages are labelled via the
-        #      "colspan" attribute (e.g. "samples 1-6 of 20").
-        # Returns a flat list of tableGrobs; each carries attr(,"colspan") (or NULL).
-        .mk_table_grobs <- function(dt, rows_per_page = 28L) {
+        # ---- robust table-grob factory (PORTED VERBATIM from shipped renderer): -----------
+        #   row pagination -> font shrink -> column pagination. Returns flat list of grobs,
+        #   each with attr "colspan" (e.g. "samples 1-6 of 20" or NULL) and "n_rows".
+        .mk_table_grobs <- function(dt, rows_per_page = 34L) {
           df <- as.data.frame(dt, stringsAsFactors = FALSE)
           for (j in seq_len(ncol(df)))
             if (is.numeric(df[[j]])) df[[j]] <- format(df[[j]], big.mark = ",", trim = TRUE)
-
-          # choose a font scale that fits width (using the full df width as the probe);
-          # step down from 0.72 to the floor.
-          cex_try <- c(0.72, 0.66, 0.60, 0.55, CEX_CORE_FLOOR)
+          # Dashboard tables are DENSE by default (start at 0.60, not gridExtra's larger
+          # default) so the common few-sample report packs tightly; the ladder still steps
+          # DOWN toward the floor when a wide many-sample table overflows the page width
+          # (after which .mk_table_grobs column-paginates).
+          cex_try <- c(0.60, 0.55, CEX_CORE_FLOOR)
           cex_use <- CEX_CORE_FLOOR
           for (cx in cex_try) {
             g0 <- gridExtra::tableGrob(df[1, , drop = FALSE], rows = NULL, theme = .mk_theme(cx))
@@ -414,17 +400,13 @@ gvr_summary <- function(maf,
             cex_use <- cx
           }
           th <- .mk_theme(cex_use)
-
-          # decide column groups. ncol layout: [1]=category ... [ncol]=Total.
           ncol_df <- ncol(df)
           probe   <- gridExtra::tableGrob(df[1, , drop = FALSE], rows = NULL, theme = th)
-          col_groups <- list(seq_len(ncol_df))   # default: all columns in one group
+          col_groups <- list(seq_len(ncol_df))
           if (ncol_df >= 3L && .grob_w_in(probe) > USABLE_W_IN) {
-            cat_i   <- 1L
-            total_i <- ncol_df
-            mid     <- setdiff(seq_len(ncol_df), c(cat_i, total_i))   # sample columns
-            # per-column width estimate (inches) from a 1-row probe; pack greedily.
-            wcol <- vapply(seq_len(ncol_df), function(j)
+            cat_i <- 1L; total_i <- ncol_df
+            mid   <- setdiff(seq_len(ncol_df), c(cat_i, total_i))
+            wcol  <- vapply(seq_len(ncol_df), function(j)
               .grob_w_in(gridExtra::tableGrob(df[1, j, drop = FALSE], rows = NULL, theme = th)),
               numeric(1))
             fixed_w <- wcol[cat_i] + wcol[total_i]
@@ -440,7 +422,6 @@ gvr_summary <- function(maf,
             if (length(cur)) col_groups[[length(col_groups) + 1L]] <- c(cat_i, cur, total_i)
           }
           n_mid_total <- if (length(col_groups) > 1L) ncol_df - 2L else NA_integer_
-
           npg_rows <- max(1L, ceiling(nrow(df) / rows_per_page))
           out <- list()
           for (cg_idx in seq_along(col_groups)) {
@@ -453,327 +434,254 @@ gvr_summary <- function(maf,
               rs <- ((pg - 1L) * rows_per_page + 1L):min(pg * rows_per_page, nrow(df))
               g  <- gridExtra::tableGrob(df[rs, cg, drop = FALSE], rows = NULL, theme = th)
               attr(g, "colspan") <- colspan_lbl
-              attr(g, "n_rows")  <- length(rs)   # data rows in this grob (for packing)
+              attr(g, "n_rows")  <- length(rs)
               out[[length(out) + 1L]] <- g
             }
           }
           out
         }
-        .section_header <- function(title, subtitle = NULL) {
-          grid::grid.text(title, x = 0.06, y = 0.95, just = c("left", "top"),
-                          gp = grid::gpar(fontsize = 15, fontface = "bold", col = PHYLO_BLUE))
-          if (!is.null(subtitle))
-            grid::grid.text(subtitle, x = 0.06, y = 0.905, just = c("left", "top"),
-                            gp = grid::gpar(fontsize = 9, col = "grey40"))
-        }
-        # Build the per-sample dodged bar chart as a GROB (so it can be composed on
-        # the same page as a table via gridExtra::arrangeGrob, rather than printed to
-        # its own page). The ggplot spec is unchanged from the previous renderer.
-        .bar_grob <- function(title, dt, cat_col, top = NULL) {
-          d <- data.table::as.data.table(data.table::copy(dt))
-          if (!is.null(top) && nrow(d) > top) d <- utils::head(d[order(-d[["Total"]])], top)
-          long <- data.table::melt(d, id.vars = cat_col, measure.vars = samples,
-                                   variable.name = "Sample", value.name = "n")
-          data.table::setnames(long, cat_col, "Category")
-          long[, Category := factor(Category, levels = rev(d[[cat_col]]))]
+
+        # ---- bar chart grob: grouped (<=6 samples) or faceted (>6) — PORTED -------------
+        .bar_grob <- function(dt, cat_col, top = NULL, title = NULL) {
+          d <- as.data.frame(dt, stringsAsFactors = FALSE)
+          d <- d[d[[cat_col]] != "" & !is.na(d[[cat_col]]), , drop = FALSE]
+          if (!is.null(top) && nrow(d) > top) d <- d[order(-d$Total)[seq_len(top)], , drop = FALSE]
+          long <- do.call(rbind, lapply(samples, function(s)
+            data.frame(Category = d[[cat_col]], Sample = s, n = d[[s]], stringsAsFactors = FALSE)))
+          long$Category <- factor(long$Category, levels = d[[cat_col]][order(d$Total)])
           many <- length(samples) > FACET_THRESHOLD
           gg <- ggplot2::ggplot(long, ggplot2::aes(x = Category, y = n, fill = Sample)) +
             ggplot2::coord_flip() +
             ggplot2::scale_fill_manual(values = fill_vals) +
-            ggplot2::labs(title = NULL, x = NULL, y = "Variants", fill = NULL) +
-            ggplot2::theme_minimal(base_size = 9) +
-            ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", colour = PHYLO_BLUE))
+            ggplot2::labs(title = title, x = NULL, y = NULL, fill = NULL) +
+            ggplot2::theme_minimal(base_size = 10) +
+            ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", colour = PHYLO_BLUE, size = 13),
+                           panel.grid.major.y = ggplot2::element_blank())
           if (many) {
-            # MANY samples: one small panel per sample (no dodge, no legend). To keep the
-            # grid legible we (a) abbreviate strip labels by dropping the longest common
-            # prefix shared by all sample names, (b) use only a few count-axis breaks
-            # with SI-style labels so ticks don't collide in narrow panels, and (c)
-            # shrink category + axis text. Panels wrap into ~sqrt(n) columns.
-            sn  <- as.character(samples)
-            pre <- ""
+            sn <- as.character(samples); pre <- ""
             if (length(sn) > 1L) {
-              # longest common prefix across sample names
               mn <- min(nchar(sn)); i <- 0L
               while (i < mn && length(unique(substr(sn, 1L, i + 1L))) == 1L) i <- i + 1L
-              if (i >= 3L) pre <- substr(sn[1], 1L, i)   # only strip a meaningful prefix
+              if (i >= 3L) pre <- substr(sn[1], 1L, i)
             }
             lab_fun <- function(x) if (nzchar(pre)) sub(paste0("^", pre), "", x) else x
             gg <- gg + ggplot2::geom_col(show.legend = FALSE) +
               ggplot2::facet_wrap(~ Sample, ncol = ceiling(sqrt(length(samples))),
                                   labeller = ggplot2::as_labeller(lab_fun)) +
-              ggplot2::scale_y_continuous(
-                breaks = scales::breaks_extended(3),
-                labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+              ggplot2::scale_y_continuous(breaks = scales::breaks_extended(3),
+                                          labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
               ggplot2::theme(legend.position = "none",
                              strip.text = ggplot2::element_text(size = 7, face = "bold"),
-                             axis.text.y = ggplot2::element_text(size = 5.5),
-                             axis.text.x = ggplot2::element_text(size = 5.5),
+                             axis.text  = ggplot2::element_text(size = 5.5),
                              panel.spacing = grid::unit(4, "pt"))
           } else {
-            # FEW samples: grouped (dodged) bars with a top legend (the legible default).
-            gg <- gg + ggplot2::geom_col(position = "dodge") +
-              ggplot2::theme(legend.position = "top")
+            gg <- gg + ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.75), width = 0.68) +
+              ggplot2::scale_y_continuous(breaks = scales::breaks_extended(4),
+                                          labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+              ggplot2::theme(legend.position = "top", legend.justification = "left",
+                             legend.key.size = grid::unit(10, "pt"),
+                             legend.text = ggplot2::element_text(size = 8),
+                             axis.text = ggplot2::element_text(size = 9))
           }
           ggplot2::ggplotGrob(gg)
         }
 
-        # Render ONE charted section: its table together with its bar chart.
-        #  - SHORT table (<= tall_threshold rows): table LEFT, chart RIGHT (side-by-side).
-        #  - TALL  table (>  tall_threshold rows): table FULL-WIDTH on top, chart BELOW.
-        # Tables wider than one page paginate via .mk_table_grobs (28 rows/page); the
-        # chart is drawn on the LAST page of the section (beside or below the final
-        # table chunk per the short/tall rule applied to that chunk's row count).
-        .charted_block <- function(title, dt, cat_col, top = NULL,
-                                   chart_title = NULL, tall_threshold = 10L) {
-          tgrobs <- .mk_table_grobs(dt)
-          cgrob  <- .bar_grob(chart_title, dt, cat_col, top = top)
-          npg    <- length(tgrobs)
-          facet  <- length(samples) > FACET_THRESHOLD
+        # ---- left-justify a table grob within a full-width row ---------------------------
+        .left_just <- function(g) {
+          w_in <- .grob_w_in(g)
+          gridExtra::arrangeGrob(g, grid::nullGrob(), ncol = 2,
+                                 widths = grid::unit.c(grid::unit(w_in, "in"), grid::unit(1, "null")))
+        }
 
-          if (facet) {
-            # MANY samples: the faceted chart is a full multi-panel grid and the table is
-            # wide (column-paginated). Cramming both on a page clips. So render the
-            # table page(s) TABLE-ONLY, then the chart on its OWN full page.
-            for (k in seq_len(npg)) {
-              grid::grid.newpage()
-              ttl <- if (npg > 1L) sprintf("%s (table %d/%d)", title, k, npg) else title
-              .section_header(ttl, subtitle = attr(tgrobs[[k]], "colspan"))
-              body <- grid::viewport(y = 0.46, height = 0.86)
-              grid::pushViewport(body); .draw_table_top(tgrobs[[k]]); grid::popViewport()
-            }
-            grid::grid.newpage()
-            .section_header(title, subtitle = "per-sample chart")
-            cbody <- grid::viewport(y = 0.46, height = 0.86)
-            grid::pushViewport(cbody); grid::grid.draw(cgrob); grid::popViewport()
-            return(invisible(NULL))
-          }
+        # ---- KPI card. Big-number font auto-shrinks for long values (e.g. 7-digit cohort
+        #      totals) so the number never kisses the card edge. ----------------------------
+        .mk_kpi <- function(value, label, fill = PHYLO_BLUE, fg = "white") {
+          nchar_v <- nchar(value)
+          num_fs  <- if (nchar_v <= 6L) 30 else if (nchar_v <= 8L) 24 else 20
+          grid::grobTree(
+            grid::roundrectGrob(gp = grid::gpar(fill = fill, col = NA), r = grid::unit(6, "pt")),
+            grid::textGrob(value, y = 0.60, gp = grid::gpar(col = fg, fontface = "bold", fontsize = num_fs)),
+            grid::textGrob(label, y = 0.22, gp = grid::gpar(col = fg, fontsize = 11)))
+        }
 
-          for (k in seq_len(npg)) {
-            grid::grid.newpage()
-            ttl <- if (npg > 1L) sprintf("%s (page %d/%d)", title, k, npg) else title
-            cs  <- attr(tgrobs[[k]], "colspan")
-            .section_header(ttl, subtitle = cs)
-            body <- grid::viewport(y = 0.46, height = 0.86)
-            grid::pushViewport(body)
-            if (k < npg) {
-              # intermediate table page (only happens for very long tables): table only
-              .draw_table_top(tgrobs[[k]])
-            } else {
-              tall <- nrow(dt) > tall_threshold
-              if (tall) {
-                # full-width table on top, chart below (uses the whole body height)
-                g <- gridExtra::arrangeGrob(tgrobs[[k]], cgrob, ncol = 1,
-                                            heights = grid::unit(c(0.55, 0.45), "npc"))
-                grid::grid.draw(g)
-              } else {
-                # side-by-side: table left, chart right. Draw it into a TOP-ANCHORED
-                # band whose height scales with the row count, so a short chart (e.g.
-                # the 4-category IMPACT chart) is not stretched over the full page
-                # height. band_h is a fraction of the body viewport.
-                g <- gridExtra::arrangeGrob(tgrobs[[k]], cgrob, ncol = 2,
-                                            widths = grid::unit(c(0.46, 0.54), "npc"))
-                # band_h is a fraction of the body viewport. Keep it small so a short
-                # chart (e.g. 4-category IMPACT) is compact, not stretched: ~0.30 of
-                # the body for a 4-row table, growing modestly toward the tall_threshold.
-                band_h <- max(0.22, min(0.42, 0.06 + 0.06 * nrow(dt)))
-                band   <- grid::viewport(y = 1 - band_h / 2, height = band_h)
-                grid::pushViewport(band)
-                grid::grid.draw(g)
-                grid::popViewport()
+        # ---- cairo_pdf blank-first-page guard --------------------------------------------
+        .make_new_page <- function() {
+          first <- TRUE
+          function() { if (first) first <<- FALSE else grid::grid.newpage() }
+        }
+
+        # ============================ HERO PAGE ===========================================
+        .render_hero <- function(np) {
+          np()
+          title_grob <- grid::grobTree(
+            grid::textGrob("germlinevaR \u2013 Cohort Summary", x = 0.02, y = 0.70, hjust = 0,
+                           gp = grid::gpar(fontface = "bold", fontsize = 24, col = PHYLO_BLUE)),
+            grid::textGrob(sprintf("%d sample%s  \u00b7  %s total variants  \u00b7  %s distinct genes",
+                                   meta$n_samples, if (meta$n_samples == 1L) "" else "s",
+                                   fmt(meta$n_total), fmt(meta$n_genes)),
+                           x = 0.02, y = 0.26, hjust = 0, gp = grid::gpar(fontsize = 11, col = INK)))
+          hi <- sections$impact$Total[sections$impact$IMPACT == "HIGH"]; if (!length(hi)) hi <- 0L
+          kpis <- list(
+            .mk_kpi(fmt(meta$n_total),    "Total variants",         PHYLO_BLUE),
+            .mk_kpi(fmt(meta$n_samples),  "Samples",                PHYLO_GREEN),
+            .mk_kpi(fmt(meta$n_genes),    "Distinct genes (known)", ORANGE, fg = INK),
+            .mk_kpi(fmt(hi),              "HIGH-impact variants",   VERMIL))
+          cards <- lapply(kpis, function(g)
+            gridExtra::arrangeGrob(g, vp = grid::viewport(width = 0.94, height = 0.86)))
+          cards_row <- gridExtra::arrangeGrob(grobs = cards, nrow = 1)
+          chart_top <- .bar_grob(sections$top_genes, "Hugo_Symbol",
+                                 title = "Top genes by variant count (top 10)", top = 10L)
+          chart_cls <- .bar_grob(sections$variant_classification, "Variant_Classification",
+                                 title = "Variant classification (top 10)", top = 10L)
+          hero <- gridExtra::arrangeGrob(
+            grobs = list(title_grob, cards_row, chart_top, chart_cls), ncol = 1,
+            heights = grid::unit.c(grid::unit(0.95, "in"), grid::unit(1.5, "in"),
+                                   grid::unit(1, "null"), grid::unit(1, "null")))
+          grid::pushViewport(grid::viewport(width = grid::unit(W - 1, "in"),
+                                            height = grid::unit(H - 1, "in")))
+          grid::grid.draw(hero); grid::popViewport()
+        }
+
+        # ===================== AUTO SIDE-BY-SIDE REFERENCE SECTION ========================
+        # Each section -> .mk_table_grobs (already font-shrunk / column-paginated). A
+        # section's grob is SIDE-BY-SIDE eligible only when it produced a SINGLE grob whose
+        # measured width fits half the content width (so two fit with a gap). Otherwise it
+        # is FULL-WIDTH and stacks. This degrades safely for many-sample (wide / paginated)
+        # tables, matching the user's "side-by-side if it fits, else stack" rule.
+        .render_reference <- function(np, target_dev,
+                                      title_in = 0.30, tgap_in = 0.10, bgap_in = 0.18,
+                                      col_gap_in = 0.30, draw_frac = 0.97) {
+          content_w <- W - 1
+          budget    <- (H - 1) * draw_frac
+          tbl_specs <- list(
+            list(s = "overview",               t = "Overview"),
+            list(s = "top_genes",              t = "Top genes"),
+            list(s = "variant_classification", t = "Variant classification"),
+            list(s = "variant_type",           t = "Variant type"),
+            list(s = "clin_sig",               t = "Clinical significance"),
+            list(s = "impact",                 t = "Functional impact (table)"))
+          # MEASUREMENT must happen on a throwaway device that is opened AND closed HERE,
+          # so the cairo report device is current during all subsequent drawing. (Leaving
+          # pdf(NULL) open across the draw loop sends every page to the throwaway device
+          # and the report comes out empty/0-byte.)
+          items <- local({
+            grDevices::pdf(NULL, width = W, height = H)
+            on.exit(grDevices::dev.off())
+            grid::pushViewport(grid::viewport(width = grid::unit(content_w, "in"),
+                                              height = grid::unit(budget, "in")))
+            it <- list()
+            for (sp in tbl_specs) {
+              gl <- .mk_table_grobs(sections[[sp$s]])
+              multi <- length(gl) > 1L
+              for (gi in seq_along(gl)) {
+                g  <- gl[[gi]]
+                cs <- attr(g, "colspan")
+                lbl <- if (multi && !is.null(cs)) sprintf("%s (%s)", sp$t, cs) else sp$t
+                wi <- .grob_w_in(g); hi <- .grob_h_in(g)
+                # Side-by-side eligible iff this section produced a SINGLE grob (not
+                # column-paginated). Whether two eligible tables actually fit a row is
+                # decided later by the real pairwise width sum (a$w + gap + b$w <= content_w),
+                # which is more permissive than a rigid half-width gate (a wide table can
+                # still pair with a narrow one). Column-paginated (multi) tables stay
+                # full-width and stack -- the many-sample safe fallback.
+                eligible <- !multi
+                it[[length(it) + 1L]] <- list(type = "table", lbl = lbl, g = g,
+                                              w = wi, h = hi, pair_ok = eligible)
               }
             }
+            grid::popViewport()
+            it
+          })
+          # Closing the throwaway measurement device above can leave a DIFFERENT device
+          # current (R falls back to the most-recent surviving device, not necessarily our
+          # report device). Force the report device current before any drawing.
+          if (target_dev %in% grDevices::dev.list()) grDevices::dev.set(target_dev)
+          imp_chart <- list(type = "chart", lbl = "Functional impact (VEP IMPACT)",
+                            g = .bar_grob(sections$impact, "IMPACT", title = NULL),
+                            w = content_w, h = 2.4, pair_ok = FALSE)
+
+          # ---- height-balanced pairing among pair_ok items; others stay single --------
+          ord  <- order(vapply(items, function(u) u$h, numeric(1)), decreasing = TRUE)
+          done <- rep(FALSE, length(items)); rows <- list()
+          for (ii in seq_along(ord)) {
+            i <- ord[ii]; if (done[i]) next
+            a <- items[[i]]
+            if (!isTRUE(a$pair_ok)) { done[i] <- TRUE
+              rows[[length(rows)+1]] <- list(kind = "single", a = a, h = a$h); next }
+            partner <- NA_integer_
+            for (jj in seq_along(ord)) {
+              j <- ord[jj]
+              if (j == i || done[j] || !isTRUE(items[[j]]$pair_ok)) next
+              if (a$w + col_gap_in + items[[j]]$w <= content_w) { partner <- j; break }
+            }
+            if (!is.na(partner)) {
+              b <- items[[partner]]; done[i] <- TRUE; done[partner] <- TRUE
+              rows[[length(rows)+1]] <- list(kind = "pair", a = a, b = b, h = max(a$h, b$h))
+            } else {
+              done[i] <- TRUE
+              rows[[length(rows)+1]] <- list(kind = "single", a = a, h = a$h)
+            }
+          }
+          rows[[length(rows)+1]] <- list(kind = "single", a = imp_chart, h = imp_chart$h)
+
+          per_row_overhead <- title_in + tgap_in + bgap_in
+          pages <- list(); cur <- list(); used <- 0
+          for (r in rows) {
+            cost <- r$h + per_row_overhead
+            if (length(cur) > 0 && used + cost > budget) { pages[[length(pages)+1]] <- cur; cur <- list(); used <- 0 }
+            cur[[length(cur)+1]] <- r; used <- used + cost
+          }
+          if (length(cur)) pages[[length(pages)+1]] <- cur
+
+          block_for <- function(item, full_width, row_h) {
+            body <- if (item$type == "table") { if (full_width) .left_just(item$g) else item$g } else item$g
+            # Top-anchor the title within its band (vjust = 1 at y = 1) so its
+            # baseline sits high and there is full clearance to the table body that
+            # follows the tgap spacer -- prevents the body riding up under the title.
+            ttl <- grid::textGrob(item$lbl, x = 0.02, y = 1, hjust = 0, vjust = 1,
+                                  gp = grid::gpar(fontsize = 10.5, fontface = "bold", col = PHYLO_BLUE))
+            pad <- max(row_h - item$h, 0)
+            gridExtra::arrangeGrob(ttl, grid::nullGrob(), body, grid::nullGrob(), ncol = 1,
+                                   heights = grid::unit.c(grid::unit(title_in, "in"), grid::unit(tgap_in, "in"),
+                                                          grid::unit(item$h, "in"), grid::unit(pad, "in")))
+          }
+
+          for (pg in pages) {
+            np()
+            grobs <- list(grid::textGrob("Reference tables", x = 0.02, hjust = 0, vjust = 1, y = 1,
+                                         gp = grid::gpar(fontface = "bold", fontsize = 10, col = PHYLO_GREEN)))
+            rel <- c(0.18)
+            for (r in pg) {
+              if (r$kind == "pair") {
+                ga <- block_for(r$a, FALSE, r$h); gb <- block_for(r$b, FALSE, r$h)
+                row_grob <- gridExtra::arrangeGrob(ga, grid::nullGrob(), gb, ncol = 3,
+                              widths = grid::unit.c(grid::unit(1, "null"), grid::unit(col_gap_in, "in"),
+                                                    grid::unit(1, "null")))
+              } else {
+                row_grob <- block_for(r$a, TRUE, r$h)
+              }
+              grobs[[length(grobs)+1]] <- row_grob
+              rel <- c(rel, r$h + title_in + tgap_in)
+              grobs[[length(grobs)+1]] <- grid::nullGrob(); rel <- c(rel, bgap_in)
+            }
+            if (sum(rel) < budget) { grobs[[length(grobs)+1]] <- grid::nullGrob(); rel <- c(rel, budget - sum(rel)) }
+            grid::pushViewport(grid::viewport(y = 0.5, height = grid::unit(budget, "in"),
+                                              width = grid::unit(content_w, "in")))
+            grid::grid.draw(gridExtra::arrangeGrob(grobs = grobs, ncol = 1, heights = grid::unit(rel, "in")))
             grid::popViewport()
           }
         }
 
-        # Render the chart-less tables GROUPED: stack several section tables on one
-        # page (each with a small sub-header), top to bottom, packing as many as fit
-        # and spilling to a new page at a section boundary. `items` is a list of
-        # lists(title=, dt=, subtitle=). A single table taller than one page falls back
-        # to .mk_table_grobs pagination on its own page(s).
-        .draw_grouped_tables <- function(items, page_title = NULL,
-                                        rows_per_page = 30L) {
-          # Pre-expand every item into its rendered table GROB(s). A wide table is
-          # column-paginated by .mk_table_grobs into several grobs that stack
-          # VERTICALLY (one per sample-column group), each a self-contained table with
-          # its own header. We therefore pack at the GROB level: each grob is an atomic
-          # unit whose vertical cost is its own row count (+2 for sub-title+header).
-          # Packing at the item level (the old behaviour) undercounted wide tables and
-          # overflowed the page (e.g. a 19-row clin_sig split into 3 groups = 3x the
-          # height but counted once), clipping rows and the repeated sub-title.
-          units <- list()
-          for (it in items) {
-            gl <- .mk_table_grobs(it$dt)
-            multi <- length(gl) > 1L
-            for (gi in seq_along(gl)) {
-              cs  <- attr(gl[[gi]], "colspan")
-              lbl <- if (multi && !is.null(cs)) sprintf("%s (%s)", it$title, cs) else it$title
-              nr  <- attr(gl[[gi]], "n_rows"); if (is.null(nr)) nr <- nrow(it$dt)
-              units[[length(units) + 1L]] <- list(lbl = lbl, g = gl[[gi]],
-                                                  cost = nr + 2L, rows = nr)
-            }
-          }
-          # greedy bin-pack the grob units by vertical cost
-          bins <- list(); cur <- list(); used <- 0L
-          for (u in units) {
-            if (used > 0L && used + u$cost > rows_per_page) {
-              bins[[length(bins) + 1L]] <- cur; cur <- list(); used <- 0L
-            }
-            cur[[length(cur) + 1L]] <- u; used <- used + u$cost
-          }
-          if (length(cur)) bins[[length(bins) + 1L]] <- cur
-          np <- length(bins)
-          for (bi in seq_len(np)) {
-            grid::grid.newpage()
-            hdr <- if (!is.null(page_title)) {
-              if (np > 1L) sprintf("%s (page %d/%d)", page_title, bi, np) else page_title
-            } else NULL
-            if (!is.null(hdr)) .section_header(hdr)
-            grp <- bins[[bi]]
-            sub_grobs <- list(); rel_h <- numeric(0)
-            for (u in grp) {
-              sub_grobs[[length(sub_grobs) + 1L]] <-
-                grid::textGrob(u$lbl, x = 0.02, just = "left",
-                               gp = grid::gpar(fontsize = 11, fontface = "bold",
-                                               col = PHYLO_BLUE))
-              rel_h <- c(rel_h, 0.6)
-              sub_grobs[[length(sub_grobs) + 1L]] <- u$g
-              rel_h <- c(rel_h, max(1.2, u$rows * 0.5))
-            }
-            # Append a bottom spacer so a lightly-filled page (e.g. just Overview +
-            # Variant type) packs toward the TOP instead of spreading across the whole
-            # page. Spacer weight = remaining budget up to the page row capacity.
-            content_w <- sum(rel_h)
-            cap_w     <- rows_per_page * 0.5            # same 0.5/row scale as tables
-            if (content_w < cap_w) {
-              sub_grobs[[length(sub_grobs) + 1L]] <- grid::nullGrob()
-              rel_h <- c(rel_h, cap_w - content_w)
-            }
-            stacked <- gridExtra::arrangeGrob(grobs = sub_grobs, ncol = 1,
-                                              heights = grid::unit(rel_h, "null"))
-            vp <- grid::viewport(y = 0.46, height = 0.86)
-            grid::pushViewport(vp); grid::grid.draw(stacked); grid::popViewport()
-          }
-        }
-
-        # Render section 3 (Predicted impact, charted) TOGETHER with sections 4
-        # (Overview) and 5 (Variant type) on ONE page when they fit; otherwise split.
-        # FIT is decided by MEASURED grob heights vs USABLE_H_IN (not row counts), so it
-        # auto-splits if any of the three grows (more rows or many-sample facet chart).
-        .impact_combined_block <- function(impact, overview, vartype) {
-          imp_tg <- .mk_table_grobs(impact$dt)         # impact table grob(s)
-          imp_cg <- .bar_grob(impact$chart_title, impact$dt, impact$cat_col)
-          ov_tg  <- .mk_table_grobs(overview$dt)
-          vt_tg  <- .mk_table_grobs(vartype$dt)
-
-          # Conditions that force the split (each piece then laid out the standard way):
-          #  - impact table needed column pagination (wide -> many samples),
-          #  - the chart is in facet (many-sample) mode (tall, needs a full page),
-          #  - any companion table is itself column-paginated,
-          #  - measured stacked height exceeds the usable page height.
-          facet_mode <- length(samples) > FACET_THRESHOLD
-          multi_imp  <- length(imp_tg) > 1L
-          multi_comp <- length(ov_tg) > 1L || length(vt_tg) > 1L
-
-          # impact band height: table vs a compact chart height, whichever is taller.
-          imp_band_in <- max(.grob_h_in(imp_tg[[1]]), 2.6)   # compact chart ~2.6in
-          # companion stack: sub-title (~0.28in) + table height, per item.
-          comp_in <- (0.28 + .grob_h_in(ov_tg[[1]])) + (0.28 + .grob_h_in(vt_tg[[1]]))
-          total_in <- imp_band_in + 0.4 + comp_in           # +0.4 spacing
-
-          if (facet_mode || multi_imp || multi_comp || total_in > USABLE_H_IN) {
-            # ---- SPLIT: impact on its own page, then 4+5 grouped (existing paths) ----
-            .charted_block("3. Predicted impact (severity order)", impact$dt,
-                           cat_col = impact$cat_col, chart_title = impact$chart_title)
-            .draw_grouped_tables(
-              list(list(title = "4. Overview",      dt = overview$dt),
-                   list(title = "5. Variant type",  dt = vartype$dt)),
-              page_title = "Summary tables")
-            return(invisible(FALSE))
-          }
-
-          # ---- ONE PAGE: impact table+chart band on top, 4 & 5 stacked below -------
-          grid::grid.newpage()
-          .section_header("3. Predicted impact (severity order)")
-          body <- grid::viewport(y = 0.46, height = 0.86)
-          grid::pushViewport(body)
-
-          # proportion of body for the impact band vs the companion tables, from inches.
-          band_frac <- max(0.30, min(0.55, imp_band_in / (imp_band_in + comp_in + 0.4)))
-          # impact band (top): table left, compact chart right. A small right gutter
-          # column keeps the chart's largest axis label clear of the page margin.
-          imp_g <- gridExtra::arrangeGrob(imp_tg[[1]], imp_cg, grid::nullGrob(), ncol = 3,
-                                          widths = grid::unit(c(0.45, 0.52, 0.03), "npc"))
-          band  <- grid::viewport(y = 1 - band_frac / 2, height = band_frac)
-          grid::pushViewport(band); grid::grid.draw(imp_g); grid::popViewport()
-
-          # companion tables (below the band): Overview then Variant type, sub-titled
-          sub_grobs <- list(); rel_h <- numeric(0)
-          for (it in list(list(title = "4. Overview", g = ov_tg[[1]], n = nrow(overview$dt)),
-                          list(title = "5. Variant type", g = vt_tg[[1]], n = nrow(vartype$dt)))) {
-            sub_grobs[[length(sub_grobs) + 1L]] <-
-              grid::textGrob(it$title, x = 0.02, just = "left",
-                             gp = grid::gpar(fontsize = 11, fontface = "bold", col = PHYLO_BLUE))
-            rel_h <- c(rel_h, 0.5)
-            sub_grobs[[length(sub_grobs) + 1L]] <- it$g
-            rel_h <- c(rel_h, max(1.0, it$n * 0.5))
-          }
-          sub_grobs[[length(sub_grobs) + 1L]] <- grid::nullGrob()   # bottom spacer
-          rel_h <- c(rel_h, sum(rel_h) * 0.15)
-          stacked <- gridExtra::arrangeGrob(grobs = sub_grobs, ncol = 1,
-                                            heights = grid::unit(rel_h, "null"))
-          lower <- grid::viewport(y = (1 - band_frac) / 2, height = 1 - band_frac - 0.02)
-          grid::pushViewport(lower); grid::grid.draw(stacked); grid::popViewport()
-
-          grid::popViewport()   # body
-          invisible(TRUE)
-        }
-
+        # ============================ DRIVE THE DEVICE ====================================
         tmp_pdf <- file.path(tempdir(), basename(final_pdf))
-        grDevices::pdf(tmp_pdf, width = 8.27, height = 11.69, onefile = TRUE)  # A4 portrait
-        on.exit(grDevices::dev.off(), add = TRUE)
-
-        # Page 1: title / metadata (ASCII only)
-        grid::grid.newpage()
-        grid::grid.text("germlinevaR - gvr_summary report", y = 0.78,
-                        gp = grid::gpar(fontsize = 22, fontface = "bold", col = PHYLO_BLUE))
-        meta_lines <- c(
-          sprintf("Output folder: %s", file.path(meta$out_dir, "gvr_summary")),
-          sprintf("Generated: %s", meta$generated),
-          "",
-          sprintf("Samples (%d): %s", meta$n_samples, paste(meta$samples, collapse = ", ")),
-          sprintf("Total variants: %s", format(meta$n_total, big.mark = ",")),
-          sprintf("Distinct genes (known): %s", format(meta$n_genes, big.mark = ",")),
-          sprintf("Variants with no gene symbol: %s", format(meta$n_nogene, big.mark = ",")))
-        grid::grid.text(paste(meta_lines, collapse = "\n"), x = 0.5, y = 0.5,
-                        gp = grid::gpar(fontsize = 12), just = "center")
-        grid::grid.text("germlinevaR :: VEP germline VCF -> MAF toolkit", y = 0.07,
-                        gp = grid::gpar(fontsize = 9, col = "grey50"))
-
-        # --- Charted sections: each table shown together with its bar chart ---
-        # (tall tables -> full-width with chart below; short tables -> side-by-side).
-        .charted_block("1. Top genes (by total variants)", sections$top_genes,
-                       cat_col = "Hugo_Symbol", top = 15L,
-                       chart_title = "Top 15 genes (per sample)")
-        .charted_block("2. Variant classification", sections$variant_classification,
-                       cat_col = "Variant_Classification",
-                       chart_title = "Variant classification (per sample)")
-
-        # Sections 3 (Predicted impact, charted) + 4 (Overview) + 5 (Variant type)
-        # share ONE page when they fit (measured), else auto-split (see fn).
-        .impact_combined_block(
-          impact   = list(dt = sections$impact, cat_col = "IMPACT",
-                          chart_title = "Predicted impact (per sample)"),
-          overview = list(dt = sections$overview),
-          vartype  = list(dt = sections$variant_type))
-
-        # Section 6 (Clinical significance) on its own grouped page (19 tokens).
-        .draw_grouped_tables(
-          list(list(title = "6. Clinical significance (CLIN_SIG tokens)",
-                    dt = sections$clin_sig)),
-          page_title = "Summary tables")
-
-        grDevices::dev.off(); on.exit()   # close device now so the file is complete before copy
+        grDevices::cairo_pdf(tmp_pdf, width = W, height = H, onefile = TRUE)
+        cairo_dev <- grDevices::dev.cur()
+        on.exit(if (cairo_dev %in% grDevices::dev.list()) grDevices::dev.off(cairo_dev), add = TRUE)
+        np <- .make_new_page()
+        .render_hero(np)
+        .render_reference(np, target_dev = cairo_dev)
+        if (cairo_dev %in% grDevices::dev.list()) grDevices::dev.off(cairo_dev)
+        on.exit()
         if (!file.exists(tmp_pdf) || file.info(tmp_pdf)$size == 0)
           stop("PDF device produced no/zero-byte file.")
         system2("cp", c("-f", shQuote(tmp_pdf), shQuote(final_pdf)))
