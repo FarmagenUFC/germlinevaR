@@ -23,9 +23,11 @@ read.gvr(
   abraom_path = NULL,
   abraom_url =
     "https://abraom.ib.usp.br/download/ABRaOM_60+_SABE_609_exomes_annotated.gz",
+  cache_dir = NULL,
   min_DP = 10,
   min_GQ = 30,
   genes = NULL,
+  vc_nonSyn = FALSE,
   ncores = 1L,
   verbose = TRUE
 )
@@ -80,10 +82,17 @@ Default \code{FALSE}.}
 frequency as \code{ABraOM_AF}.}
 
 \item{abraom_path}{Path to a local ABraOM annotation file. \code{NULL} (default) uses an
-auto-managed cache, downloading from \code{abraom_url} if needed.}
+auto-managed cache (see \code{cache_dir}), downloading from \code{abraom_url} if needed.}
 
 \item{abraom_url}{URL of the ABraOM SABE-609 annotated release used when
 \code{abraom_path} is \code{NULL}.}
+
+\item{cache_dir}{Directory for the ABraOM reference cache (used only when
+\code{abraom_path} is \code{NULL}). \code{NULL} (default) uses
+\code{tools::R_user_dir("germlinevaR", "cache")}, which resolves to a
+platform-appropriate directory (e.g. \verb{~/.cache/R/germlinevaR} on Linux).
+The directory is created on first download. Set explicitly if you prefer a
+custom location.}
 
 \item{min_DP}{Numeric; keep only records with \code{DP > min_DP}. \code{NULL} (or \code{NA})
 disables the depth filter. Default \code{10}.}
@@ -93,6 +102,17 @@ disables the genotype-quality filter. Default \code{30}.}
 
 \item{genes}{Character vector of \code{Hugo_Symbol}s to keep (exact, case-insensitive),
 or \code{NULL} (default) to keep all genes.}
+
+\item{vc_nonSyn}{Logical or character vector. Controls which
+\code{Variant_Classification} values are retained (mirroring maftools'
+\code{vc_nonSyn} argument). \code{FALSE} (default) keeps ALL variant classifications.
+\code{TRUE} keeps only protein-altering classes (High/Moderate VEP consequences):
+\code{"Frame_Shift_Del"}, \code{"Frame_Shift_Ins"}, \code{"Splice_Site"},
+\code{"Translation_Start_Site"}, \code{"Nonsense_Mutation"}, \code{"Nonstop_Mutation"},
+\code{"In_Frame_Del"}, \code{"In_Frame_Ins"}, \code{"Missense_Mutation"}. Alternatively,
+pass a custom character vector of classifications to keep. Rows with
+missing/blank \code{Variant_Classification} are always removed when this filter
+is active.}
 
 \item{ncores}{Integer; number of worker processes for converting MULTIPLE input
 files in parallel via \code{\link[parallel:mcdummies]{parallel::mclapply()}} (fork-based; Unix/macOS only).

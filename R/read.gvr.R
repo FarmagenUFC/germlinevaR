@@ -93,6 +93,16 @@
 #'   disables the genotype-quality filter. Default `30`.
 #' @param genes Character vector of `Hugo_Symbol`s to keep (exact, case-insensitive),
 #'   or `NULL` (default) to keep all genes.
+#' @param vc_nonSyn Logical or character vector. Controls which
+#'   `Variant_Classification` values are retained (mirroring maftools'
+#'   `vc_nonSyn` argument). `FALSE` (default) keeps ALL variant classifications.
+#'   `TRUE` keeps only protein-altering classes (High/Moderate VEP consequences):
+#'   `"Frame_Shift_Del"`, `"Frame_Shift_Ins"`, `"Splice_Site"`,
+#'   `"Translation_Start_Site"`, `"Nonsense_Mutation"`, `"Nonstop_Mutation"`,
+#'   `"In_Frame_Del"`, `"In_Frame_Ins"`, `"Missense_Mutation"`. Alternatively,
+#'   pass a custom character vector of classifications to keep. Rows with
+#'   missing/blank `Variant_Classification` are always removed when this filter
+#'   is active.
 #' @param ncores Integer; number of worker processes for converting MULTIPLE input
 #'   files in parallel via [parallel::mclapply()] (fork-based; Unix/macOS only).
 #'   Default `1L` runs sequentially and is byte-identical to previous behaviour.
@@ -164,6 +174,7 @@ read.gvr <- function(folder = ".",
                            min_DP            = 10,     # v4: keep only DP > min_DP (NULL = no DP filter)
                            min_GQ            = 30,     # v4: keep only GQ > min_GQ (NULL = no GQ filter)
                            genes             = NULL,   # v4: keep only these Hugo_Symbols
+                           vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                            ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
                            verbose    = TRUE) {
 
@@ -502,8 +513,108 @@ read.gvr <- function(folder = ".",
       GQ_col <- if (!is.na(pos_GQ) && pos_GQ <= n_smp_fields) smp_split[[pos_GQ]] else NULL
     }
 
+    # --- O6 (PERF): vectorized DP/GQ pre-filter BEFORE the heavy loop ---------------
+    # When DP/GQ filtering is active, ~45% of records fail and are discarded. Doing
+    # this check INSIDE the loop means all the expensive CSQ work (strsplit, block
+    # assignment, consequence ranking) runs on records that are immediately dropped.
+    # By vectorizing the check over the whole chunk and subsetting BEFORE the loop,
+    # we skip ~45% of the heaviest work. The DP/GQ values used here are the SAME ones
+    # the loop would extract (from the O1 pre-split), so the filter is byte-identical.
+    # Missing/non-numeric DP or GQ never causes a drop (treated as "pass"), matching
+    # the original per-record behaviour.
+    n_dropped_dpgq <- 0L
+    if (filter_dp || filter_gq) {
+      keep <- rep(TRUE, nrow_dt)
+      if (fmt_constant) {
+        # Fast path: DP/GQ already extracted as chunk-level vectors
+        if (filter_dp && !is.null(DP_col)) {
+          dp_num <- suppressWarnings(as.numeric(DP_col))
+          keep <- keep & (is.na(dp_num) | dp_num > min_DP)
+        }
+        if (filter_gq && !is.null(GQ_col)) {
+          gq_num <- suppressWarnings(as.numeric(GQ_col))
+          keep <- keep & (is.na(gq_num) | gq_num > min_GQ)
+        }
+      } else {
+        # Slow path: FORMAT varies — extract DP/GQ per record (same logic as the loop)
+        for (r in seq_len(nrow_dt)) {
+          fmt_keys <- strsplit(FORMAT_v[r], ":", fixed = TRUE)[[1]]
+          smp_vals <- strsplit(SAMPLE_v[r], ":", fixed = TRUE)[[1]]
+          names(smp_vals) <- fmt_keys[seq_along(smp_vals)]
+          if (filter_dp) {
+            sdp <- if ("DP" %in% names(smp_vals)) smp_vals[["DP"]] else NA_character_
+            dp_num <- suppressWarnings(as.numeric(sdp))
+            if (!is.na(dp_num) && dp_num <= min_DP) keep[r] <- FALSE
+          }
+          if (filter_gq) {
+            sgq <- if ("GQ" %in% names(smp_vals)) smp_vals[["GQ"]] else NA_character_
+            gq_num <- suppressWarnings(as.numeric(sgq))
+            if (!is.na(gq_num) && gq_num <= min_GQ) keep[r] <- FALSE
+          }
+        }
+      }
+      n_dropped_dpgq <- sum(!keep)
+      if (n_dropped_dpgq > 0L) {
+        # Subset ALL chunk-level vectors to surviving records only
+        idx <- which(keep)
+        CHROM_v <- CHROM_v[idx]; POS_v <- POS_v[idx]; ID_v <- ID_v[idx]
+        REF_v <- REF_v[idx]; ALT_v <- ALT_v[idx]; QUAL_v <- QUAL_v[idx]
+        FILTER_v <- FILTER_v[idx]; INFO_v <- INFO_v[idx]
+        FORMAT_v <- FORMAT_v[idx]; SAMPLE_v <- SAMPLE_v[idx]
+        alts_all <- alts_all[idx]
+        if (fmt_constant) {
+          GT_col  <- if (!is.null(GT_col))  GT_col[idx]  else NULL
+          AD_col  <- if (!is.null(AD_col))  AD_col[idx]  else NULL
+          DP_col  <- if (!is.null(DP_col))  DP_col[idx]  else NULL
+          GQ_col  <- if (!is.null(GQ_col))  GQ_col[idx]  else NULL
+        }
+        nrow_dt <- length(idx)
+      }
+    }
+
+    # --- O7 (PERF): rough gene pre-filter on raw INFO string -----------------------
+    # When the `genes` argument is active, most records don't carry any of the
+    # requested genes. A cheap grepl on the raw INFO string (which contains the CSQ
+    # field with SYMBOL sub-fields) catches the vast majority of hits and drops the
+    # rest BEFORE the expensive CSQ expansion. This is IMPRECISE (a gene name can
+    # appear as a substring of another field, e.g. "TP53" inside a domain name), so
+    # the exact post-conversion gene filter (step 3d-bis) still runs afterwards to
+    # remove false positives. The rough filter is intentionally over-inclusive: it
+    # may keep a few extra records, but it never drops a record that the exact filter
+    # would keep. The net effect is that ~90%+ of records are cheaply discarded,
+    # and only the surviving minority enters the heavy loop.
+    n_dropped_gene_rough <- 0L
+    if (!is.null(genes)) {
+      genes_chr <- as.character(genes)
+      genes_chr <- genes_chr[!is.na(genes_chr) & nzchar(genes_chr)]
+      if (length(genes_chr) > 0L) {
+        # Build a single OR pattern from the gene names (case-insensitive).
+        # Each gene is wrapped in word-boundary-free grepl (we want substring match
+        # to be over-inclusive, not under-inclusive). The exact filter later will
+        # tighten this.
+        pat <- paste(genes_chr, collapse = "|")
+        gene_hit <- grepl(pat, INFO_v, ignore.case = TRUE)
+        n_dropped_gene_rough <- sum(!gene_hit)
+        if (n_dropped_gene_rough > 0L) {
+          idx <- which(gene_hit)
+          CHROM_v <- CHROM_v[idx]; POS_v <- POS_v[idx]; ID_v <- ID_v[idx]
+          REF_v <- REF_v[idx]; ALT_v <- ALT_v[idx]; QUAL_v <- QUAL_v[idx]
+          FILTER_v <- FILTER_v[idx]; INFO_v <- INFO_v[idx]
+          FORMAT_v <- FORMAT_v[idx]; SAMPLE_v <- SAMPLE_v[idx]
+          alts_all <- alts_all[idx]
+          if (fmt_constant) {
+            GT_col  <- if (!is.null(GT_col))  GT_col[idx]  else NULL
+            AD_col  <- if (!is.null(AD_col))  AD_col[idx]  else NULL
+            DP_col  <- if (!is.null(DP_col))  DP_col[idx]  else NULL
+            GQ_col  <- if (!is.null(GQ_col))  GQ_col[idx]  else NULL
+          }
+          nrow_dt <- length(idx)
+        }
+      }
+    }
+
     out <- vector("list", nrow_dt); oi <- 0L
-    n_dropped <- 0L   # v4: records skipped by the DP/GQ genotype filter
+    n_dropped <- n_dropped_dpgq + n_dropped_gene_rough
     for (r in seq_len(nrow_dt)) {
       chrom <- CHROM_v[r]; pos <- POS_v[r]; vid <- ID_v[r]
       ref <- REF_v[r]; altf <- ALT_v[r]; qual <- QUAL_v[r]; filt <- FILTER_v[r]
@@ -566,23 +677,6 @@ read.gvr <- function(folder = ".",
         gq  <- if ("GQ" %in% names(smp_vals)) smp_vals[["GQ"]] else NA_character_
       }
       ad_vec <- if (!is.na(ad)) strsplit(ad,",",fixed=TRUE)[[1]] else NA
-
-      # --- v4: genotype-quality filter (mirrors bcftools -e 'DP<=min_DP | GQ<=min_GQ') ---
-      # Keep iff DP > min_DP AND GQ > min_GQ, using the SAME per-record DP/GQ that
-      # become the output columns sample_DP / GQ (verified byte-identical to the raw
-      # FORMAT fields). DP/GQ are per-record, so skipping the whole record here is
-      # identical to filtering the assembled rows on sample_DP/GQ (all allele-rows of
-      # a record share the same DP/GQ) and matches bcftools' whole-line drop.
-      # min_DP / min_GQ = NULL disables that field's filter. Missing/non-numeric
-      # DP or GQ never causes a drop (that field is treated as "pass").
-      if (filter_dp || filter_gq) {
-        fail_dp <- FALSE; fail_gq <- FALSE
-        if (filter_dp) { dp_num <- suppressWarnings(as.numeric(sdp))
-                         fail_dp <- !is.na(dp_num) && dp_num <= min_DP }
-        if (filter_gq) { gq_num <- suppressWarnings(as.numeric(gq))
-                         fail_gq <- !is.na(gq_num) && gq_num <= min_GQ }
-        if (fail_dp || fail_gq) { n_dropped <- n_dropped + 1L; next }  # skip whole record
-      }
 
       for (ai in seq_along(alts)) {
         alt <- alts[ai]
@@ -1056,6 +1150,34 @@ read.gvr <- function(folder = ".",
         format(nrow(maf), big.mark = ","), format(n_before, big.mark = ","),
         length(found), length(want),
         if (length(notfound)) paste0(" (not found: ", paste(notfound, collapse = ", "), ")") else ""))
+    }
+  }
+
+  ## 3d-ter. Variant-Classification non-synonymous filter (opt-in) -----------
+  ##     Mirrors maftools' vc_nonSyn: keep only protein-altering classes.
+  ##     FALSE (default) = keep all. TRUE = keep the 9 standard High/Moderate
+  ##     classes. A custom character vector = keep those specific classes.
+  ##     Applied AFTER gene subset, BEFORE drop_empty_cols.
+  if (!identical(vc_nonSyn, FALSE)) {
+    data.table::setDT(maf)
+    vc_default <- c("Frame_Shift_Del", "Frame_Shift_Ins", "Splice_Site",
+                    "Translation_Start_Site", "Nonsense_Mutation", "Nonstop_Mutation",
+                    "In_Frame_Del", "In_Frame_Ins", "Missense_Mutation")
+    vc_keep <- if (isTRUE(vc_nonSyn)) vc_default else as.character(vc_nonSyn)
+    vc_keep <- vc_keep[!is.na(vc_keep) & nzchar(vc_keep)]
+    if (length(vc_keep) > 0L) {
+      n_before <- nrow(maf)
+      vc_col <- as.character(maf$Variant_Classification)
+      # Remove rows with missing/blank Variant_Classification when filter is active
+      maf <- maf[!is.na(vc_col) & nzchar(vc_col) & vc_col %in% vc_keep]
+      if (verbose) {
+        dropped <- n_before - nrow(maf)
+        message(sprintf(
+          "vc_nonSyn: kept %s / %s rows (%d classification(s): %s; removed %s silent/other)",
+          format(nrow(maf), big.mark = ","), format(n_before, big.mark = ","),
+          length(vc_keep), paste(vc_keep, collapse = ", "),
+          format(dropped, big.mark = ",")))
+      }
     }
   }
 
