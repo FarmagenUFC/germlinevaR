@@ -15,8 +15,11 @@
 #'   \item gnomAD genome / VCF AF - `AF`                (+ `AF_keep_missing`)
 #'   \item ABraOM AF             - `ABraOM_AF`         (+ `ABraOM_AF_keep_missing`)
 #'   \item Clinical significance  - `clin_sig_terms`    (+ `clin_sig_keep_missing`)
+#'   \item Remove benign          - `remove_benign`
 #'   \item Biotype                - `biotype_keep`
 #'   \item Genotype exclusion     - `gt_exclude`
+#'   \item Variant classification - `vc_nonSyn`
+#'   \item Gene subset            - `genes`
 #' }
 #'
 #' Important data notes (true of [read.gvr()] output):
@@ -47,26 +50,41 @@
 #'   frequency). `NULL` disables this filter. Default 0.01.
 #' @param ABraOM_AF Numeric upper threshold for the Brazilian-cohort (ABraOM SABE 609)
 #'   column `ABraOM_AF`. `NULL` disables this filter. Default 0.01.
-#' @param gnomADe_AF_keep_missing Logical; if TRUE, keep rows whose `gnomADe_AF` is
-#'   missing (NA or ""); if FALSE (default) drop them. Matches the literal dplyr example
-#'   (missing -> dropped). Ignored when `gnomADe_AF` is NULL.
-#' @param AF_keep_missing Logical; missing-value handling for the `AF` filter. FALSE
-#'   (default) drops missing. Ignored when `AF` is NULL.
+#' @param gnomADe_AF_keep_missing Logical; if TRUE (default), keep rows whose
+#'   `gnomADe_AF` is missing (NA or ""); if FALSE drop them. Ignored when
+#'   `gnomADe_AF` is NULL.
+#' @param AF_keep_missing Logical; missing-value handling for the `AF` filter.
+#'   TRUE (default) keeps missing. Ignored when `AF` is NULL.
 #' @param ABraOM_AF_keep_missing Logical; missing-value handling for the ABraOM
-#'   filter. FALSE (default) drops missing. Set TRUE to retain variants absent from the
-#'   Brazilian cohort (where absence often means "not catalogued", not "common").
-#'   Ignored when `ABraOM_AF` is NULL.
+#'   filter. TRUE (default) retains variants absent from the Brazilian cohort
+#'   (where absence often means "not catalogued", not "common"). Ignored when
+#'   `ABraOM_AF` is NULL.
 #'
 #' @param clin_sig_terms Character vector of clinical-significance terms to keep
 #'   (substring, case-insensitive, OR-combined). `NULL` disables the CLIN_SIG filter.
 #'   Default: c("likely_pathogenic","pathogenic","uncertain_significance").
 #' @param clin_sig_keep_missing Logical; if TRUE (default) rows with missing CLIN_SIG
 #'   (NA/"") are kept. Only relevant when `clin_sig_terms` is non-NULL.
+#' @param remove_benign Logical; if TRUE, remove rows whose `CLIN_SIG` contains
+#'   "benign" (substring, case-insensitive). This catches `benign`,
+#'   `likely_benign`, and compound annotations like
+#'   `"uncertain_significance&likely_benign"`. Applied AFTER the `clin_sig_terms`
+#'   keep-filter, so a row that matched a wanted term but also contains "benign"
+#'   is still removed. `FALSE` (default) does not remove benign rows.
 #' @param biotype_keep Character vector of BIOTYPE values to keep (exact match via %in%).
 #'   `NULL` disables the biotype filter.
 #'   Default: c("protein_coding","protein_coding_LoF").
 #' @param gt_exclude Character vector of GT values to remove (exact match). `NULL`
 #'   disables the genotype filter. Default: c("0","0/0").
+#' @param vc_nonSyn Logical or character vector. Controls which
+#'   `Variant_Classification` values are retained. `FALSE` (default) keeps all.
+#'   `TRUE` keeps only the 9 protein-altering classes (Frame_Shift_Del,
+#'   Frame_Shift_Ins, Splice_Site, Translation_Start_Site, Nonsense_Mutation,
+#'   Nonstop_Mutation, In_Frame_Del, In_Frame_Ins, Missense_Mutation).
+#'   A custom character vector keeps only those classifications. Rows with
+#'   missing/blank `Variant_Classification` are removed when this filter is active.
+#' @param genes Character vector of `Hugo_Symbol`s to keep (exact, case-insensitive),
+#'   or `NULL` (default) to keep all genes.
 #' @param save_excel Logical; if TRUE, also write the FILTERED table to an `.xlsx`
 #'   workbook (single `"Filtered"` sheet) at `<out_dir>/<file_prefix>.xlsx`. Requires
 #'   the \pkg{openxlsx} package (a `Suggests` dependency); if it is not installed the
@@ -102,11 +120,18 @@
 #'
 #' ## Only the rarity filter on gnomAD exome AF, nothing else:
 #' gvr_filter(maf, gnomADe_AF = 0.001, AF = NULL, ABraOM_AF = NULL,
-#'            clin_sig_terms = NULL, biotype_keep = NULL, gt_exclude = NULL)
+#'            clin_sig_terms = NULL, biotype_keep = NULL, gt_exclude = NULL,
+#'            vc_nonSyn = FALSE, genes = NULL)
 #'
 #' ## Pathogenic-only (drop uncertain_significance), exact protein_coding:
 #' gvr_filter(maf, clin_sig_terms = c("pathogenic", "likely_pathogenic"),
 #'            biotype_keep = "protein_coding")
+#'
+#' ## Remove benign annotations (including likely_benign and compound entries):
+#' gvr_filter(maf, remove_benign = TRUE)
+#'
+#' ## Keep only protein-altering variants and a gene panel:
+#' gvr_filter(maf, vc_nonSyn = TRUE, genes = c("TP53", "BRCA1", "BRCA2"))
 #' }
 #'
 #' @importFrom data.table as.data.table
@@ -116,15 +141,18 @@ gvr_filter <- function(maf,
                        gnomADe_AF = 0.01,
                        AF = 0.01,
                        ABraOM_AF = 0.01,
-                       gnomADe_AF_keep_missing = FALSE,
-                       AF_keep_missing = FALSE,
-                       ABraOM_AF_keep_missing = FALSE,
+                       gnomADe_AF_keep_missing = TRUE,
+                       AF_keep_missing = TRUE,
+                       ABraOM_AF_keep_missing = TRUE,
                        clin_sig_terms = c("likely_pathogenic",
                                           "pathogenic",
                                           "uncertain_significance"),
                        clin_sig_keep_missing = TRUE,
+                       remove_benign = FALSE,
                        biotype_keep = c("protein_coding", "protein_coding_LoF"),
                        gt_exclude = c("0", "0/0"),
+                       vc_nonSyn = FALSE,
+                       genes = NULL,
                        save_excel = FALSE,
                        out_dir = NULL,
                        file_prefix = "gvr_filter",
@@ -152,6 +180,12 @@ gvr_filter <- function(maf,
     }
   }
 
+  # --- Standard vc_nonSyn classes (same as read.gvr) --------------------------
+  .vc_nonSyn_default <- c("Frame_Shift_Del", "Frame_Shift_Ins", "Splice_Site",
+                           "Translation_Start_Site", "Nonsense_Mutation",
+                           "Nonstop_Mutation", "In_Frame_Del", "In_Frame_Ins",
+                           "Missense_Mutation")
+
   # --- AF filter specs: each is an independent, NULL-disabled argument --------
   #     (kept in one table so all three columns share identical logic) ---------
   af_specs <- list(
@@ -165,8 +199,11 @@ gvr_filter <- function(maf,
   needed <- character(0)
   if (length(af_active) > 0) needed <- c(needed, vapply(af_active, `[[`, "", "col"))
   if (!is.null(clin_sig_terms) && length(clin_sig_terms) > 0) needed <- c(needed, "CLIN_SIG")
+  if (isTRUE(remove_benign))                                  needed <- c(needed, "CLIN_SIG")
   if (!is.null(biotype_keep)   && length(biotype_keep)   > 0) needed <- c(needed, "BIOTYPE")
   if (!is.null(gt_exclude)     && length(gt_exclude)     > 0) needed <- c(needed, "GT")
+  if (!identical(vc_nonSyn, FALSE))                            needed <- c(needed, "Variant_Classification")
+  if (!is.null(genes)         && length(genes)          > 0) needed <- c(needed, "Hugo_Symbol")
   needed <- unique(needed)
   missing_cols <- needed[needed %notin% names(dt)]
   if (length(missing_cols) > 0) {
@@ -217,7 +254,21 @@ gvr_filter <- function(maf,
   }
 
   # ============================================================================
-  # 5. Biotype keep-set
+  # 5. Remove benign (substring match on CLIN_SIG, after clin_sig_terms filter)
+  # ============================================================================
+  if (isTRUE(remove_benign)) {
+    before <- nrow(dt)
+    cs <- dt[["CLIN_SIG"]]
+    # Remove any row whose CLIN_SIG contains "benign" (case-insensitive).
+    # This catches: benign, likely_benign, uncertain_significance&likely_benign, etc.
+    # Missing/blank CLIN_SIG is NOT removed (benign is absent, so keep).
+    has_benign <- grepl("benign", cs, ignore.case = TRUE) & !.is_missing(cs)
+    dt <- dt[!has_benign]
+    .log_step("CLIN_SIG remove benign", before, nrow(dt))
+  }
+
+  # ============================================================================
+  # 6. Biotype keep-set
   # ============================================================================
   if (!is.null(biotype_keep) && length(biotype_keep) > 0) {
     before <- nrow(dt)
@@ -227,13 +278,43 @@ gvr_filter <- function(maf,
   }
 
   # ============================================================================
-  # 6. Genotype exclusion
+  # 7. Genotype exclusion
   # ============================================================================
   if (!is.null(gt_exclude) && length(gt_exclude) > 0) {
     before <- nrow(dt)
     keep <- dt[["GT"]] %notin% gt_exclude
     dt <- dt[keep]
     .log_step("GT exclude", before, nrow(dt))
+  }
+
+  # ============================================================================
+  # 8. Variant classification (vc_nonSyn)
+  # ============================================================================
+  if (!identical(vc_nonSyn, FALSE)) {
+    vc_keep <- if (isTRUE(vc_nonSyn)) .vc_nonSyn_default else as.character(vc_nonSyn)
+    vc_keep <- vc_keep[!is.na(vc_keep) & nzchar(vc_keep)]
+    if (length(vc_keep) > 0L) {
+      before <- nrow(dt)
+      vc <- dt[["Variant_Classification"]]
+      # Remove rows with missing/blank Variant_Classification when filter is active
+      keep <- !.is_missing(vc) & vc %in% vc_keep
+      dt <- dt[keep]
+      .log_step("Variant_Classification keep", before, nrow(dt))
+    }
+  }
+
+  # ============================================================================
+  # 9. Gene subset (exact, case-insensitive)
+  # ============================================================================
+  if (!is.null(genes) && length(genes) > 0L) {
+    genes_chr <- as.character(genes)
+    genes_chr <- genes_chr[!is.na(genes_chr) & nzchar(genes_chr)]
+    if (length(genes_chr) > 0L) {
+      before <- nrow(dt)
+      keep <- toupper(trimws(as.character(dt[["Hugo_Symbol"]]))) %in% toupper(genes_chr)
+      dt <- dt[keep]
+      .log_step("Hugo_Symbol gene subset", before, nrow(dt))
+    }
   }
 
   if (isTRUE(verbose)) {
@@ -244,7 +325,7 @@ gvr_filter <- function(maf,
   }
 
   # ============================================================================
-  # 7. Optional Excel export of the FILTERED table  ->  <out_dir>/<file_prefix>.xlsx
+  # 10. Optional Excel export of the FILTERED table  ->  <out_dir>/<file_prefix>.xlsx
   # ============================================================================
   # Off by default: save_excel = FALSE returns the filtered data.table exactly as
   # before (write is a pure side effect; the return value is identical either way).

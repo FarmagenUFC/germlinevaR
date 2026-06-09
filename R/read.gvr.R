@@ -572,27 +572,31 @@ read.gvr <- function(folder = ".",
       }
     }
 
+
     # --- O7 (PERF): rough gene pre-filter on raw INFO string -----------------------
     # When the `genes` argument is active, most records don't carry any of the
     # requested genes. A cheap grepl on the raw INFO string (which contains the CSQ
-    # field with SYMBOL sub-fields) catches the vast majority of hits and drops the
-    # rest BEFORE the expensive CSQ expansion. This is IMPRECISE (a gene name can
-    # appear as a substring of another field, e.g. "TP53" inside a domain name), so
-    # the exact post-conversion gene filter (step 3d-bis) still runs afterwards to
-    # remove false positives. The rough filter is intentionally over-inclusive: it
-    # may keep a few extra records, but it never drops a record that the exact filter
-    # would keep. The net effect is that ~90%+ of records are cheaply discarded,
-    # and only the surviving minority enters the heavy loop.
+    # field with pipe-delimited SYMBOL sub-fields) catches the vast majority of hits
+    # and drops the rest BEFORE the expensive CSQ expansion.
+    #
+    # CRITICAL: gene names in the CSQ field are pipe-delimited (field 4 of each
+    # CSQ block), e.g. "T|missense_variant|MODIFIER|TP53|ENSG...". A bare
+    # grepl("RET", INFO) would match "INTERVAL", "INTER", etc. — keeping ~65% of
+    # records instead of ~0.05%. The fix is to match |GENE| (gene name between
+    # pipes), which is precise enough for a rough filter while still being
+    # over-inclusive (a gene name could appear in another pipe-delimited field like
+    # DOMAINS). The exact post-conversion gene filter (step 3d-bis) removes false
+    # positives. The rough filter never drops a record that the exact filter would
+    # keep.
     n_dropped_gene_rough <- 0L
     if (!is.null(genes)) {
       genes_chr <- as.character(genes)
       genes_chr <- genes_chr[!is.na(genes_chr) & nzchar(genes_chr)]
       if (length(genes_chr) > 0L) {
-        # Build a single OR pattern from the gene names (case-insensitive).
-        # Each gene is wrapped in word-boundary-free grepl (we want substring match
-        # to be over-inclusive, not under-inclusive). The exact filter later will
-        # tighten this.
-        pat <- paste(genes_chr, collapse = "|")
+        # Pipe-delimited pattern: |GENE| for each gene.
+        # This matches gene names as CSQ field values (between pipes) without
+        # matching substrings like "RET" inside "INTERVAL".
+        pat <- paste0(paste0("\\|", genes_chr, "\\|"), collapse = "|")
         gene_hit <- grepl(pat, INFO_v, ignore.case = TRUE)
         n_dropped_gene_rough <- sum(!gene_hit)
         if (n_dropped_gene_rough > 0L) {
@@ -613,8 +617,62 @@ read.gvr <- function(folder = ".",
       }
     }
 
+    # --- O8 (PERF): rough vc_nonSyn pre-filter on raw INFO string ------------------
+    # When vc_nonSyn is active, ~90% of records are silent (Intron, Silent, IGR, etc.)
+    # and will be dropped by the post-conversion filter. But by then the expensive CSQ
+    # expansion has already run on ALL of them. The VEP consequence terms that map to
+    # the 9 non-synonymous MAF classes are known and finite. If NONE of these terms
+    # appear anywhere in the CSQ string, the record CANNOT produce a non-synonymous row.
+    # A grepl on the raw INFO string drops ~90% of records before the heavy loop.
+    # The exact post-conversion vc_nonSyn filter (step 3d-ter) then tightens any
+    # edge cases. This is the same rough-grepl + exact-post-filter architecture as O7.
+    n_dropped_vc_rough <- 0L
+    if (!identical(vc_nonSyn, FALSE)) {
+      # VEP consequence terms that map to the 9 non-synonymous MAF classes.
+      # These are the ONLY terms whose most-severe-rank can produce a protein-altering
+      # Variant_Classification. If none appear in the Consequence field (field 2 of
+      # each CSQ block), the record is guaranteed silent.
+      # Note: we use pipe-delimited matching (|TERM| or |TERM&) to avoid false
+      # positives like "variant" inside "splice_region_variant". The Consequence
+      # field (CSQ field #2) is pipe-delimited like all CSQ fields, and compound
+      # consequences use & as separator (e.g. "missense_variant&splice_region_variant").
+      nonSyn_vep_terms <- c(
+        "splice_acceptor_variant", "splice_donor_variant",
+        "transcript_ablation", "exon_loss_variant",
+        "stop_gained", "stop_lost", "start_lost",
+        "initiator_codon_variant",
+        "missense_variant", "conservative_missense_variant",
+        "rare_amino_acid_variant", "protein_altering_variant",
+        "coding_sequence_variant",
+        "frameshift_variant",
+        "inframe_insertion", "inframe_deletion",
+        "disruptive_inframe_insertion", "disruptive_inframe_deletion"
+      )
+      # Build pipe-delimited pattern for each term.
+      # Consequence is field #2 in CSQ, so it appears as |TERM| or |TERM&...|
+      # Using |TERM ensures we match the field boundary without substring issues.
+      pat_vc <- paste0(paste0("\\|", nonSyn_vep_terms, "(\\||&)"), collapse = "|")
+      vc_hit <- grepl(pat_vc, INFO_v, ignore.case = FALSE)  # VEP terms are lowercase
+      n_dropped_vc_rough <- sum(!vc_hit)
+      if (n_dropped_vc_rough > 0L) {
+        idx <- which(vc_hit)
+        CHROM_v <- CHROM_v[idx]; POS_v <- POS_v[idx]; ID_v <- ID_v[idx]
+        REF_v <- REF_v[idx]; ALT_v <- ALT_v[idx]; QUAL_v <- QUAL_v[idx]
+        FILTER_v <- FILTER_v[idx]; INFO_v <- INFO_v[idx]
+        FORMAT_v <- FORMAT_v[idx]; SAMPLE_v <- SAMPLE_v[idx]
+        alts_all <- alts_all[idx]
+        if (fmt_constant) {
+          GT_col  <- if (!is.null(GT_col))  GT_col[idx]  else NULL
+          AD_col  <- if (!is.null(AD_col))  AD_col[idx]  else NULL
+          DP_col  <- if (!is.null(DP_col))  DP_col[idx]  else NULL
+          GQ_col  <- if (!is.null(GQ_col))  GQ_col[idx]  else NULL
+        }
+        nrow_dt <- length(idx)
+      }
+    }
+
     out <- vector("list", nrow_dt); oi <- 0L
-    n_dropped <- n_dropped_dpgq + n_dropped_gene_rough
+    n_dropped <- n_dropped_dpgq + n_dropped_gene_rough + n_dropped_vc_rough
     for (r in seq_len(nrow_dt)) {
       chrom <- CHROM_v[r]; pos <- POS_v[r]; vid <- ID_v[r]
       ref <- REF_v[r]; altf <- ALT_v[r]; qual <- QUAL_v[r]; filt <- FILTER_v[r]
