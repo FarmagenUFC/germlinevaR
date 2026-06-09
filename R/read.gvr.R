@@ -78,9 +78,15 @@
 #' @param add_abraom Logical; if `TRUE` (default) join the ABraOM SABE-609 allele
 #'   frequency as `ABraOM_AF`.
 #' @param abraom_path Path to a local ABraOM annotation file. `NULL` (default) uses an
-#'   auto-managed cache, downloading from `abraom_url` if needed.
+#'   auto-managed cache (see `cache_dir`), downloading from `abraom_url` if needed.
 #' @param abraom_url URL of the ABraOM SABE-609 annotated release used when
 #'   `abraom_path` is `NULL`.
+#' @param cache_dir Directory for the ABraOM reference cache (used only when
+#'   `abraom_path` is `NULL`). `NULL` (default) uses
+#'   `tools::R_user_dir("germlinevaR", "cache")`, which resolves to a
+#'   platform-appropriate directory (e.g. `~/.cache/R/germlinevaR` on Linux).
+#'   The directory is created on first download. Set explicitly if you prefer a
+#'   custom location.
 #' @param min_DP Numeric; keep only records with `DP > min_DP`. `NULL` (or `NA`)
 #'   disables the depth filter. Default `10`.
 #' @param min_GQ Numeric; keep only records with `GQ > min_GQ`. `NULL` (or `NA`)
@@ -154,6 +160,7 @@ read.gvr <- function(folder = ".",
                            add_abraom        = TRUE,   # v3: join ABraOM SABE609 AF
                            abraom_path       = NULL,   # v3: local file; NULL=auto cache
                            abraom_url        = "https://abraom.ib.usp.br/download/ABRaOM_60+_SABE_609_exomes_annotated.gz",
+                           cache_dir         = NULL,   # v7: ABraOM cache dir; NULL = tools::R_user_dir()
                            min_DP            = 10,     # v4: keep only DP > min_DP (NULL = no DP filter)
                            min_GQ            = 30,     # v4: keep only GQ > min_GQ (NULL = no GQ filter)
                            genes             = NULL,   # v4: keep only these Hugo_Symbols
@@ -931,16 +938,21 @@ read.gvr <- function(folder = ".",
     # Resolve the ABraOM file: explicit path, else cached copy, else download.
     apath <- abraom_path
     if (is.null(apath)) {
-      cache_dir <- "/mnt/shared-workspace/abraom"
+      cache_dir <- if (!is.null(cache_dir)) cache_dir
+                   else tools::R_user_dir("germlinevaR", which = "cache")
       apath <- file.path(cache_dir, "ABRaOM_60plus_SABE_609_exomes_annotated.gz")
       if (!file.exists(apath) || file.info(apath)$size < 1e7) {
         ok <- tryCatch({
-          # FUSE-backed mounts (e.g. /mnt/shared-workspace) can silently fail
-          # on R's dir.create(); use shell mkdir -p and verify the directory exists.
           if (!dir.exists(cache_dir)) {
-            system2("mkdir", c("-p", shQuote(cache_dir)))
-            if (!dir.exists(cache_dir))
-              stop("cannot create cache directory: ", cache_dir)
+            dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+            # dir.create can silently fail on some mounts; verify and retry via shell
+            if (!dir.exists(cache_dir)) {
+              system2("mkdir", c("-p", shQuote(cache_dir)))
+              if (!dir.exists(cache_dir))
+                stop("cannot create cache directory: ", cache_dir,
+                     ". Set cache_dir= to a writable path, or download the ABraOM file ",
+                     "manually and pass it via abraom_path=.")
+            }
           }
           if (verbose) message("ABraOM: downloading reference file (one-time) ...")
           utils::download.file(abraom_url, apath, mode = "wb", quiet = TRUE)
