@@ -985,8 +985,8 @@ read.gvr <- function(folder = ".",
     }
 
     if (ok) {
-      ab <- tryCatch(data.table::fread(apath, sep = "\t", header = TRUE, quote = "",
-                           showProgress = FALSE), error = function(e) NULL)
+      ab <- tryCatch(suppressWarnings(data.table::fread(apath, sep = "\t", header = TRUE, quote = "",
+                           showProgress = FALSE)), error = function(e) NULL)
       if (is.null(ab)) {
         warning("read.gvr: ABraOM reference unreadable; 'ABraOM_AF' left blank.",
                 call. = FALSE)
