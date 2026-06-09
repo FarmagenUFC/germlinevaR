@@ -935,7 +935,13 @@ read.gvr <- function(folder = ".",
       apath <- file.path(cache_dir, "ABRaOM_60plus_SABE_609_exomes_annotated.gz")
       if (!file.exists(apath) || file.info(apath)$size < 1e7) {
         ok <- tryCatch({
-          dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+          # FUSE-backed mounts (e.g. /mnt/shared-workspace) can silently fail
+          # on R's dir.create(); use shell mkdir -p and verify the directory exists.
+          if (!dir.exists(cache_dir)) {
+            system2("mkdir", c("-p", shQuote(cache_dir)))
+            if (!dir.exists(cache_dir))
+              stop("cannot create cache directory: ", cache_dir)
+          }
           if (verbose) message("ABraOM: downloading reference file (one-time) ...")
           utils::download.file(abraom_url, apath, mode = "wb", quiet = TRUE)
           file.exists(apath) && file.info(apath)$size > 1e7
