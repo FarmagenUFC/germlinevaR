@@ -941,7 +941,17 @@ read.gvr <- function(folder = ".",
       cache_dir <- if (!is.null(cache_dir)) cache_dir
                    else tools::R_user_dir("germlinevaR", which = "cache")
       apath <- file.path(cache_dir, "ABRaOM_60plus_SABE_609_exomes_annotated.gz")
-      if (!file.exists(apath) || file.info(apath)$size < 1e7) {
+      # Known good size for the ABraOM reference (~50 MB gzipped). Used to detect
+      # truncated partial downloads (e.g. from a timeout) that would crash fread().
+      abraom_expected_bytes <- 50242984L
+      need_dl <- !file.exists(apath) ||
+                 file.info(apath)$size < abraom_expected_bytes * 0.9   # tolerate minor size drift
+      if (need_dl) {
+        # Delete any truncated partial file from a previous failed download
+        if (file.exists(apath)) {
+          if (verbose) message("ABraOM: cached file appears truncated; re-downloading ...")
+          unlink(apath)
+        }
         ok <- tryCatch({
           if (!dir.exists(cache_dir)) {
             dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
@@ -954,12 +964,17 @@ read.gvr <- function(folder = ".",
                      "manually and pass it via abraom_path=.")
             }
           }
-          if (verbose) message("ABraOM: downloading reference file (one-time) ...")
-          utils::download.file(abraom_url, apath, mode = "wb", quiet = TRUE)
-          file.exists(apath) && file.info(apath)$size > 1e7
+          if (verbose) message("ABraOM: downloading reference file (~50 MB, one-time cache) ...")
+          utils::download.file(abraom_url, apath, mode = "wb", quiet = !verbose,
+                               timeout = 600L)
+          file.exists(apath) && file.info(apath)$size >= abraom_expected_bytes * 0.9
         }, error = function(e) {
+          # Clean up partial file so the next attempt retries from scratch
+          if (file.exists(apath)) unlink(apath)
           warning("read.gvr: ABraOM reference could not be downloaded (",
-                  conditionMessage(e), "); 'ABraOM_AF' left blank.", call. = FALSE)
+                  conditionMessage(e), "); 'ABraOM_AF' left blank. ",
+                  "You can download it manually from:\n  ", abraom_url,
+                  "\nand pass the local path via abraom_path=.", call. = FALSE)
           FALSE
         })
       }
