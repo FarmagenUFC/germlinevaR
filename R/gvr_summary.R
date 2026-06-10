@@ -1120,20 +1120,34 @@ gvr_summary <- function(maf,
             "      if (val === 'missing/unclassified') return;",
             sprintf("      var container = document.getElementById('%s');", container_id),
             "      if (!container) return;",
-            # Must select the <table> element, NOT the wrapper div.
-            # $(div).DataTable() on a non-table element triggers TN/2
-            # ("Cannot reinitialise DataTable") and returns a broken API.
-            "      var table = container.querySelector('table');",
-            "      if (!table) return;",
-            "      var dtApi = $(table).DataTable();",
-            # Use regex exact-match: ^val$ so "pathogenic" doesn't match
-            # "pathogenic/likely_pathogenic" etc. Escape regex special chars.
+            # Look up the registered DataTable instance whose root <table>
+            # lives inside this container.  We cannot just do
+            # `container.querySelector('table')` because DT renders with
+            # scrollX=TRUE, which creates a *header clone* <table> in addition
+            # to the body table.  querySelector('table') returns the header
+            # clone (document order), which is not registered as a DT instance,
+            # so `$(header).DataTable().column(N).search(...)` operates on an
+            # empty phantom API and does nothing visible.
+            "      var dtApi = null;",
+            "      $.fn.dataTable.tables({api:true}).each(function() {",
+            "        if (container.contains(this.table().node())) { dtApi = this; return false; }",
+            "      });",
+            "      if (!dtApi) return;",
+            # Escape regex special chars in the clicked token.
             "      var escaped = val.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');",
             # Show container BEFORE search/draw so DataTables can render
             # correctly (it cannot calculate layout while display:none).
             "      container.style.display = '';",
             "      dtApi.columns.adjust();",
-            sprintf("      dtApi.column(%d).search('^' + escaped + '$', true, false, true).draw();", filter_col_idx),
+            # Token-bounded contains match.  CLIN_SIG cells may hold composite
+            # values like "likely_benign&pathogenic" or
+            # "uncertain_significance&conflicting_interpretations_of_pathogenicity";
+            # an anchored ^token$ regex misses these.  The pattern
+            # (^|[&/,])token([&/,]|$) matches the token either alone or bounded
+            # by &, /, or , separators.  For single-valued columns (VC, IMPACT)
+            # this reduces to ^token$ behavior, so one pattern covers all three
+            # drill-downs.
+            sprintf("      dtApi.column(%d).search('(^|[&/,])' + escaped + '([&/,]|$)', true, false, true).draw();", filter_col_idx),
             "    });",
             "  });",
             "}")
@@ -1277,21 +1291,36 @@ gvr_summary <- function(maf,
             pre_html <- file.path(work_dir, paste0(base_nm, ".prepandoc.html"))
             raw <- paste(readLines(staged_html, warn = FALSE), collapse = "\n")
             raw <- sub("(?is)^\\s*<!DOCTYPE[^>]*>\\s*", "", raw, perl = TRUE)
-            # Inject <title> into <head> if absent (pandoc requires one; without it,
-            # a verbose warning is emitted). Use &ndash; entity for robustness.
-            if (!grepl("<title>", raw, ignore.case = TRUE)) {
-              raw <- sub("(<head[^>]*>)",
-                         "\\1\n<title>germlinevaR &ndash; Cohort Summary</title>",
-                         raw, ignore.case = TRUE)
-            }
             writeLines(raw, pre_html)
-            # Pandoc prints the "[WARNING] ... nonempty <title>" message to
-            # stderr (not an R condition), so suppressWarnings/suppressMessages
-            # cannot catch it.  capture.output(type="message") sinks stderr.
-            capture.output(
-              suppressWarnings(suppressMessages(
-                rmarkdown::pandoc_self_contained_html(pre_html, sc_html))),
-              type = "message")
+            # Bypass rmarkdown::pandoc_self_contained_html(): that helper
+            # reads the input as `markdown_strict`, in which pandoc's parser
+            # ignores HTML <head> entirely.  As a result any <title> we
+            # injected into <head> is never seen, and pandoc emits the
+            # "[WARNING] This document format requires a nonempty <title>"
+            # message to stderr — which suppressWarnings / suppressMessages /
+            # capture.output(type="message") cannot reliably catch because
+            # the subprocess writes directly to fd 2.
+            #
+            # Call pandoc_convert() directly with:
+            #   --metadata title=...  : satisfies pandoc's title requirement
+            #                            via the metadata layer (read in any
+            #                            format, including markdown_strict)
+            #   --quiet               : pandoc's own flag for suppressing
+            #                            WARNING / INFO messages at the source
+            # The minimal template emits only $body$ so the body HTML is
+            # passed through unmodified into the self-contained wrapper.
+            tpl <- tempfile(fileext = ".html")
+            writeLines("$body$", tpl)
+            on.exit(unlink(tpl), add = TRUE)
+            from_fmt <- if (rmarkdown::pandoc_available("1.17")) "markdown_strict" else "markdown"
+            rmarkdown::pandoc_convert(
+              input   = pre_html,
+              from    = from_fmt,
+              output  = sc_html,
+              options = c(rmarkdown:::self_contained_args(),
+                          "--template", tpl,
+                          "--metadata", "title=germlinevaR Cohort Summary",
+                          "--quiet"))
             file.exists(sc_html) && file.info(sc_html)$size > 0
           } else FALSE
         }, error = function(e) FALSE)
