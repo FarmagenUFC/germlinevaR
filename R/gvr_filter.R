@@ -197,8 +197,12 @@ gvr_filter <- function(maf,
   af_active <- Filter(function(s) !is.null(s$thr), af_specs)
 
   # --- Column-existence guard: only require columns for ACTIVE filters ---------
+  # For AF columns (gnomADe_AF, AF, ABraOM_AF), if the column is missing we
+  # auto-disable that filter with a warning (the column may be absent because
+  # e.g. add_abraom = FALSE was passed to read.gvr). For all other filter
+  # columns, a missing column is a hard error (the user explicitly asked for
+  # that filter but the data cannot support it).
   needed <- character(0)
-  if (length(af_active) > 0) needed <- c(needed, vapply(af_active, `[[`, "", "col"))
   if (!is.null(clin_sig_terms) && length(clin_sig_terms) > 0) needed <- c(needed, "CLIN_SIG")
   if (isTRUE(remove_benign))                                  needed <- c(needed, "CLIN_SIG")
   if (!is.null(biotype_keep)   && length(biotype_keep)   > 0) needed <- c(needed, "BIOTYPE")
@@ -211,6 +215,16 @@ gvr_filter <- function(maf,
     stop(sprintf("gvr_filter: required column(s) not found for the requested filters: %s",
                  paste(missing_cols, collapse = ", ")))
   }
+
+  # Auto-disable AF filters whose columns are absent (e.g. ABraOM_AF when
+  # add_abraom = FALSE was used in read.gvr). Warn so the user knows.
+  af_active <- Filter(function(s) {
+    if (s$col %notin% names(dt)) {
+      warning(sprintf("gvr_filter: column '%s' not found in data; skipping %s filter. (Set %s = NULL to silence this warning.)",
+                       s$col, s$col, s$col))
+      FALSE
+    } else TRUE
+  }, af_active)
 
   if (isTRUE(verbose)) {
     message(sprintf("gvr_filter: %d rows in", n_in_total))

@@ -77,10 +77,11 @@ path(s) of any file(s) written.}
 }
 \value{
 Invisibly, a named list of \code{data.table}s: \code{overview}, \code{top_genes},
-\code{variant_classification}, \code{variant_type}, \code{clin_sig}, \code{top_variants},
-\code{impact}. The \code{top_variants} section is absent if \code{dbSNP_RS} is not in the
-input. The return value is identical regardless of whether the Excel/PDF/HTML
-files are written.
+\code{top_genes_per_sample}, \code{variant_classification}, \code{variant_type}, \code{clin_sig},
+\code{top_variants}, \code{impact}. The \code{top_genes_per_sample} element is itself a named
+list (one data.table per sample). The \code{top_variants} section is absent if
+\code{dbSNP_RS} is not in the input. The return value is identical regardless of
+whether the Excel/PDF/HTML files are written.
 }
 \description{
 Produces a multi-section overview of a MAF-style table - the output of
@@ -105,6 +106,10 @@ functional class), per-sample + \code{Total}, sorted by \code{Total} descending.
 is split on \code{&} and \code{/}, so a variant annotated \code{"pathogenic&benign"}
 increments BOTH categories; category counts therefore sum to \eqn{\ge} the
 number of variants. A \code{missing/unclassified} row counts NA/"" \code{CLIN_SIG}.
+\item \code{top_genes_per_sample} - a named list of \code{data.table}s, one per sample,
+each containing the \code{top_n_genes} genes with the most variants in that
+sample (columns: \code{Hugo_Symbol}, \verb{<sample_name>}). Unknown/blank genes
+excluded.
 \item \code{top_variants} - the \code{top_n_variants} most frequent variants by
 \code{dbSNP_RS} (rsID), with per-sample counts + \code{Total}. Rows with
 blank/missing \code{dbSNP_RS} are excluded. If the \code{dbSNP_RS} column is absent,

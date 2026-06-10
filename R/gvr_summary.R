@@ -23,6 +23,10 @@
 #'     is split on `&` and `/`, so a variant annotated `"pathogenic&benign"`
 #'     increments BOTH categories; category counts therefore sum to \eqn{\ge} the
 #'     number of variants. A `missing/unclassified` row counts NA/"" `CLIN_SIG`.
+#'   \item `top_genes_per_sample` - a named list of `data.table`s, one per sample,
+#'     each containing the `top_n_genes` genes with the most variants in that
+#'     sample (columns: `Hugo_Symbol`, `<sample_name>`). Unknown/blank genes
+#'     excluded.
 #'   \item `top_variants` - the `top_n_variants` most frequent variants by
 #'     `dbSNP_RS` (rsID), with per-sample counts + `Total`. Rows with
 #'     blank/missing `dbSNP_RS` are excluded. If the `dbSNP_RS` column is absent,
@@ -97,10 +101,11 @@
 #'   path(s) of any file(s) written.
 #'
 #' @return Invisibly, a named list of `data.table`s: `overview`, `top_genes`,
-#'   `variant_classification`, `variant_type`, `clin_sig`, `top_variants`,
-#'   `impact`. The `top_variants` section is absent if `dbSNP_RS` is not in the
-#'   input. The return value is identical regardless of whether the Excel/PDF/HTML
-#'   files are written.
+#'   `top_genes_per_sample`, `variant_classification`, `variant_type`, `clin_sig`,
+#'   `top_variants`, `impact`. The `top_genes_per_sample` element is itself a named
+#'   list (one data.table per sample). The `top_variants` section is absent if
+#'   `dbSNP_RS` is not in the input. The return value is identical regardless of
+#'   whether the Excel/PDF/HTML files are written.
 #'
 #' @section Dependencies:
 #' Core summary uses \pkg{data.table}. The optional Excel export uses \pkg{openxlsx};
@@ -287,6 +292,21 @@ gvr_summary <- function(maf,
   top_genes <- utils::head(gene_tab, top_n_genes)
 
   # ============================================================================
+  # SECTION 1c: per-sample top genes (known only), one table per sample
+  # ============================================================================
+  top_genes_per_sample <- list()
+  for (sm in samples) {
+    dt_sm <- dt[.__sample__ == sm & !(Hugo_Symbol %in% UNKNOWN_GENE)]
+    if (nrow(dt_sm) > 0L) {
+      sm_gene_tab <- dt_sm[, .(N = .N), by = Hugo_Symbol]
+      data.table::setorder(sm_gene_tab, -N)
+      sm_gene_tab <- utils::head(sm_gene_tab, top_n_genes)
+      data.table::setnames(sm_gene_tab, "N", sm)
+      top_genes_per_sample[[sm]] <- sm_gene_tab
+    }
+  }
+
+  # ============================================================================
   # SECTION 2: functional classes
   # ============================================================================
   variant_classification <- .count_by_sample(dt$Variant_Classification, dt$.__sample__,
@@ -369,6 +389,7 @@ gvr_summary <- function(maf,
 
   sections <- list(overview = overview,
                    top_genes = top_genes,
+                   top_genes_per_sample = top_genes_per_sample,
                    variant_classification = variant_classification,
                    variant_type = variant_type,
                    clin_sig = clin_sig,
@@ -442,6 +463,20 @@ gvr_summary <- function(maf,
       wb <- openxlsx::createWorkbook()
       hs <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
       for (nm in names(sections)) {
+        if (nm == "top_genes_per_sample") {
+          # Per-sample top genes: one sheet per sample
+          for (sm in names(sections$top_genes_per_sample)) {
+            sh_nm <- sprintf("TopGenes_%s", sm)
+            # Excel sheet names max 31 chars; truncate sample name if needed
+            if (nchar(sh_nm) > 31L) sh_nm <- paste0(substr(sh_nm, 1L, 28L), "...") 
+            openxlsx::addWorksheet(wb, sh_nm)
+            openxlsx::writeData(wb, sh_nm, sections$top_genes_per_sample[[sm]], headerStyle = hs)
+            openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
+            openxlsx::setColWidths(wb, sh_nm, cols = seq_len(ncol(sections$top_genes_per_sample[[sm]])),
+                                   widths = "auto")
+          }
+          next
+        }
         sh <- if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm
         openxlsx::addWorksheet(wb, sh)
         openxlsx::writeData(wb, sh, sections[[nm]], headerStyle = hs)
@@ -690,11 +725,19 @@ gvr_summary <- function(maf,
           budget    <- (H - 1) * draw_frac
           tbl_specs <- list(
             list(s = "overview",               t = "Overview"),
-            list(s = "top_genes",              t = "Top genes"),
+            list(s = "top_genes",              t = "Top genes"))
+          # Per-sample top genes: one entry per sample
+          for (sm in names(sections$top_genes_per_sample)) {
+            tbl_specs <- c(tbl_specs, list(
+              list(s = paste0("top_genes_per_sample.", sm),
+                   t = sprintf("Top genes \u2013 %s", sm),
+                   per_sample_key = sm)))
+          }
+          tbl_specs <- c(tbl_specs, list(
             list(s = "variant_classification", t = "Variant classification"),
             list(s = "variant_type",           t = "Variant type"),
             list(s = "clin_sig",               t = "Clinical significance"),
-            list(s = "impact",                 t = "Functional impact (table)"))
+            list(s = "impact",                 t = "Functional impact (table)")))
           if (!is.null(sections$top_variants))
             tbl_specs <- c(tbl_specs, list(list(s = "top_variants", t = "Top variants (by rsID)")))
           # MEASUREMENT must happen on a throwaway device that is opened AND closed HERE,
@@ -708,7 +751,10 @@ gvr_summary <- function(maf,
                                               height = grid::unit(budget, "in")))
             it <- list()
             for (sp in tbl_specs) {
-              gl <- .mk_table_grobs(sections[[sp$s]])
+              sec_dt <- if (!is.null(sp$per_sample_key))
+                          sections$top_genes_per_sample[[sp$per_sample_key]]
+                        else sections[[sp$s]]
+              gl <- .mk_table_grobs(sec_dt)
               multi <- length(gl) > 1L
               for (gi in seq_along(gl)) {
                 g  <- gl[[gi]]
@@ -999,19 +1045,26 @@ gvr_summary <- function(maf,
         # --- CLIN_SIG drill-down: detail DT with curated variant columns ---
         # Clicking a CLIN_SIG token in the summary table filters the detail table
         # and toggles its visibility.
+        # IMPORTANT: the detail container must NOT use display:none at build time,
+        # because DT cannot initialise inside a hidden element (causes TN/2 warning).
+        # Instead, the detail DT's own initComplete hides the container after it
+        # has fully rendered.
         clin_detail_cols <- c("Hugo_Symbol", "Chromosome", "Start_Position",
                               "Variant_Classification", "HGVSc", "HGVSp_Short",
                               "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode")
         clin_detail_cols <- intersect(clin_detail_cols, names(dt))
         clin_detail_df <- as.data.frame(dt[!.is_missing(dt$CLIN_SIG), ..clin_detail_cols],
                                         stringsAsFactors = FALSE)
-        clin_detail_id <- "gvr_clin_detail"
+        clin_detail_container_id <- "gvr_clin_detail"
         clin_detail_dtbl <- DT::datatable(
           clin_detail_df, rownames = FALSE,
-          elementId = clin_detail_id,
           class = "stripe hover compact", filter = "top",
           options = list(pageLength = 5, lengthMenu = c(5, 10, 25),
-                         dom = "ftip", scrollX = TRUE, searchDelay = 300),
+                         dom = "ftip", scrollX = TRUE, searchDelay = 300,
+                         initComplete = htmlwidgets::JS(
+                           "function() {",
+                           sprintf("  document.getElementById('%s').style.display = 'none';", clin_detail_container_id),
+                           "}")),
           caption = htmltools::tags$span(
             style = "font-weight:bold; color:#0279EE;",
             "Variants matching selected CLIN_SIG token (click a token above)"))
@@ -1029,43 +1082,106 @@ gvr_summary <- function(maf,
           "    c.addEventListener('click', function() {",
           "      var val = this.textContent.trim();",
           "      if (val === 'missing/unclassified') return;",
-          "      var detail = document.querySelector('#gvr_clin_detail_wrapper');",
-          "      if (!detail) return;",
-          "      var dtApi = $(detail).DataTable();",
+          sprintf("      var container = document.getElementById('%s');", clin_detail_container_id),
+          "      if (!container) return;",
+          "      var dtWrapper = container.querySelector('.dataTables_wrapper');",
+          "      if (!dtWrapper) return;",
+          "      var dtApi = $(dtWrapper).DataTable();",
           "      dtApi.search(val).draw();",
-          "      detail.style.display = '';",
+          "      container.style.display = '';",
+          "    });",
+          "  });",
+          "}")
+
+        # --- IMPACT drill-down: same pattern as CLIN_SIG ---
+        # Clicking an IMPACT level (e.g. HIGH) shows the individual variants.
+        impact_detail_cols <- c("Hugo_Symbol", "Chromosome", "Start_Position",
+                                "Variant_Classification", "HGVSc", "HGVSp_Short",
+                                "IMPACT", "Consequence", "gnomADe_AF", "dbSNP_RS",
+                                "Tumor_Sample_Barcode")
+        impact_detail_cols <- intersect(impact_detail_cols, names(dt))
+        impact_detail_df <- as.data.frame(dt[!.is_missing(dt$IMPACT), ..impact_detail_cols],
+                                          stringsAsFactors = FALSE)
+        impact_detail_container_id <- "gvr_impact_detail"
+        impact_detail_dtbl <- DT::datatable(
+          impact_detail_df, rownames = FALSE,
+          class = "stripe hover compact", filter = "top",
+          options = list(pageLength = 5, lengthMenu = c(5, 10, 25),
+                         dom = "ftip", scrollX = TRUE, searchDelay = 300,
+                         initComplete = htmlwidgets::JS(
+                           "function() {",
+                           sprintf("  document.getElementById('%s').style.display = 'none';", impact_detail_container_id),
+                           "}")),
+          caption = htmltools::tags$span(
+            style = "font-weight:bold; color:#0279EE;",
+            "Variants matching selected IMPACT level (click a level above)"))
+        # Style the IMPACT summary table cells as clickable
+        impact_summary_dtbl <- .dt_tbl(sections$impact,
+                                       caption = "Functional impact (click a level to see variants)")
+        impact_summary_dtbl$x$options$initComplete <- htmlwidgets::JS(
+          "function() {",
+          "  var tbl = this.api().table().body();",
+          "  var cells = tbl.querySelectorAll('td:first-child');",
+          "  cells.forEach(function(c) {",
+          "    c.style.cursor = 'pointer';",
+          "    c.style.textDecoration = 'underline';",
+          "    c.style.color = '#0279EE';",
+          "    c.addEventListener('click', function() {",
+          "      var val = this.textContent.trim();",
+          sprintf("      var container = document.getElementById('%s');", impact_detail_container_id),
+          "      if (!container) return;",
+          "      var dtWrapper = container.querySelector('.dataTables_wrapper');",
+          "      if (!dtWrapper) return;",
+          "      var dtApi = $(dtWrapper).DataTable();",
+          "      dtApi.search(val).draw();",
+          "      container.style.display = '';",
           "    });",
           "  });",
           "}")
 
         tbl_specs <- list(
           list(s = "overview",               t = "Overview"),
-          list(s = "top_genes",              t = "Top genes"),
+          list(s = "top_genes",              t = "Top genes"))
+        # Per-sample top genes: one entry per sample
+        for (sm in names(sections$top_genes_per_sample)) {
+          tbl_specs <- c(tbl_specs, list(
+            list(s = paste0("top_genes_per_sample.", sm),
+                 t = sprintf("Top genes \u2013 %s", sm),
+                 per_sample_key = sm)))
+        }
+        tbl_specs <- c(tbl_specs, list(
           list(s = "variant_classification", t = "Variant classification"),
           list(s = "variant_type",           t = "Variant type"),
-          list(s = "clin_sig",               t = "Clinical significance", special = TRUE),
-          list(s = "impact",                 t = "Functional impact"))
+          list(s = "clin_sig",               t = "Clinical significance", special = "clin_sig"),
+          list(s = "impact",                 t = "Functional impact", special = "impact")))
         if (!is.null(sections$top_variants))
           tbl_specs <- c(tbl_specs, list(list(s = "top_variants", t = "Top variants (by rsID)")))
 
         tables <- htmltools::tagList(c(
           list(sec_h("Tables")),
           lapply(tbl_specs, function(sp) {
-            if (isTRUE(sp$special) && sp$s == "clin_sig") {
+            sec_dt <- if (!is.null(sp$per_sample_key))
+                        sections$top_genes_per_sample[[sp$per_sample_key]]
+                      else sections[[sp$s]]
+            if (!is.null(sp$special)) {
+              # Drill-down sections: summary table + hidden detail table
+              summary_dtbl <- if (sp$special == "clin_sig") clin_summary_dtbl else impact_summary_dtbl
+              detail_dtbl  <- if (sp$special == "clin_sig") clin_detail_dtbl else impact_detail_dtbl
+              container_id <- if (sp$special == "clin_sig") clin_detail_container_id else impact_detail_container_id
               htmltools::tags$div(
                 style = "margin:14px 0 26px 0;",
                 htmltools::tags$h3(sp$t,
                   style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
-                clin_summary_dtbl,
+                summary_dtbl,
                 htmltools::tags$div(
-                  id = "gvr_clin_detail_wrapper",
-                  style = "display:none; margin-top:12px; border-top:2px solid #ECE9E2; padding-top:10px;",
-                  clin_detail_dtbl))
+                  id = container_id,
+                  style = "margin-top:12px; border-top:2px solid #ECE9E2; padding-top:10px;",
+                  detail_dtbl))
             } else {
               htmltools::tags$div(style = "margin:14px 0 26px 0;",
                                   htmltools::tags$h3(sp$t,
                                     style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
-                                  .dt_tbl(sections[[sp$s]]))
+                                  .dt_tbl(sec_dt))
             }
           })))
 
@@ -1101,6 +1217,8 @@ gvr_summary <- function(maf,
         # "<p>&lt;!DOCTYPE html&gt;</p>" text node atop the self-contained page.
         # Removing the line lets pandoc's --standalone wrapper emit one clean
         # document. (Sidecar mode keeps the original file, so its doctype is fine.)
+        # Also inject a <title> tag (pandoc requires one; without it, a verbose
+        # warning is emitted: "This document format requires a nonempty <title>").
         sc_html  <- file.path(work_dir, paste0(base_nm, ".selfcontained.html"))
         sidecar  <- FALSE
         ok_sc <- tryCatch({
@@ -1108,6 +1226,10 @@ gvr_summary <- function(maf,
             pre_html <- file.path(work_dir, paste0(base_nm, ".prepandoc.html"))
             raw <- paste(readLines(staged_html, warn = FALSE), collapse = "\n")
             raw <- sub("(?is)^\\s*<!DOCTYPE[^>]*>\\s*", "", raw, perl = TRUE)
+            # Inject <title> into <head> if absent
+            if (!grepl("<title>", raw, ignore.case = TRUE)) {
+              raw <- sub("(<head[^>]*>)", sprintf("\\1<title>germlinevaR \u2013 Cohort Summary</title>"), raw, ignore.case = TRUE)
+            }
             writeLines(raw, pre_html)
             rmarkdown::pandoc_self_contained_html(pre_html, sc_html)
             file.exists(sc_html) && file.info(sc_html)$size > 0
