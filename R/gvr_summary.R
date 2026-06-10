@@ -1102,6 +1102,16 @@ gvr_summary <- function(maf,
             caption = htmltools::tags$span(
               style = "font-weight:bold; color:#0279EE;",
               caption_detail)))
+          # Force eager DT initialization.  The htmlwidgets DT binding has a
+          # lazy-render gate in renderValue():
+          #   if ((el.offsetWidth===0 || el.offsetHeight===0) && data.lazyRender!==false)
+          # The detail-table widget div renders with height:auto; before its
+          # internal <table> is injected, offsetHeight === 0, so DT defers
+          # initialization and never adds itself to $.fn.dataTable.settings.
+          # Result: $.fn.dataTable.tables({api:true}) returns an empty set at
+          # click time, the click handler bails, no filtering visible.
+          # Setting lazyRender=FALSE on the x payload disables the gate.
+          detail_dtbl$x$lazyRender <- FALSE
 
           # Summary DT: clickable first-column cells
           summary_dtbl <- .dt_tbl(summary_section, caption = caption_summary)
@@ -1121,33 +1131,30 @@ gvr_summary <- function(maf,
             sprintf("      var container = document.getElementById('%s');", container_id),
             "      if (!container) return;",
             # Look up the registered DataTable instance whose root <table>
-            # lives inside this container.  We cannot just do
-            # `container.querySelector('table')` because DT renders with
-            # scrollX=TRUE, which creates a *header clone* <table> in addition
-            # to the body table.  querySelector('table') returns the header
-            # clone (document order), which is not registered as a DT instance,
-            # so `$(header).DataTable().column(N).search(...)` operates on an
-            # empty phantom API and does nothing visible.
+            # lives inside this container.  With scrollX=TRUE, DT creates a
+            # header-clone <table> in addition to the body table.  Picking
+            # the right instance via the global registry sidesteps both that
+            # and any wrapper-vs-table DOM ambiguity.
             "      var dtApi = null;",
             "      $.fn.dataTable.tables({api:true}).each(function() {",
             "        if (container.contains(this.table().node())) { dtApi = this; return false; }",
             "      });",
             "      if (!dtApi) return;",
-            # Escape regex special chars in the clicked token.
+            # Escape regex special chars in the clicked token, then apply a
+            # token-bounded contains match.  CLIN_SIG cells may hold composite
+            # values like "likely_benign&pathogenic"; an anchored ^token$ misses
+            # them.  Pattern (^|[&/,])token([&/,]|$) matches alone or bounded by
+            # &, /, or , separators.  For single-valued columns (VC, IMPACT)
+            # this reduces to ^token$ behavior, so one pattern covers all three.
             "      var escaped = val.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');",
+            "      var pattern = '(^|[&/,])' + escaped + '([&/,]|$)';",
             # Show container BEFORE search/draw so DataTables can render
             # correctly (it cannot calculate layout while display:none).
-            "      container.style.display = '';",
+            # Explicit 'block' (not '') so we set a known display value
+            # rather than relying on stylesheet defaults.
+            "      container.style.display = 'block';",
             "      dtApi.columns.adjust();",
-            # Token-bounded contains match.  CLIN_SIG cells may hold composite
-            # values like "likely_benign&pathogenic" or
-            # "uncertain_significance&conflicting_interpretations_of_pathogenicity";
-            # an anchored ^token$ regex misses these.  The pattern
-            # (^|[&/,])token([&/,]|$) matches the token either alone or bounded
-            # by &, /, or , separators.  For single-valued columns (VC, IMPACT)
-            # this reduces to ^token$ behavior, so one pattern covers all three
-            # drill-downs.
-            sprintf("      dtApi.column(%d).search('(^|[&/,])' + escaped + '([&/,]|$)', true, false, true).draw();", filter_col_idx),
+            sprintf("      dtApi.column(%d).search(pattern, true, false, true).draw();", filter_col_idx),
             "    });",
             "  });",
             "}")
