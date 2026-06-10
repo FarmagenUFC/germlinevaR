@@ -8,6 +8,7 @@ gvr_summary(
   maf,
   sample_col = "Tumor_Sample_Barcode",
   top_n_genes = 20,
+  top_n_variants = 20,
   save_excel = TRUE,
   save_pdf = TRUE,
   save_html = TRUE,
@@ -27,6 +28,10 @@ If absent, all rows are pooled into a single sample \code{"All"} (with a warning
 \item{top_n_genes}{Integer; number of genes to report in \code{top_genes} (by total
 variant count). Default \code{20}.}
 
+\item{top_n_variants}{Integer; number of variants to report in \code{top_variants}
+(by \code{dbSNP_RS} frequency). Default \code{20}. Ignored if the \code{dbSNP_RS} column is
+absent from the input.}
+
 \item{save_excel}{Logical; if \code{TRUE} (default), write a multi-sheet \code{.xlsx}.
 The workbook is written into the \verb{gvr_summary/} subfolder of \code{out_dir}
 (see \code{out_dir}). Pass \code{FALSE} for a compute-only run.}
@@ -43,10 +48,13 @@ are still returned. Pass \code{FALSE} for a compute-only run.}
 
 \item{save_html}{Logical; if \code{TRUE} (default), write an interactive HTML dashboard
 (\verb{<file_prefix>_report.html}) into the \verb{gvr_summary/} subfolder of \code{out_dir}. It
-mirrors the PDF dashboard - a row of KPI cards, the same three bar charts (top
-genes, variant classification, functional impact) as interactive \pkg{plotly}
-charts (grouped for \eqn{\le 6} samples, faceted small-multiples for \eqn{> 6}),
-and all six section tables as sortable, searchable \pkg{DT} tables. By default a
+mirrors the PDF dashboard - a row of KPI cards, bar charts (top genes,
+variant classification, functional impact, top variants) as interactive
+\pkg{plotly} charts (grouped for \eqn{\le 6} samples, faceted small-multiples
+for \eqn{> 6}), and all section tables as sortable, searchable \pkg{DT} tables.
+The Clinical significance table is interactive: clicking a CLIN_SIG token
+(e.g. "pathogenic") expands a detail panel showing the individual variants
+with that annotation. By default a
 single self-contained file is produced (assets inlined via pandoc); if pandoc is
 unavailable the report is written as \verb{<file_prefix>_report.html} plus a sibling
 \verb{<file_prefix>_report_files/} asset folder (a \code{verbose} message notes this).
@@ -69,8 +77,10 @@ path(s) of any file(s) written.}
 }
 \value{
 Invisibly, a named list of \code{data.table}s: \code{overview}, \code{top_genes},
-\code{variant_classification}, \code{variant_type}, \code{clin_sig}, \code{impact}. The return value
-is identical regardless of whether the Excel/PDF/HTML files are written.
+\code{variant_classification}, \code{variant_type}, \code{clin_sig}, \code{top_variants},
+\code{impact}. The \code{top_variants} section is absent if \code{dbSNP_RS} is not in the
+input. The return value is identical regardless of whether the Excel/PDF/HTML
+files are written.
 }
 \description{
 Produces a multi-section overview of a MAF-style table - the output of
@@ -95,6 +105,10 @@ functional class), per-sample + \code{Total}, sorted by \code{Total} descending.
 is split on \code{&} and \code{/}, so a variant annotated \code{"pathogenic&benign"}
 increments BOTH categories; category counts therefore sum to \eqn{\ge} the
 number of variants. A \code{missing/unclassified} row counts NA/"" \code{CLIN_SIG}.
+\item \code{top_variants} - the \code{top_n_variants} most frequent variants by
+\code{dbSNP_RS} (rsID), with per-sample counts + \code{Total}. Rows with
+blank/missing \code{dbSNP_RS} are excluded. If the \code{dbSNP_RS} column is absent,
+this section is skipped with a warning.
 \item \code{impact} - counts per VEP \code{IMPACT} (HIGH/MODERATE/LOW/MODIFIER), in
 severity order rather than count order.
 }

@@ -23,6 +23,10 @@
 #'     is split on `&` and `/`, so a variant annotated `"pathogenic&benign"`
 #'     increments BOTH categories; category counts therefore sum to \eqn{\ge} the
 #'     number of variants. A `missing/unclassified` row counts NA/"" `CLIN_SIG`.
+#'   \item `top_variants` - the `top_n_variants` most frequent variants by
+#'     `dbSNP_RS` (rsID), with per-sample counts + `Total`. Rows with
+#'     blank/missing `dbSNP_RS` are excluded. If the `dbSNP_RS` column is absent,
+#'     this section is skipped with a warning.
 #'   \item `impact` - counts per VEP `IMPACT` (HIGH/MODERATE/LOW/MODIFIER), in
 #'     severity order rather than count order.
 #' }
@@ -51,6 +55,9 @@
 #'   If absent, all rows are pooled into a single sample `"All"` (with a warning).
 #' @param top_n_genes Integer; number of genes to report in `top_genes` (by total
 #'   variant count). Default `20`.
+#' @param top_n_variants Integer; number of variants to report in `top_variants`
+#'   (by `dbSNP_RS` frequency). Default `20`. Ignored if the `dbSNP_RS` column is
+#'   absent from the input.
 #' @param save_excel Logical; if `TRUE` (default), write a multi-sheet `.xlsx`.
 #'   The workbook is written into the `gvr_summary/` subfolder of `out_dir`
 #'   (see `out_dir`). Pass `FALSE` for a compute-only run.
@@ -65,10 +72,13 @@
 #'   are still returned. Pass `FALSE` for a compute-only run.
 #' @param save_html Logical; if `TRUE` (default), write an interactive HTML dashboard
 #'   (`<file_prefix>_report.html`) into the `gvr_summary/` subfolder of `out_dir`. It
-#'   mirrors the PDF dashboard - a row of KPI cards, the same three bar charts (top
-#'   genes, variant classification, functional impact) as interactive \pkg{plotly}
-#'   charts (grouped for \eqn{\le 6} samples, faceted small-multiples for \eqn{> 6}),
-#'   and all six section tables as sortable, searchable \pkg{DT} tables. By default a
+#'   mirrors the PDF dashboard - a row of KPI cards, bar charts (top genes,
+#'   variant classification, functional impact, top variants) as interactive
+#'   \pkg{plotly} charts (grouped for \eqn{\le 6} samples, faceted small-multiples
+#'   for \eqn{> 6}), and all section tables as sortable, searchable \pkg{DT} tables.
+#'   The Clinical significance table is interactive: clicking a CLIN_SIG token
+#'   (e.g. "pathogenic") expands a detail panel showing the individual variants
+#'   with that annotation. By default a
 #'   single self-contained file is produced (assets inlined via pandoc); if pandoc is
 #'   unavailable the report is written as `<file_prefix>_report.html` plus a sibling
 #'   `<file_prefix>_report_files/` asset folder (a `verbose` message notes this).
@@ -87,8 +97,10 @@
 #'   path(s) of any file(s) written.
 #'
 #' @return Invisibly, a named list of `data.table`s: `overview`, `top_genes`,
-#'   `variant_classification`, `variant_type`, `clin_sig`, `impact`. The return value
-#'   is identical regardless of whether the Excel/PDF/HTML files are written.
+#'   `variant_classification`, `variant_type`, `clin_sig`, `top_variants`,
+#'   `impact`. The `top_variants` section is absent if `dbSNP_RS` is not in the
+#'   input. The return value is identical regardless of whether the Excel/PDF/HTML
+#'   files are written.
 #'
 #' @section Dependencies:
 #' Core summary uses \pkg{data.table}. The optional Excel export uses \pkg{openxlsx};
@@ -179,6 +191,7 @@
 gvr_summary <- function(maf,
                         sample_col     = "Tumor_Sample_Barcode",
                         top_n_genes    = 20,
+                        top_n_variants = 20,
                         save_excel     = TRUE,
                         save_pdf       = TRUE,
                         save_html      = TRUE,
@@ -306,6 +319,46 @@ gvr_summary <- function(maf,
   clin_sig <- rbind(clin_counts, miss_row, fill = TRUE)
 
   # ============================================================================
+  # SECTION 3b: top variants by dbSNP_RS (rsID frequency)
+  # ============================================================================
+  top_variants <- NULL
+  has_dbsnp <- "dbSNP_RS" %in% names(dt)
+  if (has_dbsnp) {
+    rs <- dt$dbSNP_RS
+    rs_miss <- .is_missing(rs) | rs == "novel" | tolower(rs) == "unknown"
+    dt_rs <- dt[!rs_miss]
+    if (nrow(dt_rs) > 0L) {
+      # Group by dbSNP_RS; pick representative metadata (first non-blank per field)
+      dt_rs[, .__rs__ := dbSNP_RS]
+      # Aggregate: count per rsID x sample, plus representative Hugo/Chr/Pos/VC
+      rs_tab <- dt_rs[, .(Hugo_Symbol = {
+        v <- Hugo_Symbol[!(Hugo_Symbol %in% UNKNOWN_GENE) & !.is_missing(Hugo_Symbol)]
+        if (length(v)) v[1L] else ""
+      }, Chromosome = {
+        v <- Chromosome[!.is_missing(Chromosome)]; if (length(v)) v[1L] else ""
+      }, Start_Position = {
+        v <- Start_Position[!.is_missing(Start_Position)]; if (length(v)) v[1L] else ""
+      }, Variant_Classification = {
+        v <- Variant_Classification[!.is_missing(Variant_Classification)]; if (length(v)) v[1L] else ""
+      }, Total = .N), by = .__rs__]
+      # Per-sample counts
+      for (sm in samples) {
+        rs_tab[, (sm) := dt_rs[.__sample__ == sm, .N, by = .__rs__][match(rs_tab$.__rs__, .__rs__), N]]
+        rs_tab[is.na(get(sm)), (sm) := 0L]
+      }
+      data.table::setcolorder(rs_tab, c(".__rs__", "Hugo_Symbol", "Chromosome",
+                                         "Start_Position", "Variant_Classification",
+                                         samples, "Total"))
+      data.table::setorder(rs_tab, -Total)
+      data.table::setnames(rs_tab, ".__rs__", "dbSNP_RS")
+      top_variants <- utils::head(rs_tab, top_n_variants)
+    }
+  } else {
+    if (isTRUE(verbose))
+      message("  Note: 'dbSNP_RS' column not found; top_variants section skipped.")
+  }
+
+  # ============================================================================
   # SECTION 4: impact severity (fixed severity order)
   # ============================================================================
   impact_order <- c("HIGH", "MODERATE", "LOW", "MODIFIER")
@@ -320,6 +373,7 @@ gvr_summary <- function(maf,
                    variant_type = variant_type,
                    clin_sig = clin_sig,
                    impact = impact)
+  if (!is.null(top_variants)) sections$top_variants <- top_variants
 
   # ============================================================================
   # Verbose console digest
@@ -339,6 +393,10 @@ gvr_summary <- function(maf,
       message(sprintf("  CLIN_SIG (top tokens): %s",
                       paste(sprintf("%s=%d", utils::head(nrare$CLIN_SIG, 4),
                                     utils::head(nrare$Total, 4)), collapse = ", ")))
+    }
+    if (!is.null(top_variants) && nrow(top_variants) > 0) {
+      message(sprintf("  Top variant (by rsID): %s (%d occurrences)",
+                      top_variants$dbSNP_RS[1L], top_variants$Total[1L]))
     }
   }
 
@@ -379,11 +437,12 @@ gvr_summary <- function(maf,
 
       sheet_map <- c(overview = "Overview", top_genes = "Top_genes",
                      variant_classification = "Variant_classification",
-                     variant_type = "Variant_type", clin_sig = "Clinical", impact = "Impact")
+                     variant_type = "Variant_type", clin_sig = "Clinical",
+                     top_variants = "Top_variants", impact = "Impact")
       wb <- openxlsx::createWorkbook()
       hs <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
       for (nm in names(sections)) {
-        sh <- sheet_map[[nm]]
+        sh <- if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm
         openxlsx::addWorksheet(wb, sh)
         openxlsx::writeData(wb, sh, sections[[nm]], headerStyle = hs)
         openxlsx::freezePane(wb, sh, firstRow = TRUE)
@@ -636,6 +695,8 @@ gvr_summary <- function(maf,
             list(s = "variant_type",           t = "Variant type"),
             list(s = "clin_sig",               t = "Clinical significance"),
             list(s = "impact",                 t = "Functional impact (table)"))
+          if (!is.null(sections$top_variants))
+            tbl_specs <- c(tbl_specs, list(list(s = "top_variants", t = "Top variants (by rsID)")))
           # MEASUREMENT must happen on a throwaway device that is opened AND closed HERE,
           # so the cairo report device is current during all subsequent drawing. (Leaving
           # pdf(NULL) open across the draw loop sends every page to the throwaway device
@@ -930,22 +991,83 @@ gvr_summary <- function(maf,
           .plt_bar(sections$top_genes, "Hugo_Symbol", top = 10L, title = "Top genes by variant count (top 10)"),
           .plt_bar(sections$variant_classification, "Variant_Classification", top = 10L,
                    title = "Variant classification (top 10)"),
-          .plt_bar(sections$impact, "IMPACT", top = NULL, title = "Functional impact (VEP IMPACT)"))
+          .plt_bar(sections$impact, "IMPACT", top = NULL, title = "Functional impact (VEP IMPACT)"),
+          if (!is.null(sections$top_variants))
+            .plt_bar(sections$top_variants, "dbSNP_RS", top = 10L,
+                     title = "Top variants by rsID frequency (top 10)"))
+
+        # --- CLIN_SIG drill-down: detail DT with curated variant columns ---
+        # Clicking a CLIN_SIG token in the summary table filters the detail table
+        # and toggles its visibility.
+        clin_detail_cols <- c("Hugo_Symbol", "Chromosome", "Start_Position",
+                              "Variant_Classification", "HGVSc", "HGVSp_Short",
+                              "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode")
+        clin_detail_cols <- intersect(clin_detail_cols, names(dt))
+        clin_detail_df <- as.data.frame(dt[!.is_missing(dt$CLIN_SIG), ..clin_detail_cols],
+                                        stringsAsFactors = FALSE)
+        clin_detail_id <- "gvr_clin_detail"
+        clin_detail_dtbl <- DT::datatable(
+          clin_detail_df, rownames = FALSE,
+          elementId = clin_detail_id,
+          class = "stripe hover compact", filter = "top",
+          options = list(pageLength = 5, lengthMenu = c(5, 10, 25),
+                         dom = "ftip", scrollX = TRUE, searchDelay = 300),
+          caption = htmltools::tags$span(
+            style = "font-weight:bold; color:#0279EE;",
+            "Variants matching selected CLIN_SIG token (click a token above)"))
+        # Style the CLIN_SIG summary table cells as clickable
+        clin_summary_dtbl <- .dt_tbl(sections$clin_sig,
+                                     caption = "Clinical significance (click a token to see variants)")
+        clin_summary_dtbl$x$options$initComplete <- htmlwidgets::JS(
+          "function() {",
+          "  var tbl = this.api().table().body();",
+          "  var cells = tbl.querySelectorAll('td:first-child');",
+          "  cells.forEach(function(c) {",
+          "    c.style.cursor = 'pointer';",
+          "    c.style.textDecoration = 'underline';",
+          "    c.style.color = '#0279EE';",
+          "    c.addEventListener('click', function() {",
+          "      var val = this.textContent.trim();",
+          "      if (val === 'missing/unclassified') return;",
+          "      var detail = document.querySelector('#gvr_clin_detail_wrapper');",
+          "      if (!detail) return;",
+          "      var dtApi = $(detail).DataTable();",
+          "      dtApi.search(val).draw();",
+          "      detail.style.display = '';",
+          "    });",
+          "  });",
+          "}")
 
         tbl_specs <- list(
           list(s = "overview",               t = "Overview"),
           list(s = "top_genes",              t = "Top genes"),
           list(s = "variant_classification", t = "Variant classification"),
           list(s = "variant_type",           t = "Variant type"),
-          list(s = "clin_sig",               t = "Clinical significance"),
+          list(s = "clin_sig",               t = "Clinical significance", special = TRUE),
           list(s = "impact",                 t = "Functional impact"))
+        if (!is.null(sections$top_variants))
+          tbl_specs <- c(tbl_specs, list(list(s = "top_variants", t = "Top variants (by rsID)")))
+
         tables <- htmltools::tagList(c(
           list(sec_h("Tables")),
-          lapply(tbl_specs, function(sp)
-            htmltools::tags$div(style = "margin:14px 0 26px 0;",
-                                htmltools::tags$h3(sp$t,
-                                  style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
-                                .dt_tbl(sections[[sp$s]])))))
+          lapply(tbl_specs, function(sp) {
+            if (isTRUE(sp$special) && sp$s == "clin_sig") {
+              htmltools::tags$div(
+                style = "margin:14px 0 26px 0;",
+                htmltools::tags$h3(sp$t,
+                  style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
+                clin_summary_dtbl,
+                htmltools::tags$div(
+                  id = "gvr_clin_detail_wrapper",
+                  style = "display:none; margin-top:12px; border-top:2px solid #ECE9E2; padding-top:10px;",
+                  clin_detail_dtbl))
+            } else {
+              htmltools::tags$div(style = "margin:14px 0 26px 0;",
+                                  htmltools::tags$h3(sp$t,
+                                    style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
+                                  .dt_tbl(sections[[sp$s]]))
+            }
+          })))
 
         page <- htmltools::tags$div(
           style = paste0("max-width:1100px; margin:24px auto; padding:0 18px;",
