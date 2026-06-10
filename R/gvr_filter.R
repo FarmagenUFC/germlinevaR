@@ -5,7 +5,7 @@
 #' [read.gvr()]. Each distinct filter is its own argument; setting an argument to
 #' `NULL` disables that filter entirely (no rows removed by it). With all defaults,
 #' `gvr_filter(maf)` reproduces the canonical rare / clinically-relevant /
-#' protein-coding / called-genotype germline pipeline.
+#' called-genotype pipeline (AF filters + CLIN_SIG + GT exclusion).
 #'
 #' @details
 #' Filters are applied in a fixed order; each step operates on the survivors of the
@@ -72,8 +72,9 @@
 #'   keep-filter, so a row that matched a wanted term but also contains "benign"
 #'   is still removed. `FALSE` (default) does not remove benign rows.
 #' @param biotype_keep Character vector of BIOTYPE values to keep (exact match via %in%).
-#'   `NULL` disables the biotype filter.
-#'   Default: c("protein_coding","protein_coding_LoF").
+#'   `NULL` (default) disables the biotype filter — all biotypes are kept.
+#'   Pass e.g. `c("protein_coding", "protein_coding_LoF")` to restrict to
+#'   protein-coding transcripts.
 #' @param gt_exclude Character vector of GT values to remove (exact match). `NULL`
 #'   disables the genotype filter. Default: c("0","0/0").
 #' @param vc_nonSyn Logical or character vector. Controls which
@@ -112,18 +113,18 @@
 #' \dontrun{
 #' maf <- read.gvr("/path/to/vcf_folder")
 #'
-#' ## Reproduce the default rare / clinically-relevant / protein-coding pipeline:
+#' ## Default pipeline: rare variants + clinically relevant + called genotypes:
 #' maf_clean <- gvr_filter(maf)
 #'
-#' ## Strict gnomAD, but keep variants absent from ABraOM:
-#' gvr_filter(maf, ABraOM_AF_keep_missing = TRUE)
+#' ## Add protein-coding biotype filter:
+#' gvr_filter(maf, biotype_keep = c("protein_coding", "protein_coding_LoF"))
 #'
 #' ## Only the rarity filter on gnomAD exome AF, nothing else:
 #' gvr_filter(maf, gnomADe_AF = 0.001, AF = NULL, ABraOM_AF = NULL,
-#'            clin_sig_terms = NULL, biotype_keep = NULL, gt_exclude = NULL,
+#'            clin_sig_terms = NULL, gt_exclude = NULL,
 #'            vc_nonSyn = FALSE, genes = NULL)
 #'
-#' ## Pathogenic-only (drop uncertain_significance), exact protein_coding:
+#' ## Pathogenic-only, protein-coding:
 #' gvr_filter(maf, clin_sig_terms = c("pathogenic", "likely_pathogenic"),
 #'            biotype_keep = "protein_coding")
 #'
@@ -149,7 +150,7 @@ gvr_filter <- function(maf,
                                           "uncertain_significance"),
                        clin_sig_keep_missing = TRUE,
                        remove_benign = FALSE,
-                       biotype_keep = c("protein_coding", "protein_coding_LoF"),
+                       biotype_keep = NULL,
                        gt_exclude = c("0", "0/0"),
                        vc_nonSyn = FALSE,
                        genes = NULL,
@@ -327,12 +328,6 @@ gvr_filter <- function(maf,
   # ============================================================================
   # 10. Optional Excel export of the FILTERED table  ->  <out_dir>/<file_prefix>.xlsx
   # ============================================================================
-  # Off by default: save_excel = FALSE returns the filtered data.table exactly as
-  # before (write is a pure side effect; the return value is identical either way).
-  # Mirrors the FUSE-safe openxlsx pattern from gvr_summary/read.gvr: build workbook,
-  # save to a local temp file, then shell-cp to out_dir (openxlsx uses zip random-
-  # access writes that can silently 0-byte on S3-backed mounts). Degrades gracefully:
-  # if openxlsx is absent we warn and skip (the filtered table is still returned).
   if (isTRUE(save_excel)) {
     if (!requireNamespace("openxlsx", quietly = TRUE)) {
       warning("gvr_filter: 'openxlsx' not installed; skipping Excel export.")

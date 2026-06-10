@@ -29,7 +29,7 @@
 #' Processing options:
 #' \itemize{
 #'   \item MULTI-FILE: in folder mode, every file matching `pattern` (default
-#'     `"*_NN.vep.vcf.gz"`) is converted and row-bound.
+#'     `"*_NN.vcf.gz"`) is converted and row-bound.
 #'   \item HGVS CLEANUP (`strip_hgvs_prefix`): strips the Ensembl feature prefix from
 #'     `HGVSc`/`HGVSp` (e.g. `"ENST00000831140.1:n.1889G>A"` -> `"n.1889G>A"`).
 #'   \item DEDUP (`dedup_columns`): removes duplicate-named columns ONLY when their
@@ -49,7 +49,7 @@
 #' @param vcf_path Path to a single `.vep.vcf.gz` to convert (single-file mode).
 #'   `NULL` (default) selects folder mode.
 #' @param pattern Regular expression identifying per-sample VCFs in folder mode.
-#'   Default `"_\\d+\\.vep\\.vcf\\.gz$"` (matches `_01`, `_02`, ...).
+#'   Default `"_\\d+\\.vcf\\.gz$"` (matches `_01`, `_02`, ...).
 #' @param write_tsv Logical; if `TRUE`, also write the MAF as a TSV to `out_dir`.
 #'   Default `FALSE`.
 #' @param write_rds Logical; if `TRUE`, also write the MAF as an `.rds` to `out_dir`.
@@ -123,7 +123,7 @@
 #'
 #' @examples
 #' \dontrun{
-#' ## Folder mode: merge ALL *_NN.vep.vcf.gz into one MAF
+#' ## Folder mode: merge ALL *_NN.vcf.gz into one MAF
 #' maf <- read.gvr("/path/to/folder")
 #'
 #' ## Also write TSV + RDS outputs
@@ -155,7 +155,7 @@
 #' @export
 read.gvr <- function(folder = ".",
                            vcf_path   = NULL,
-                           pattern    = "_\\d+\\.vep\\.vcf\\.gz$",   # v2: _01,_02,_03,...
+                           pattern    = "_\\d+\\.vcf\\.gz$",   # v2: _01,_02,_03,...
                            write_tsv  = FALSE,
                            write_rds  = FALSE,
                            write_xlsx = FALSE,   # v6: also write the MAF as .xlsx (one "MAF" sheet)
@@ -1342,7 +1342,7 @@ read.gvr <- function(folder = ".",
 
 # If sourced interactively this just defines read.gvr().
 # Example (commented):
-#   maf <- read.gvr("/mnt/user-uploads")                # merge all *_NN.vep.vcf.gz
+#   maf <- read.gvr("/mnt/user-uploads")                # merge all *_NN.vcf.gz
 #   maf_pass <- maf[FILTER == "PASS"]
 #   # genes of interest only, no DP/GQ filter:
 #   maf_goi <- read.gvr("/mnt/user-uploads", min_DP = NULL, min_GQ = NULL,
