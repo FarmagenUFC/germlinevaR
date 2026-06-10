@@ -1086,10 +1086,13 @@ gvr_summary <- function(maf,
         # Returns a named list with: summary_dtbl, detail_dtbl, container_id
         .mk_drilldown <- function(summary_section, detail_df, container_id,
                                   filter_col, caption_summary, caption_detail) {
-          # Detail DT: full variant rows, hidden after init via initComplete
+          # Detail DT: full variant rows, hidden after init via initComplete.
+          # filter="none" (not "top") because: (1) the detail table is driven by
+          # the summary click handler, not manual column filters; (2) filter="top"
+          # on a large table inside a container can trigger DT TN/2 warnings.
           detail_dtbl <- suppressWarnings(DT::datatable(
             detail_df, rownames = FALSE,
-            class = "stripe hover compact", filter = "top",
+            class = "stripe hover compact", filter = "none",
             options = list(pageLength = 5, lengthMenu = c(5, 10, 25),
                            dom = "ftip", scrollX = TRUE, searchDelay = 300,
                            initComplete = htmlwidgets::JS(
@@ -1120,7 +1123,10 @@ gvr_summary <- function(maf,
             "      var dtWrapper = container.querySelector('.dataTables_wrapper');",
             "      if (!dtWrapper) return;",
             "      var dtApi = $(dtWrapper).DataTable();",
-            sprintf("      dtApi.column(%d).search(val).draw();", filter_col_idx),
+            # Use regex exact-match: ^val$ so "pathogenic" doesn't match
+            # "pathogenic/likely_pathogenic" etc. Escape regex special chars.
+            "      var escaped = val.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');",
+            sprintf("      dtApi.column(%d).search('^' + escaped + '$', true, false, true).draw();", filter_col_idx),
             "      container.style.display = '';",
             "    });",
             "  });",
