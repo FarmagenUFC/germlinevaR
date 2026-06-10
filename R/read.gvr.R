@@ -49,7 +49,7 @@
 #' @param vcf_path Path to a single `.vep.vcf.gz` to convert (single-file mode).
 #'   `NULL` (default) selects folder mode.
 #' @param pattern Regular expression identifying per-sample VCFs in folder mode.
-#'   Default `"_\\d+\\.vcf\\.gz$"` (matches `_01`, `_02`, ...).
+#'   Default `"_\\d+(\\.vep)?\\.vcf\\.gz$"` (matches `_01.vep.vcf.gz`, `_01.vcf.gz`, etc.).
 #' @param write_tsv Logical; if `TRUE`, also write the MAF as a TSV to `out_dir`.
 #'   Default `FALSE`.
 #' @param write_rds Logical; if `TRUE`, also write the MAF as an `.rds` to `out_dir`.
@@ -155,7 +155,7 @@
 #' @export
 read.gvr <- function(folder = ".",
                            vcf_path   = NULL,
-                           pattern    = "_\\d+\\.vcf\\.gz$",   # v2: _01,_02,_03,...
+                           pattern    = "_\\d+(\\.vep)?\\.vcf\\.gz$",   # v2: _01.vep.vcf.gz, _01.vcf.gz, ...
                            write_tsv  = FALSE,
                            write_rds  = FALSE,
                            write_xlsx = FALSE,   # v6: also write the MAF as .xlsx (one "MAF" sheet)
@@ -648,10 +648,13 @@ read.gvr <- function(folder = ".",
         "inframe_insertion", "inframe_deletion",
         "disruptive_inframe_insertion", "disruptive_inframe_deletion"
       )
-      # Build pipe-delimited pattern for each term.
-      # Consequence is field #2 in CSQ, so it appears as |TERM| or |TERM&...|
-      # Using |TERM ensures we match the field boundary without substring issues.
-      pat_vc <- paste0(paste0("\\|", nonSyn_vep_terms, "(\\||&)"), collapse = "|")
+      # Unlike gene names (O7), VEP consequence terms are long and specific enough
+      # that bare substring matching is safe — they do not appear as substrings
+      # of other CSQ field values (verified empirically). Bare matching is also
+      # faster than pipe-delimited matching and correctly handles compound
+      # consequences (e.g. "missense_variant&splice_region_variant") where the
+      # term is preceded by & rather than |.
+      pat_vc <- paste0(nonSyn_vep_terms, collapse = "|")
       vc_hit <- grepl(pat_vc, INFO_v, ignore.case = FALSE)  # VEP terms are lowercase
       n_dropped_vc_rough <- sum(!vc_hit)
       if (n_dropped_vc_rough > 0L) {

@@ -22,7 +22,7 @@ utils::globalVariables(c(
 
   # --- gvr_summary(): section columns + nested-renderer aes() symbols -------
   "Hugo_Symbol", "Total", "Variant_Classification", "CLIN_SIG",
-  "Category", "Sample", "n",
+  "Category", "Sample", "n", ".__rs__", "Chromosome", "Start_Position", "..clin_detail_cols",
 
   # --- gvr_oncoplot(): matrix/summary columns ------------------------------
   "n_var", "n_samp", "N"

@@ -7,7 +7,7 @@
 read.gvr(
   folder = ".",
   vcf_path = NULL,
-  pattern = "_\\\\d+\\\\.vcf\\\\.gz$",
+  pattern = "_\\\\d+(\\\\.vep)?\\\\.vcf\\\\.gz$",
   write_tsv = FALSE,
   write_rds = FALSE,
   write_xlsx = FALSE,
@@ -40,7 +40,7 @@ converted and row-bound. Default \code{"."}. Ignored when \code{vcf_path} is sup
 \code{NULL} (default) selects folder mode.}
 
 \item{pattern}{Regular expression identifying per-sample VCFs in folder mode.
-Default \code{"_\\\\d+\\\\.vcf\\\\.gz$"} (matches \verb{_01}, \verb{_02}, ...).}
+Default \code{"_\\\\d+(\\\\.vep)?\\\\.vcf\\\\.gz$"} (matches \verb{_01.vep.vcf.gz}, \verb{_01.vcf.gz}, etc.).}
 
 \item{write_tsv}{Logical; if \code{TRUE}, also write the MAF as a TSV to \code{out_dir}.
 Default \code{FALSE}.}
