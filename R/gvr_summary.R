@@ -1120,14 +1120,20 @@ gvr_summary <- function(maf,
             "      if (val === 'missing/unclassified') return;",
             sprintf("      var container = document.getElementById('%s');", container_id),
             "      if (!container) return;",
-            "      var dtWrapper = container.querySelector('.dataTables_wrapper');",
-            "      if (!dtWrapper) return;",
-            "      var dtApi = $(dtWrapper).DataTable();",
+            # Must select the <table> element, NOT the wrapper div.
+            # $(div).DataTable() on a non-table element triggers TN/2
+            # ("Cannot reinitialise DataTable") and returns a broken API.
+            "      var table = container.querySelector('table');",
+            "      if (!table) return;",
+            "      var dtApi = $(table).DataTable();",
             # Use regex exact-match: ^val$ so "pathogenic" doesn't match
             # "pathogenic/likely_pathogenic" etc. Escape regex special chars.
             "      var escaped = val.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');",
-            sprintf("      dtApi.column(%d).search('^' + escaped + '$', true, false, true).draw();", filter_col_idx),
+            # Show container BEFORE search/draw so DataTables can render
+            # correctly (it cannot calculate layout while display:none).
             "      container.style.display = '';",
+            "      dtApi.columns.adjust();",
+            sprintf("      dtApi.column(%d).search('^' + escaped + '$', true, false, true).draw();", filter_col_idx),
             "    });",
             "  });",
             "}")
@@ -1279,7 +1285,8 @@ gvr_summary <- function(maf,
                          raw, ignore.case = TRUE)
             }
             writeLines(raw, pre_html)
-            suppressWarnings(rmarkdown::pandoc_self_contained_html(pre_html, sc_html))
+            suppressWarnings(suppressMessages(
+              rmarkdown::pandoc_self_contained_html(pre_html, sc_html)))
             file.exists(sc_html) && file.info(sc_html)$size > 0
           } else FALSE
         }, error = function(e) FALSE)
