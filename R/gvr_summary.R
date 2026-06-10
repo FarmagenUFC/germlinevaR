@@ -1285,8 +1285,13 @@ gvr_summary <- function(maf,
                          raw, ignore.case = TRUE)
             }
             writeLines(raw, pre_html)
-            suppressWarnings(suppressMessages(
-              rmarkdown::pandoc_self_contained_html(pre_html, sc_html)))
+            # Pandoc prints the "[WARNING] ... nonempty <title>" message to
+            # stderr (not an R condition), so suppressWarnings/suppressMessages
+            # cannot catch it.  capture.output(type="message") sinks stderr.
+            capture.output(
+              suppressWarnings(suppressMessages(
+                rmarkdown::pandoc_self_contained_html(pre_html, sc_html))),
+              type = "message")
             file.exists(sc_html) && file.info(sc_html)$size > 0
           } else FALSE
         }, error = function(e) FALSE)
