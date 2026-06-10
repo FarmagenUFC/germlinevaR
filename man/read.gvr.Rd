@@ -208,7 +208,7 @@ maf[FILTER == "PASS" & Variant_Classification == "Missense_Mutation"]
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},
-\code{\link{gvr_oncoplot}()},
+\code{\link{gvr_plot}()},
 \code{\link{gvr_summary}()}
 }
 \author{

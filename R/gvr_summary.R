@@ -7,7 +7,7 @@
 #' returned as a tidy `data.table` with one column per sample plus a `Total` column.
 #' Optionally writes a multi-sheet Excel workbook and/or a multi-page PDF report
 #' (both into a `gvr_summary/` subfolder of `out_dir`). For a cohort oncoplot, see
-#' [gvr_oncoplot()].
+#' [gvr_plot()].
 #'
 #' @details
 #' Sections returned (as a named list of `data.table`s):
@@ -38,7 +38,7 @@
 #' The section tables are the core return value. By default the function also writes
 #' an Excel workbook (`save_excel = TRUE`) and a PDF report (`save_pdf = TRUE`) into
 #' `out_dir/gvr_summary/`; set either to `FALSE` to skip it. The cohort oncoplot lives
-#' in [gvr_oncoplot()].
+#' in [gvr_plot()].
 #'
 #' Data conventions:
 #' \itemize{
@@ -120,7 +120,7 @@
 #' skipped with a warning and the section tables are still returned.
 #'
 #' @seealso [read.gvr()] to build the MAF, [gvr_filter()] to filter it before
-#'   summarising, [gvr_oncoplot()] for a cohort oncoplot.
+#'   summarising, [gvr_plot()] for a cohort oncoplot.
 #' @family germlinevaR
 #' @author germlinevaR authors
 #'
@@ -1032,6 +1032,27 @@ gvr_summary <- function(maf,
           txt, style = sprintf("color:%s; border-bottom:2px solid %s; padding-bottom:4px; margin-top:30px;",
                                PHYLO_GREEN, STONE))
 
+        # Per-sample top genes: simple horizontal bar chart (single sample, no grouping)
+        .plt_bar_single <- function(dt, cat_col, val_col, top = 10L, title = NULL) {
+          d <- as.data.frame(dt, stringsAsFactors = FALSE)
+          d <- d[d[[cat_col]] != "" & !is.na(d[[cat_col]]), , drop = FALSE]
+          if (!is.null(top) && nrow(d) > top) d <- d[order(-d[[val_col]])[seq_len(top)], , drop = FALSE]
+          lev <- d[[cat_col]][order(d[[val_col]])]   # ascending so biggest on top
+          d[[cat_col]] <- factor(d[[cat_col]], levels = lev)
+          h_px <- max(280, 90 + 26 * length(lev))
+          p <- plotly::plot_ly(d, x = as.formula(paste0("~", val_col)),
+                               y = as.formula(paste0("~", cat_col)),
+                               type = "bar", orientation = "h", height = h_px,
+                               hovertemplate = "%{y}: %{x:,}<extra></extra>",
+                               marker = list(color = PHYLO_BLUE))
+          plotly::layout(p, barmode = "group",
+                         title  = list(text = title, x = 0, font = list(color = PHYLO_BLUE, size = 14)),
+                         xaxis  = list(title = "", tickformat = ","),
+                         yaxis  = list(title = ""),
+                         margin = list(l = 8, r = 8, t = 44, b = 8),
+                         showlegend = FALSE)
+        }
+
         charts <- htmltools::tagList(
           sec_h("Charts"),
           .plt_bar(sections$top_genes, "Hugo_Symbol", top = 10L, title = "Top genes by variant count (top 10)"),
@@ -1040,61 +1061,89 @@ gvr_summary <- function(maf,
           .plt_bar(sections$impact, "IMPACT", top = NULL, title = "Functional impact (VEP IMPACT)"),
           if (!is.null(sections$top_variants))
             .plt_bar(sections$top_variants, "dbSNP_RS", top = 10L,
-                     title = "Top variants by rsID frequency (top 10)"))
+                     title = "Top variants by rsID frequency (top 10)"),
+          # Per-sample top genes charts (top 10 genes per sample)
+          if (length(sections$top_genes_per_sample))
+            lapply(names(sections$top_genes_per_sample), function(sm) {
+              sm_dt <- sections$top_genes_per_sample[[sm]]
+              .plt_bar_single(sm_dt, "Hugo_Symbol", sm, top = 10L,
+                              title = sprintf("Top genes \u2013 %s (top 10)", sm))
+            }))
 
-        # --- CLIN_SIG drill-down: detail DT with curated variant columns ---
-        # Clicking a CLIN_SIG token in the summary table filters the detail table
-        # and toggles its visibility.
+        # --- Drill-down detail tables (CLIN_SIG, IMPACT, Variant_Classification) ---
+        # Clicking a category token in the summary table filters the detail table
+        # on the relevant column and toggles its visibility.
         # IMPORTANT: the detail container must NOT use display:none at build time,
         # because DT cannot initialise inside a hidden element (causes TN/2 warning).
         # Instead, the detail DT's own initComplete hides the container after it
         # has fully rendered.
+        #
+        # CRITICAL: the click handler uses dtApi.column(idx).search(val) for
+        # COLUMN-SPECIFIC filtering (not dtApi.search(val) which does a global
+        # search across all columns and returns wrong results).
+
+        # --- Helper: build a drill-down pair (summary DT + detail DT) ---
+        # Returns a named list with: summary_dtbl, detail_dtbl, container_id
+        .mk_drilldown <- function(summary_section, detail_df, container_id,
+                                  filter_col, caption_summary, caption_detail) {
+          # Detail DT: full variant rows, hidden after init via initComplete
+          detail_dtbl <- suppressWarnings(DT::datatable(
+            detail_df, rownames = FALSE,
+            class = "stripe hover compact", filter = "top",
+            options = list(pageLength = 5, lengthMenu = c(5, 10, 25),
+                           dom = "ftip", scrollX = TRUE, searchDelay = 300,
+                           initComplete = htmlwidgets::JS(
+                             "function() {",
+                             sprintf("  document.getElementById('%s').style.display = 'none';", container_id),
+                             "}")),
+            caption = htmltools::tags$span(
+              style = "font-weight:bold; color:#0279EE;",
+              caption_detail)))
+
+          # Summary DT: clickable first-column cells
+          summary_dtbl <- .dt_tbl(summary_section, caption = caption_summary)
+          # Find the column index of filter_col in the detail table for column-specific search
+          filter_col_idx <- which(names(detail_df) == filter_col) - 1L  # DT uses 0-based indices
+          summary_dtbl$x$options$initComplete <- htmlwidgets::JS(
+            "function() {",
+            "  var tbl = this.api().table().body();",
+            "  var cells = tbl.querySelectorAll('td:first-child');",
+            "  cells.forEach(function(c) {",
+            "    c.style.cursor = 'pointer';",
+            "    c.style.textDecoration = 'underline';",
+            "    c.style.color = '#0279EE';",
+            "    c.addEventListener('click', function() {",
+            "      var val = this.textContent.trim();",
+            "      if (val === 'missing/unclassified') return;",
+            sprintf("      var container = document.getElementById('%s');", container_id),
+            "      if (!container) return;",
+            "      var dtWrapper = container.querySelector('.dataTables_wrapper');",
+            "      if (!dtWrapper) return;",
+            "      var dtApi = $(dtWrapper).DataTable();",
+            sprintf("      dtApi.column(%d).search(val).draw();", filter_col_idx),
+            "      container.style.display = '';",
+            "    });",
+            "  });",
+            "}")
+
+          list(summary_dtbl = summary_dtbl,
+               detail_dtbl  = detail_dtbl,
+               container_id = container_id)
+        }
+
+        # --- CLIN_SIG drill-down ---
         clin_detail_cols <- c("Hugo_Symbol", "Chromosome", "Start_Position",
                               "Variant_Classification", "HGVSc", "HGVSp_Short",
                               "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode")
         clin_detail_cols <- intersect(clin_detail_cols, names(dt))
         clin_detail_df <- as.data.frame(dt[!.is_missing(dt$CLIN_SIG), ..clin_detail_cols],
                                         stringsAsFactors = FALSE)
-        clin_detail_container_id <- "gvr_clin_detail"
-        clin_detail_dtbl <- DT::datatable(
-          clin_detail_df, rownames = FALSE,
-          class = "stripe hover compact", filter = "top",
-          options = list(pageLength = 5, lengthMenu = c(5, 10, 25),
-                         dom = "ftip", scrollX = TRUE, searchDelay = 300,
-                         initComplete = htmlwidgets::JS(
-                           "function() {",
-                           sprintf("  document.getElementById('%s').style.display = 'none';", clin_detail_container_id),
-                           "}")),
-          caption = htmltools::tags$span(
-            style = "font-weight:bold; color:#0279EE;",
-            "Variants matching selected CLIN_SIG token (click a token above)"))
-        # Style the CLIN_SIG summary table cells as clickable
-        clin_summary_dtbl <- .dt_tbl(sections$clin_sig,
-                                     caption = "Clinical significance (click a token to see variants)")
-        clin_summary_dtbl$x$options$initComplete <- htmlwidgets::JS(
-          "function() {",
-          "  var tbl = this.api().table().body();",
-          "  var cells = tbl.querySelectorAll('td:first-child');",
-          "  cells.forEach(function(c) {",
-          "    c.style.cursor = 'pointer';",
-          "    c.style.textDecoration = 'underline';",
-          "    c.style.color = '#0279EE';",
-          "    c.addEventListener('click', function() {",
-          "      var val = this.textContent.trim();",
-          "      if (val === 'missing/unclassified') return;",
-          sprintf("      var container = document.getElementById('%s');", clin_detail_container_id),
-          "      if (!container) return;",
-          "      var dtWrapper = container.querySelector('.dataTables_wrapper');",
-          "      if (!dtWrapper) return;",
-          "      var dtApi = $(dtWrapper).DataTable();",
-          "      dtApi.search(val).draw();",
-          "      container.style.display = '';",
-          "    });",
-          "  });",
-          "}")
+        clin_dd <- .mk_drilldown(
+          sections$clin_sig, clin_detail_df, "gvr_clin_detail", "CLIN_SIG",
+          "Clinical significance (click a token to see variants)",
+          "Variants matching selected CLIN_SIG token (click a token above)")
 
-        # --- IMPACT drill-down: same pattern as CLIN_SIG ---
-        # Clicking an IMPACT level (e.g. HIGH) shows the individual variants.
+        # --- IMPACT drill-down ---
         impact_detail_cols <- c("Hugo_Symbol", "Chromosome", "Start_Position",
                                 "Variant_Classification", "HGVSc", "HGVSp_Short",
                                 "IMPACT", "Consequence", "gnomADe_AF", "dbSNP_RS",
@@ -1102,42 +1151,30 @@ gvr_summary <- function(maf,
         impact_detail_cols <- intersect(impact_detail_cols, names(dt))
         impact_detail_df <- as.data.frame(dt[!.is_missing(dt$IMPACT), ..impact_detail_cols],
                                           stringsAsFactors = FALSE)
-        impact_detail_container_id <- "gvr_impact_detail"
-        impact_detail_dtbl <- DT::datatable(
-          impact_detail_df, rownames = FALSE,
-          class = "stripe hover compact", filter = "top",
-          options = list(pageLength = 5, lengthMenu = c(5, 10, 25),
-                         dom = "ftip", scrollX = TRUE, searchDelay = 300,
-                         initComplete = htmlwidgets::JS(
-                           "function() {",
-                           sprintf("  document.getElementById('%s').style.display = 'none';", impact_detail_container_id),
-                           "}")),
-          caption = htmltools::tags$span(
-            style = "font-weight:bold; color:#0279EE;",
-            "Variants matching selected IMPACT level (click a level above)"))
-        # Style the IMPACT summary table cells as clickable
-        impact_summary_dtbl <- .dt_tbl(sections$impact,
-                                       caption = "Functional impact (click a level to see variants)")
-        impact_summary_dtbl$x$options$initComplete <- htmlwidgets::JS(
-          "function() {",
-          "  var tbl = this.api().table().body();",
-          "  var cells = tbl.querySelectorAll('td:first-child');",
-          "  cells.forEach(function(c) {",
-          "    c.style.cursor = 'pointer';",
-          "    c.style.textDecoration = 'underline';",
-          "    c.style.color = '#0279EE';",
-          "    c.addEventListener('click', function() {",
-          "      var val = this.textContent.trim();",
-          sprintf("      var container = document.getElementById('%s');", impact_detail_container_id),
-          "      if (!container) return;",
-          "      var dtWrapper = container.querySelector('.dataTables_wrapper');",
-          "      if (!dtWrapper) return;",
-          "      var dtApi = $(dtWrapper).DataTable();",
-          "      dtApi.search(val).draw();",
-          "      container.style.display = '';",
-          "    });",
-          "  });",
-          "}")
+        impact_dd <- .mk_drilldown(
+          sections$impact, impact_detail_df, "gvr_impact_detail", "IMPACT",
+          "Functional impact (click a level to see variants)",
+          "Variants matching selected IMPACT level (click a level above)")
+
+        # --- Variant_Classification drill-down ---
+        vc_detail_cols <- c("Hugo_Symbol", "Chromosome", "Start_Position",
+                            "Variant_Classification", "HGVSc", "HGVSp_Short",
+                            "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode")
+        vc_detail_cols <- intersect(vc_detail_cols, names(dt))
+        vc_detail_df <- as.data.frame(dt[!.is_missing(dt$Variant_Classification), ..vc_detail_cols],
+                                      stringsAsFactors = FALSE)
+        vc_dd <- .mk_drilldown(
+          sections$variant_classification, vc_detail_df, "gvr_vc_detail",
+          "Variant_Classification",
+          "Variant classification (click a class to see variants)",
+          "Variants matching selected Variant_Classification (click a class above)")
+
+        # Map from special key to drill-down pair
+        dd_map <- list(
+          clin_sig = clin_dd,
+          impact  = impact_dd,
+          vc      = vc_dd
+        )
 
         tbl_specs <- list(
           list(s = "overview",               t = "Overview"),
@@ -1150,7 +1187,7 @@ gvr_summary <- function(maf,
                  per_sample_key = sm)))
         }
         tbl_specs <- c(tbl_specs, list(
-          list(s = "variant_classification", t = "Variant classification"),
+          list(s = "variant_classification", t = "Variant classification", special = "vc"),
           list(s = "variant_type",           t = "Variant type"),
           list(s = "clin_sig",               t = "Clinical significance", special = "clin_sig"),
           list(s = "impact",                 t = "Functional impact", special = "impact")))
@@ -1165,18 +1202,16 @@ gvr_summary <- function(maf,
                       else sections[[sp$s]]
             if (!is.null(sp$special)) {
               # Drill-down sections: summary table + hidden detail table
-              summary_dtbl <- if (sp$special == "clin_sig") clin_summary_dtbl else impact_summary_dtbl
-              detail_dtbl  <- if (sp$special == "clin_sig") clin_detail_dtbl else impact_detail_dtbl
-              container_id <- if (sp$special == "clin_sig") clin_detail_container_id else impact_detail_container_id
+              dd <- dd_map[[sp$special]]
               htmltools::tags$div(
                 style = "margin:14px 0 26px 0;",
                 htmltools::tags$h3(sp$t,
                   style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
-                summary_dtbl,
+                dd$summary_dtbl,
                 htmltools::tags$div(
-                  id = container_id,
+                  id = dd$container_id,
                   style = "margin-top:12px; border-top:2px solid #ECE9E2; padding-top:10px;",
-                  detail_dtbl))
+                  dd$detail_dtbl))
             } else {
               htmltools::tags$div(style = "margin:14px 0 26px 0;",
                                   htmltools::tags$h3(sp$t,
@@ -1210,7 +1245,11 @@ gvr_summary <- function(maf,
         dir.create(work_dir, showWarnings = FALSE, recursive = TRUE)
 
         staged_html <- file.path(work_dir, basename(final_html))
+        # Suppress DT "data too big for client-side DataTables" warning via the
+        # DT.warn.size option (checked in DT::datatable's preRenderHook).
+        ow_dt <- options(DT.warn.size = FALSE)
         htmltools::save_html(widget, staged_html, libdir = files_nm)
+        options(ow_dt)
 
         # Strip the leading "<!DOCTYPE html>" before pandoc: pandoc treats the input
         # as an HTML fragment and would otherwise escape the doctype into a visible
@@ -1226,12 +1265,15 @@ gvr_summary <- function(maf,
             pre_html <- file.path(work_dir, paste0(base_nm, ".prepandoc.html"))
             raw <- paste(readLines(staged_html, warn = FALSE), collapse = "\n")
             raw <- sub("(?is)^\\s*<!DOCTYPE[^>]*>\\s*", "", raw, perl = TRUE)
-            # Inject <title> into <head> if absent
+            # Inject <title> into <head> if absent (pandoc requires one; without it,
+            # a verbose warning is emitted). Use &ndash; entity for robustness.
             if (!grepl("<title>", raw, ignore.case = TRUE)) {
-              raw <- sub("(<head[^>]*>)", sprintf("\\1<title>germlinevaR \u2013 Cohort Summary</title>"), raw, ignore.case = TRUE)
+              raw <- sub("(<head[^>]*>)",
+                         "\\1\n<title>germlinevaR &ndash; Cohort Summary</title>",
+                         raw, ignore.case = TRUE)
             }
             writeLines(raw, pre_html)
-            rmarkdown::pandoc_self_contained_html(pre_html, sc_html)
+            suppressWarnings(rmarkdown::pandoc_self_contained_html(pre_html, sc_html))
             file.exists(sc_html) && file.info(sc_html)$size > 0
           } else FALSE
         }, error = function(e) FALSE)

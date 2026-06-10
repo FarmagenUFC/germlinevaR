@@ -90,7 +90,7 @@ functional classes, clinical significance and predicted impact. Every section is
 returned as a tidy \code{data.table} with one column per sample plus a \code{Total} column.
 Optionally writes a multi-sheet Excel workbook and/or a multi-page PDF report
 (both into a \verb{gvr_summary/} subfolder of \code{out_dir}). For a cohort oncoplot, see
-\code{\link[=gvr_oncoplot]{gvr_oncoplot()}}.
+\code{\link[=gvr_plot]{gvr_plot()}}.
 }
 \details{
 Sections returned (as a named list of \code{data.table}s):
@@ -121,7 +121,7 @@ severity order rather than count order.
 The section tables are the core return value. By default the function also writes
 an Excel workbook (\code{save_excel = TRUE}) and a PDF report (\code{save_pdf = TRUE}) into
 \verb{out_dir/gvr_summary/}; set either to \code{FALSE} to skip it. The cohort oncoplot lives
-in \code{\link[=gvr_oncoplot]{gvr_oncoplot()}}.
+in \code{\link[=gvr_plot]{gvr_plot()}}.
 
 Data conventions:
 \itemize{
@@ -213,11 +213,11 @@ gvr_summary(maf, top_n_genes = 30, verbose = FALSE)
 }
 \seealso{
 \code{\link[=read.gvr]{read.gvr()}} to build the MAF, \code{\link[=gvr_filter]{gvr_filter()}} to filter it before
-summarising, \code{\link[=gvr_oncoplot]{gvr_oncoplot()}} for a cohort oncoplot.
+summarising, \code{\link[=gvr_plot]{gvr_plot()}} for a cohort oncoplot.
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},
-\code{\link{gvr_oncoplot}()},
+\code{\link{gvr_plot}()},
 \code{\link{read.gvr}()}
 }
 \author{
