@@ -7,7 +7,7 @@
 read.gvr(
   folder = ".",
   vcf_path = NULL,
-  pattern = "_\\\\d+\\\\.vep\\\\.vcf\\\\.gz$",
+  pattern = "_\\\\d+\\\\.vcf\\\\.gz$",
   write_tsv = FALSE,
   write_rds = FALSE,
   write_xlsx = FALSE,
@@ -40,7 +40,7 @@ converted and row-bound. Default \code{"."}. Ignored when \code{vcf_path} is sup
 \code{NULL} (default) selects folder mode.}
 
 \item{pattern}{Regular expression identifying per-sample VCFs in folder mode.
-Default \code{"_\\\\d+\\\\.vep\\\\.vcf\\\\.gz$"} (matches \verb{_01}, \verb{_02}, ...).}
+Default \code{"_\\\\d+\\\\.vcf\\\\.gz$"} (matches \verb{_01}, \verb{_02}, ...).}
 
 \item{write_tsv}{Logical; if \code{TRUE}, also write the MAF as a TSV to \code{out_dir}.
 Default \code{FALSE}.}
@@ -161,7 +161,7 @@ and an optional \code{Genotype} column (\code{Tumor_Seq_Allele1/Tumor_Seq_Allele
 Processing options:
 \itemize{
 \item MULTI-FILE: in folder mode, every file matching \code{pattern} (default
-\code{"*_NN.vep.vcf.gz"}) is converted and row-bound.
+\code{"*_NN.vcf.gz"}) is converted and row-bound.
 \item HGVS CLEANUP (\code{strip_hgvs_prefix}): strips the Ensembl feature prefix from
 \code{HGVSc}/\code{HGVSp} (e.g. \code{"ENST00000831140.1:n.1889G>A"} -> \code{"n.1889G>A"}).
 \item DEDUP (\code{dedup_columns}): removes duplicate-named columns ONLY when their
@@ -178,7 +178,7 @@ case-insensitive).
 }
 \examples{
 \dontrun{
-## Folder mode: merge ALL *_NN.vep.vcf.gz into one MAF
+## Folder mode: merge ALL *_NN.vcf.gz into one MAF
 maf <- read.gvr("/path/to/folder")
 
 ## Also write TSV + RDS outputs

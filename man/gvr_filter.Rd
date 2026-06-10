@@ -9,13 +9,16 @@ gvr_filter(
   gnomADe_AF = 0.01,
   AF = 0.01,
   ABraOM_AF = 0.01,
-  gnomADe_AF_keep_missing = FALSE,
-  AF_keep_missing = FALSE,
-  ABraOM_AF_keep_missing = FALSE,
+  gnomADe_AF_keep_missing = TRUE,
+  AF_keep_missing = TRUE,
+  ABraOM_AF_keep_missing = TRUE,
   clin_sig_terms = c("likely_pathogenic", "pathogenic", "uncertain_significance"),
   clin_sig_keep_missing = TRUE,
-  biotype_keep = c("protein_coding", "protein_coding_LoF"),
+  remove_benign = FALSE,
+  biotype_keep = NULL,
   gt_exclude = c("0", "0/0"),
+  vc_nonSyn = FALSE,
+  genes = NULL,
   save_excel = FALSE,
   out_dir = NULL,
   file_prefix = "gvr_filter",
@@ -36,17 +39,17 @@ frequency). \code{NULL} disables this filter. Default 0.01.}
 \item{ABraOM_AF}{Numeric upper threshold for the Brazilian-cohort (ABraOM SABE 609)
 column \code{ABraOM_AF}. \code{NULL} disables this filter. Default 0.01.}
 
-\item{gnomADe_AF_keep_missing}{Logical; if TRUE, keep rows whose \code{gnomADe_AF} is
-missing (NA or ""); if FALSE (default) drop them. Matches the literal dplyr example
-(missing -> dropped). Ignored when \code{gnomADe_AF} is NULL.}
+\item{gnomADe_AF_keep_missing}{Logical; if TRUE (default), keep rows whose
+\code{gnomADe_AF} is missing (NA or ""); if FALSE drop them. Ignored when
+\code{gnomADe_AF} is NULL.}
 
-\item{AF_keep_missing}{Logical; missing-value handling for the \code{AF} filter. FALSE
-(default) drops missing. Ignored when \code{AF} is NULL.}
+\item{AF_keep_missing}{Logical; missing-value handling for the \code{AF} filter.
+TRUE (default) keeps missing. Ignored when \code{AF} is NULL.}
 
 \item{ABraOM_AF_keep_missing}{Logical; missing-value handling for the ABraOM
-filter. FALSE (default) drops missing. Set TRUE to retain variants absent from the
-Brazilian cohort (where absence often means "not catalogued", not "common").
-Ignored when \code{ABraOM_AF} is NULL.}
+filter. TRUE (default) retains variants absent from the Brazilian cohort
+(where absence often means "not catalogued", not "common"). Ignored when
+\code{ABraOM_AF} is NULL.}
 
 \item{clin_sig_terms}{Character vector of clinical-significance terms to keep
 (substring, case-insensitive, OR-combined). \code{NULL} disables the CLIN_SIG filter.
@@ -55,12 +58,31 @@ Default: c("likely_pathogenic","pathogenic","uncertain_significance").}
 \item{clin_sig_keep_missing}{Logical; if TRUE (default) rows with missing CLIN_SIG
 (NA/"") are kept. Only relevant when \code{clin_sig_terms} is non-NULL.}
 
+\item{remove_benign}{Logical; if TRUE, remove rows whose \code{CLIN_SIG} contains
+"benign" (substring, case-insensitive). This catches \code{benign},
+\code{likely_benign}, and compound annotations like
+\code{"uncertain_significance&likely_benign"}. Applied AFTER the \code{clin_sig_terms}
+keep-filter, so a row that matched a wanted term but also contains "benign"
+is still removed. \code{FALSE} (default) does not remove benign rows.}
+
 \item{biotype_keep}{Character vector of BIOTYPE values to keep (exact match via \%in\%).
-\code{NULL} disables the biotype filter.
-Default: c("protein_coding","protein_coding_LoF").}
+\code{NULL} (default) disables the biotype filter — all biotypes are kept.
+Pass e.g. \code{c("protein_coding", "protein_coding_LoF")} to restrict to
+protein-coding transcripts.}
 
 \item{gt_exclude}{Character vector of GT values to remove (exact match). \code{NULL}
 disables the genotype filter. Default: c("0","0/0").}
+
+\item{vc_nonSyn}{Logical or character vector. Controls which
+\code{Variant_Classification} values are retained. \code{FALSE} (default) keeps all.
+\code{TRUE} keeps only the 9 protein-altering classes (Frame_Shift_Del,
+Frame_Shift_Ins, Splice_Site, Translation_Start_Site, Nonsense_Mutation,
+Nonstop_Mutation, In_Frame_Del, In_Frame_Ins, Missense_Mutation).
+A custom character vector keeps only those classifications. Rows with
+missing/blank \code{Variant_Classification} are removed when this filter is active.}
+
+\item{genes}{Character vector of \code{Hugo_Symbol}s to keep (exact, case-insensitive),
+or \code{NULL} (default) to keep all genes.}
 
 \item{save_excel}{Logical; if TRUE, also write the FILTERED table to an \code{.xlsx}
 workbook (single \code{"Filtered"} sheet) at \verb{<out_dir>/<file_prefix>.xlsx}. Requires
@@ -89,7 +111,7 @@ Applies a set of independent variant filters to the MAF-style table produced by
 \code{\link[=read.gvr]{read.gvr()}}. Each distinct filter is its own argument; setting an argument to
 \code{NULL} disables that filter entirely (no rows removed by it). With all defaults,
 \code{gvr_filter(maf)} reproduces the canonical rare / clinically-relevant /
-protein-coding / called-genotype germline pipeline.
+called-genotype pipeline (AF filters + CLIN_SIG + GT exclusion).
 }
 \details{
 Filters are applied in a fixed order; each step operates on the survivors of the
@@ -99,8 +121,11 @@ previous one:
 \item gnomAD genome / VCF AF - \code{AF}                (+ \code{AF_keep_missing})
 \item ABraOM AF             - \code{ABraOM_AF}         (+ \code{ABraOM_AF_keep_missing})
 \item Clinical significance  - \code{clin_sig_terms}    (+ \code{clin_sig_keep_missing})
+\item Remove benign          - \code{remove_benign}
 \item Biotype                - \code{biotype_keep}
 \item Genotype exclusion     - \code{gt_exclude}
+\item Variant classification - \code{vc_nonSyn}
+\item Gene subset            - \code{genes}
 }
 
 Important data notes (true of \code{\link[=read.gvr]{read.gvr()}} output):
@@ -125,19 +150,26 @@ The input is never modified: filtering operates on an internal \code{data.table}
 \dontrun{
 maf <- read.gvr("/path/to/vcf_folder")
 
-## Reproduce the default rare / clinically-relevant / protein-coding pipeline:
+## Default pipeline: rare variants + clinically relevant + called genotypes:
 maf_clean <- gvr_filter(maf)
 
-## Strict gnomAD, but keep variants absent from ABraOM:
-gvr_filter(maf, ABraOM_AF_keep_missing = TRUE)
+## Add protein-coding biotype filter:
+gvr_filter(maf, biotype_keep = c("protein_coding", "protein_coding_LoF"))
 
 ## Only the rarity filter on gnomAD exome AF, nothing else:
 gvr_filter(maf, gnomADe_AF = 0.001, AF = NULL, ABraOM_AF = NULL,
-           clin_sig_terms = NULL, biotype_keep = NULL, gt_exclude = NULL)
+           clin_sig_terms = NULL, gt_exclude = NULL,
+           vc_nonSyn = FALSE, genes = NULL)
 
-## Pathogenic-only (drop uncertain_significance), exact protein_coding:
+## Pathogenic-only, protein-coding:
 gvr_filter(maf, clin_sig_terms = c("pathogenic", "likely_pathogenic"),
            biotype_keep = "protein_coding")
+
+## Remove benign annotations (including likely_benign and compound entries):
+gvr_filter(maf, remove_benign = TRUE)
+
+## Keep only protein-altering variants and a gene panel:
+gvr_filter(maf, vc_nonSyn = TRUE, genes = c("TP53", "BRCA1", "BRCA2"))
 }
 
 }
