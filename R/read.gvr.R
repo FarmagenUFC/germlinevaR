@@ -1,40 +1,3 @@
-# ============================================================================
-# Sibling reader auto-load
-# ----------------------------------------------------------------------------
-# When read.gvr.R is sourced, it tries to also source its sibling file
-# read.gvr.snpeff.R (which defines .detect_annotator + read.gvr.snpeff()).
-# This enables read.gvr() to auto-route SnpEff-annotated VCFs to the SnpEff
-# reader. If the sibling file is absent, read.gvr() still works on VEP files
-# but will error out with a helpful message if a SnpEff VCF is seen.
-# ============================================================================
-.read_gvr_locate_sibling <- function() {
-  # 1) Use the active source file's directory if R can tell us where THIS
-  #    script lives (works for source() and Rscript). Recent R: getSrcFilename
-  #    on a function defined HERE returns this file's path.
-  this_dir <- tryCatch({
-    fn <- function() {}
-    fp <- utils::getSrcFilename(fn, full.names = TRUE)
-    if (length(fp) && nzchar(fp)) normalizePath(dirname(fp), mustWork = FALSE) else NULL
-  }, error = function(e) NULL)
-  # 2) Fallback: look in current working directory.
-  if (is.null(this_dir) || !nzchar(this_dir)) this_dir <- getwd()
-  candidate <- file.path(this_dir, "read.gvr.snpeff.R")
-  if (file.exists(candidate)) return(candidate)
-  NULL
-}
-
-local({
-  sib <- .read_gvr_locate_sibling()
-  if (!is.null(sib)) {
-    tryCatch(
-      source(sib, local = FALSE, chdir = FALSE),
-      error = function(e) warning(sprintf(
-        "read.gvr: failed to source sibling '%s': %s", sib, conditionMessage(e)))
-    )
-  }
-})
-
-
 #' Convert VEP-annotated germline VCF(s) to a maftools-style MAF data.table
 #'
 #' @description
@@ -215,6 +178,43 @@ read.gvr <- function(folder = ".",
                            ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
                            verbose    = TRUE) {
   # ===========================================================================
+  # Nested helper: .read_gvr_locate_sibling() + auto-source sibling
+  # ---------------------------------------------------------------------------
+  # In standalone mode (source()'d from a directory), read.gvr() tries to
+  # auto-source its sibling file read.gvr.snpeff.R so that SnpEff dispatch
+  # works without manual setup. In a package, all R/*.R files are loaded
+  # into the namespace automatically, so the auto-source is skipped.
+  # ===========================================================================
+  .read_gvr_locate_sibling <- function() {
+    # 1) Use the active source file's directory if R can tell us where THIS
+    #    script lives (works for source() and Rscript). Recent R: getSrcFilename
+    #    on a function defined HERE returns this file's path.
+    this_dir <- tryCatch({
+      fn <- function() {}
+      fp <- utils::getSrcFilename(fn, full.names = TRUE)
+      if (length(fp) && nzchar(fp)) normalizePath(dirname(fp), mustWork = FALSE) else NULL
+    }, error = function(e) NULL)
+    # 2) Fallback: look in current working directory.
+    if (is.null(this_dir) || !nzchar(this_dir)) this_dir <- getwd()
+    candidate <- file.path(this_dir, "read.gvr.snpeff.R")
+    if (file.exists(candidate)) return(candidate)
+    NULL
+  }
+
+  # Auto-source sibling if read.gvr.snpeff is not already available
+  # (in a package, it always is; in standalone mode, this provides it)
+  if (!exists("read.gvr.snpeff", mode = "function", inherits = TRUE)) {
+    sib <- .read_gvr_locate_sibling()
+    if (!is.null(sib)) {
+      tryCatch(
+        source(sib, local = FALSE, chdir = FALSE),
+        error = function(e) warning(sprintf(
+          "read.gvr: failed to source sibling '%s': %s", sib, conditionMessage(e)))
+      )
+    }
+  }
+
+  # ===========================================================================
   # Nested helper: .detect_annotator()
   # ---------------------------------------------------------------------------
   # Was previously top-level (defined in read.gvr.snpeff.R and source()d via
@@ -298,14 +298,9 @@ read.gvr <- function(folder = ".",
   # ==========================================================================
   # 0b. Auto-detect annotator per file + dispatch
   #     read.gvr() handles VEP-annotated VCFs (its original role); SnpEff
-  #     batches are delegated to read.gvr.snpeff() loaded from the sibling
-  #     file. Mixed or unannotated batches abort with a clear error message.
+  #     batches are delegated to read.gvr.snpeff(). In a package, the sibling
+  #     is always available; in standalone mode, the auto-source above loads it.
   # ==========================================================================
-  if (!exists(".detect_annotator", mode = "function")) {
-    stop("read.gvr: '.detect_annotator' is not defined. ",
-         "Source 'read.gvr.snpeff.R' (placed next to this file) before ",
-         "calling read.gvr().", call. = FALSE)
-  }
   detected <- vapply(vcf_paths, .detect_annotator, character(1L))
   na_mask  <- is.na(detected)
   if (any(na_mask)) {
@@ -338,7 +333,7 @@ read.gvr <- function(folder = ".",
                  paste(parts, collapse = "\n")), call. = FALSE)
   }
   if (uniq_ann == "snpeff") {
-    if (!exists("read.gvr.snpeff", mode = "function")) {
+    if (!exists("read.gvr.snpeff", mode = "function", inherits = TRUE)) {
       stop("read.gvr: detected SnpEff VCF(s) but 'read.gvr.snpeff' is not ",
            "defined. Source 'read.gvr.snpeff.R' (placed next to this file) ",
            "first.", call. = FALSE)
