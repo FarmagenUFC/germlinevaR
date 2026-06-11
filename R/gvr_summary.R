@@ -1097,8 +1097,8 @@ gvr_summary <- function(maf,
           lev <- d[[cat_col]][order(d[[val_col]])]   # ascending so biggest on top
           d[[cat_col]] <- factor(d[[cat_col]], levels = lev)
           h_px <- max(280, 90 + 26 * length(lev))
-          p <- plotly::plot_ly(d, x = as.formula(paste0("~", val_col)),
-                               y = as.formula(paste0("~", cat_col)),
+          p <- plotly::plot_ly(d, x = stats::as.formula(paste0("~", val_col)),
+                               y = stats::as.formula(paste0("~", cat_col)),
                                type = "bar", orientation = "h", height = h_px,
                                hovertemplate = "%{y}: %{x:,}<extra></extra>",
                                marker = list(color = PHYLO_BLUE))
@@ -1314,27 +1314,26 @@ gvr_summary <- function(maf,
           clin_sig = list(
             section_key = "clin_sig", filter_col = "CLIN_SIG",
             container = "gvr_clin_detail",
-            cols = c("Hugo_Symbol", "Chromosome", "Start_Position",
-                     "Variant_Classification", "HGVSc", "HGVSp_Short",
-                     "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode"),
+            cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
+                     "gnomADe_AF", "Variant_Classification",
+                     "Tumor_Sample_Barcode", "Consequence"),
             cap_summary  = "Clinical significance (click a token to see variants)",
             header_label = "CLIN_SIG"),
           impact = list(
             section_key = "impact", filter_col = "IMPACT",
             container = "gvr_impact_detail",
-            cols = c("Hugo_Symbol", "Chromosome", "Start_Position",
-                     "Variant_Classification", "HGVSc", "HGVSp_Short",
-                     "IMPACT", "Consequence", "gnomADe_AF", "dbSNP_RS",
-                     "Tumor_Sample_Barcode"),
+            cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
+                     "gnomADe_AF", "Variant_Classification",
+                     "Tumor_Sample_Barcode", "Consequence"),
             cap_summary  = "Functional impact (click a level to see variants)",
             header_label = "IMPACT"),
           vc = list(
             section_key = "variant_classification",
             filter_col = "Variant_Classification",
             container = "gvr_vc_detail",
-            cols = c("Hugo_Symbol", "Chromosome", "Start_Position",
-                     "Variant_Classification", "HGVSc", "HGVSp_Short",
-                     "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode"),
+            cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
+                     "gnomADe_AF", "Variant_Classification",
+                     "Tumor_Sample_Barcode", "Consequence"),
             cap_summary  = "Variant classification (click a class to see variants)",
             header_label = "Variant_Classification"))
 
@@ -1528,7 +1527,9 @@ gvr_summary <- function(maf,
               input   = pre_html,
               from    = from_fmt,
               output  = sc_html,
-              options = c(rmarkdown:::self_contained_args(),
+              options = c(if (rmarkdown::pandoc_available("2.19"))
+                            c("--embed-resources", "--standalone")
+                          else "--self-contained",
                           "--template", tpl,
                           "--metadata", "title=germlinevaR Cohort Summary",
                           "--quiet"))

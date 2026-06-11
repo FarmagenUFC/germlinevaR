@@ -11,6 +11,8 @@
 utils::globalVariables(c(
   # --- data.table special symbols (used inside dt[...] across functions) ----
   ".", ".N", ".SD", ".__sample__", ".sr",
+  # --- data.table column-vector prefix (used as `dt[, ..cols]` in gvr_summary)
+  "..cols",
 
   # --- read.gvr(): temp/internal columns created via := ---------------------
   ".rs", ".ref", ".alt",
@@ -23,6 +25,8 @@ utils::globalVariables(c(
   # --- gvr_summary(): section columns + nested-renderer aes() symbols -------
   "Hugo_Symbol", "Total", "Variant_Classification", "CLIN_SIG",
   "Category", "Sample", "n",
+  # --- gvr_summary(): top-rsID aggregation + drill-down detail columns ------
+  ".__rs__", "Chromosome", "Start_Position", "IMPACT",
 
   # --- gvr_plot(): matrix/summary columns ------------------------------
   "n_var", "n_samp", "N"
