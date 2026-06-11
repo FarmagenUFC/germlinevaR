@@ -27,11 +27,11 @@ Imports:
     openxlsx,
     parallel,
     stats,
-    utils
+    utils,
+    ggplot2,
 Suggests: 
     ComplexHeatmap,
     DT,
-    ggplot2,
     gridExtra,
     htmltools,
     htmlwidgets,
