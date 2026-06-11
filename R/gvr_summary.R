@@ -1130,28 +1130,23 @@ gvr_summary <- function(maf,
             "      if (val === 'missing/unclassified') return;",
             sprintf("      var container = document.getElementById('%s');", container_id),
             "      if (!container) return;",
-            # Look up the registered DataTable instance whose root <table>
-            # lives inside this container.  With scrollX=TRUE, DT creates a
-            # header-clone <table> in addition to the body table.  Picking
-            # the right instance via the global registry sidesteps both that
-            # and any wrapper-vs-table DOM ambiguity.
-            "      var dtApi = null;",
-            "      $.fn.dataTable.tables({api:true}).each(function() {",
-            "        if (container.contains(this.table().node())) { dtApi = this; return false; }",
-            "      });",
+            # Look up the registered DataTable instance via the scroll-body table node.
+            # Background: $.fn.dataTable.tables({api:true}).length is misleading; with
+            # scrollX:true each widget has 2 <table>s (header clone + body); the body is
+            # under .dataTables_scrollBody and is the one registered in w.settings.
+            # Constructing a fresh API via new $.fn.dataTable.Api(node) resolves against
+            # w.settings, which IS populated (verified via diag-5 isDataTable=true).
+            "      var bodyTable = container.querySelector('.dataTables_scrollBody table');",
+            "      if (!bodyTable) {",
+            "        var allTables = container.querySelectorAll('table');",
+            "        bodyTable = allTables[allTables.length - 1];",
+            "      }",
+            "      var dtApi = bodyTable ? new $.fn.dataTable.Api(bodyTable) : null;",
+            "      if (dtApi && dtApi.context.length === 0) dtApi = null;",
             "      if (!dtApi) return;",
-            # Escape regex special chars in the clicked token, then apply a
-            # token-bounded contains match.  CLIN_SIG cells may hold composite
-            # values like "likely_benign&pathogenic"; an anchored ^token$ misses
-            # them.  Pattern (^|[&/,])token([&/,]|$) matches alone or bounded by
-            # &, /, or , separators.  For single-valued columns (VC, IMPACT)
-            # this reduces to ^token$ behavior, so one pattern covers all three.
+            # Escape & build pattern
             "      var escaped = val.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');",
             "      var pattern = '(^|[&/,])' + escaped + '([&/,]|$)';",
-            # Show container BEFORE search/draw so DataTables can render
-            # correctly (it cannot calculate layout while display:none).
-            # Explicit 'block' (not '') so we set a known display value
-            # rather than relying on stylesheet defaults.
             "      container.style.display = 'block';",
             "      dtApi.columns.adjust();",
             sprintf("      dtApi.column(%d).search(pattern, true, false, true).draw();", filter_col_idx),
