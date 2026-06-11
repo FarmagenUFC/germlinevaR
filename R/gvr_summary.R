@@ -952,6 +952,36 @@ gvr_summary <- function(maf,
           isTRUE(tryCatch(rmarkdown::pandoc_available(), error = function(e) FALSE))
       }
 
+      # --- Adaptive size-band policy (HTML drill-down tables) ----------------
+      # The HTML report self-contains every detail-table row as inline JSON. At
+      # the pilot (~22k variants) the file is ~8.6 MB; linear projection to
+      # 300k+ variants overflows pandoc's --self-contained pass on Windows
+      # (VirtualAlloc / pagefile). To keep the report self-containable at scale
+      # we trim the inline payload as a function of cohort size:
+      #
+      #   small   (< .HTML_SMALL_MAX)   : full drill-downs (current behaviour)
+      #   medium  (< .HTML_MEDIUM_MAX)  : detail tables pre-filtered to the
+      #                                   biologically informative subset
+      #                                   (no MODIFIER impact / no Intron
+      #                                   classification / no missing CLIN_SIG).
+      #                                   VC additionally capped at 50k rows.
+      #   large   (>= .HTML_MEDIUM_MAX) : drill-downs disabled entirely. The
+      #                                   CLIN_SIG / VC / IMPACT sections
+      #                                   render as plain summary tables only;
+      #                                   per-variant data lives in the Excel.
+      #
+      # Tunable in one place. Boundaries are conservative against the pilot's
+      # MODIFIER/Intron fractions and pandoc's observed working set.
+      .HTML_SMALL_MAX  <- 50000L
+      .HTML_MEDIUM_MAX <- 150000L
+
+      .gvr_size_band <- function(n_total) {
+        if (n_total < .HTML_SMALL_MAX)  return("small")
+        if (n_total < .HTML_MEDIUM_MAX) return("medium")
+        "large"
+      }
+
+
       # Internal renderer for the interactive HTML (nested: single-use, not exported).
       # Reuses the PDF palette / KPI / chart logic so both reports stay consistent.
       # Returns the path actually written, with attr "sidecar" (TRUE when pandoc was
@@ -1112,11 +1142,20 @@ gvr_summary <- function(maf,
         # --- Helper: build a drill-down pair (summary DT + detail DT) ---
         # Returns a named list with: summary_dtbl, detail_dtbl, container_id
         .mk_drilldown <- function(summary_section, detail_df, container_id,
-                                  filter_col, caption_summary, caption_detail) {
-          # Detail DT: full variant rows, hidden after init via initComplete.
-          # filter="none" (not "top") because: (1) the detail table is driven by
-          # the summary click handler, not manual column filters; (2) filter="top"
-          # on a large table inside a container can trigger DT TN/2 warnings.
+                                  filter_col, caption_summary, header_col_label,
+                                  cap_note = NULL) {
+          # ------------------------------------------------------------------
+          # Detail DT: full variant rows, hidden until a summary cell is
+          # clicked. filter="none" (not "top") because: (1) the detail
+          # table is driven by the summary click handler, not manual column
+          # filters; (2) filter="top" on a large table inside a hidden
+          # container can trigger DT TN/2 warnings.
+          #
+          # NOTE (issue B fix): the detail DT no longer carries a caption=.
+          # The old caption rendered below the table header, visually under
+          # the Hugo_Symbol column. The dynamic header is now emitted as a
+          # separate htmltools <div> above the table inside the panel.
+          # ------------------------------------------------------------------
           detail_dtbl <- suppressWarnings(DT::datatable(
             detail_df, rownames = FALSE,
             class = "stripe hover compact", filter = "none",
@@ -1125,28 +1164,49 @@ gvr_summary <- function(maf,
                            initComplete = htmlwidgets::JS(
                              "function() {",
                              sprintf("  document.getElementById('%s').style.display = 'none';", container_id),
-                             "}")),
-            caption = htmltools::tags$span(
-              style = "font-weight:bold; color:#0279EE;",
-              caption_detail)))
+                             # Wire the Close button. The button is inside the
+                             # panel and persists across redraws, so attaching
+                             # the listener once in initComplete is sufficient.
+                             sprintf("  var btn = document.getElementById('%s_close');", container_id),
+                             "  if (btn) {",
+                             "    btn.addEventListener('click', function() {",
+                             sprintf("      var c = document.getElementById('%s');", container_id),
+                             "      if (!c) return;",
+                             "      c.style.display = 'none';",
+                             # Clear the column search so the next click opens
+                             # fresh (not stacked with a stale filter).
+                             "      var bodyTable = c.querySelector('.dataTables_scrollBody table');",
+                             "      if (!bodyTable) {",
+                             "        var allTables = c.querySelectorAll('table');",
+                             "        bodyTable = allTables[allTables.length - 1];",
+                             "      }",
+                             "      var api = bodyTable ? new $.fn.dataTable.Api(bodyTable) : null;",
+                             "      if (api && api.context.length) {",
+                             sprintf("        api.column(%d).search('').draw();",
+                                     which(names(detail_df) == filter_col) - 1L),
+                             "      }",
+                             "    });",
+                             "  }",
+                             "}"))))
           # Defensive: force eager DT initialization. The htmlwidgets DT
           # binding has a lazy-render gate in renderValue():
           #   if ((el.offsetWidth===0 || el.offsetHeight===0) && data.lazyRender!==false)
-          # In practice diagnostics showed the gate did NOT fire here (the
-          # detail DT was registered before the click handler ran), so this
-          # is not the click-handler's root cause. It is kept as a low-cost
-          # safety net against future changes in widget sizing / container
-          # display that could put us back behind the gate. NB:
-          # `widget$x$lazyRender` is a private htmlwidgets field, not a
-          # documented DT::datatable() option -- it works on the current
-          # DT / htmlwidgets pairing (DT 0.34, htmlwidgets 1.6.4) but could
-          # silently regress on a future combination.
+          # Diagnostics showed the gate did NOT fire here (the detail DT was
+          # registered before the click handler ran), so this is not the
+          # click-handler's root cause. Kept as a low-cost safety net against
+          # future changes in widget sizing / container display that could
+          # put us back behind the gate. NB: `widget$x$lazyRender` is a
+          # private htmlwidgets field, not a documented DT::datatable()
+          # option -- it works on the current DT/htmlwidgets pairing (DT
+          # 0.34, htmlwidgets 1.6.4) but could silently regress on a future
+          # combination.
           detail_dtbl$x$lazyRender <- FALSE
 
           # Summary DT: clickable first-column cells
           summary_dtbl <- .dt_tbl(summary_section, caption = caption_summary)
-          # Find the column index of filter_col in the detail table for column-specific search
-          filter_col_idx <- which(names(detail_df) == filter_col) - 1L  # DT uses 0-based indices
+          # Find the column index of filter_col in the detail table for
+          # column-specific search (DT is 0-based).
+          filter_col_idx <- which(names(detail_df) == filter_col) - 1L
           summary_dtbl$x$options$initComplete <- htmlwidgets::JS(
             "function() {",
             "  var tbl = this.api().table().body();",
@@ -1160,28 +1220,8 @@ gvr_summary <- function(maf,
             "      if (val === 'missing/unclassified') return;",
             sprintf("      var container = document.getElementById('%s');", container_id),
             "      if (!container) return;",
-            # Look up the registered DataTable instance via the scroll-body
-            # table node. Two subtleties:
-            #   (1) With scrollX:true each DT widget renders two <table>s -- a
-            #       header clone under .dataTables_scrollHead and the live body
-            #       under .dataTables_scrollBody. Only the body is registered
-            #       in $.fn.dataTable.settings; the header clone is a layout
-            #       artefact and is NOT a registered DT instance. So
-            #       container.querySelector('table') (which picks the FIRST
-            #       table) can pick the wrong one.
-            #   (2) `new $.fn.dataTable.Api(node)` resolves against the global
-            #       settings registry and returns a usable API. We prefer this
-            #       over `$.fn.dataTable.tables({api:true})`: the latter is
-            #       documented in DT-land as returning an API that is
-            #       array-like over the matched ROWS (not over the tables in
-            #       the selection), so its `.length` is the row count of the
-            #       current selection (often 0 for a freshly constructed
-            #       wrapper) -- it cannot be used to gate "is there a table".
-            # We fall back to the last <table> in the widget when no
-            # scrollBody is present (e.g. very narrow tables that don't
-            # trigger the scrollX horizontal wrapping path), then guard with
-            # `context.length` (the registered-tables count for the API) so
-            # we only proceed when at least one DT is wired up.
+            # Body-table lookup: see prior comment block on .dataTables_scrollBody
+            # vs the header clone; same logic kept here.
             "      var bodyTable = container.querySelector('.dataTables_scrollBody table');",
             "      if (!bodyTable) {",
             "        var allTables = container.querySelectorAll('table');",
@@ -1190,18 +1230,75 @@ gvr_summary <- function(maf,
             "      var dtApi = bodyTable ? new $.fn.dataTable.Api(bodyTable) : null;",
             "      if (dtApi && dtApi.context.length === 0) dtApi = null;",
             "      if (!dtApi) return;",
-            # Escape & build pattern
+            # Token-bounded regex search (CLIN_SIG composite tokens)
             "      var escaped = val.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');",
             "      var pattern = '(^|[&/,])' + escaped + '([&/,]|$)';",
             "      container.style.display = 'block';",
             "      dtApi.columns.adjust();",
             sprintf("      dtApi.column(%d).search(pattern, true, false, true).draw();", filter_col_idx),
+            # Update the dynamic header (issue B + C fix):
+            # write the clicked value and the resulting row count into the
+            # header spans. Count via rows({search:'applied'}) which respects
+            # the column search we just applied.
+            "      var n = dtApi.rows({search: 'applied'}).count();",
+            "      var nFmt = n.toLocaleString();",
+            sprintf("      var v = document.getElementById('%s_value');", container_id),
+            sprintf("      var ct = document.getElementById('%s_count');", container_id),
+            "      if (v)  v.textContent  = val;",
+            "      if (ct) ct.textContent = nFmt + ' variant' + (n === 1 ? '' : 's');",
             "    });",
             "  });",
             "}")
 
+          # ------------------------------------------------------------------
+          # Panel wrapper (issue C fix): cream background + 4px yellow left
+          # edge accent + Close button. The panel is hidden at build time
+          # via the detail DT's initComplete; clicking a summary token shows
+          # it (display='block'). The dynamic header text is set client-side
+          # by the same click handler (value + variant count).
+          # ------------------------------------------------------------------
+          panel_tag <- htmltools::tags$div(
+            id    = container_id,
+            style = paste0("display:none;",
+                           " margin-top:12px;",
+                           " background:#FAF9F3;",
+                           " border-left:4px solid #E9ED4C;",
+                           " border-radius:6px;",
+                           " padding:14px 16px;"),
+            # Header row: title (left, dynamic) + Close button (right).
+            htmltools::tags$div(
+              style = paste0("display:flex; align-items:center;",
+                             " justify-content:space-between;",
+                             " margin-bottom:10px;"),
+              htmltools::tags$div(
+                style = sprintf("font-size:15px; font-weight:bold; color:%s;", "#0279EE"),
+                # Format: "<COLUMN> = <value>   |   <N> variants"
+                # The label uses the human-readable column name passed by the caller.
+                sprintf("%s = ", header_col_label),
+                htmltools::tags$span(id = paste0(container_id, "_value"),
+                                     htmltools::HTML("&hellip;")),
+                htmltools::tags$span("  |  ",
+                                     style = "color:#888; font-weight:normal;"),
+                htmltools::tags$span(id = paste0(container_id, "_count"),
+                                     style = "font-weight:bold;",
+                                     htmltools::HTML("&hellip;"))),
+              htmltools::tags$button(
+                id    = paste0(container_id, "_close"),
+                type  = "button",
+                style = paste0("background:transparent; border:1px solid #ccc;",
+                               " border-radius:4px; padding:4px 10px;",
+                               " cursor:pointer; font-size:12px; color:#555;"),
+                htmltools::HTML("&times; Close"))),
+            # Optional note (used by the medium-band VC top-50k cap; NULL otherwise).
+            if (!is.null(cap_note))
+              htmltools::tags$div(
+                style = paste0("font-size:11.5px; color:#666;",
+                               " font-style:italic; margin-bottom:8px;"),
+                cap_note),
+            detail_dtbl)
+
           list(summary_dtbl = summary_dtbl,
-               detail_dtbl  = detail_dtbl,
+               panel_tag    = panel_tag,
                container_id = container_id)
         }
 
@@ -1220,8 +1317,8 @@ gvr_summary <- function(maf,
             cols = c("Hugo_Symbol", "Chromosome", "Start_Position",
                      "Variant_Classification", "HGVSc", "HGVSp_Short",
                      "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode"),
-            cap_summary = "Clinical significance (click a token to see variants)",
-            cap_detail  = "Variants matching selected CLIN_SIG token (click a token above)"),
+            cap_summary  = "Clinical significance (click a token to see variants)",
+            header_label = "CLIN_SIG"),
           impact = list(
             section_key = "impact", filter_col = "IMPACT",
             container = "gvr_impact_detail",
@@ -1229,8 +1326,8 @@ gvr_summary <- function(maf,
                      "Variant_Classification", "HGVSc", "HGVSp_Short",
                      "IMPACT", "Consequence", "gnomADe_AF", "dbSNP_RS",
                      "Tumor_Sample_Barcode"),
-            cap_summary = "Functional impact (click a level to see variants)",
-            cap_detail  = "Variants matching selected IMPACT level (click a level above)"),
+            cap_summary  = "Functional impact (click a level to see variants)",
+            header_label = "IMPACT"),
           vc = list(
             section_key = "variant_classification",
             filter_col = "Variant_Classification",
@@ -1238,40 +1335,121 @@ gvr_summary <- function(maf,
             cols = c("Hugo_Symbol", "Chromosome", "Start_Position",
                      "Variant_Classification", "HGVSc", "HGVSp_Short",
                      "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode"),
-            cap_summary = "Variant classification (click a class to see variants)",
-            cap_detail  = "Variants matching selected Variant_Classification (click a class above)"))
+            cap_summary  = "Variant classification (click a class to see variants)",
+            header_label = "Variant_Classification"))
 
-        dd_map <- lapply(dd_specs, function(sp) {
+        # ----------------------------------------------------------------
+        # Adaptive build: classify cohort size, then build the per-section
+        # detail data accordingly.
+        #   small  -> full detail (current behaviour, after non-missing filter)
+        #   medium -> drop low-information rows per section
+        #             (MODIFIER for IMPACT; Intron for VC; missing for CLIN_SIG
+        #             which is already filtered out by the non-missing step);
+        #             additionally cap VC detail at .HTML_SMALL_MAX (50k)
+        #             rows ordered by IMPACT severity, since after dropping
+        #             Intron the remaining classes can still exceed the cap.
+        #   large  -> no detail tables at all; dd_map stays NULL and the
+        #             tables branch falls through to plain summary tables.
+        # ----------------------------------------------------------------
+        band <- .gvr_size_band(meta$n_total)
+
+        # IMPACT severity ranking, re-used for the VC top-50k cap. Already
+        # defined as `impact_order` at the top of gvr_summary(); rebuilt
+        # locally so the renderer doesn't depend on outer-scope state.
+        .impact_rank <- function(v) {
+          ord <- c("HIGH" = 1L, "MODERATE" = 2L, "LOW" = 3L, "MODIFIER" = 4L)
+          r <- ord[as.character(v)]
+          r[is.na(r)] <- 5L   # unknown impact sorts last
+          as.integer(r)
+        }
+
+        dd_map <- if (band == "large") NULL else lapply(dd_specs, function(sp) {
           cols <- intersect(sp$cols, names(dt))
-          detail_df <- as.data.frame(
-            dt[!.is_missing(get(sp$filter_col)), ..cols],
-            stringsAsFactors = FALSE)
+          # Base detail: non-missing filter column (was the only filter in
+          # the small band; medium adds more on top).
+          base <- dt[!.is_missing(get(sp$filter_col))]
+          cap_note <- NULL
+
+          if (band == "medium") {
+            if (sp$filter_col == "IMPACT") {
+              base <- base[IMPACT != "MODIFIER"]
+            } else if (sp$filter_col == "Variant_Classification") {
+              base <- base[Variant_Classification != "Intron"]
+              if (nrow(base) > .HTML_SMALL_MAX) {
+                n_pre <- nrow(base)
+                if ("IMPACT" %in% names(base)) {
+                  ord <- order(.impact_rank(base$IMPACT))
+                } else {
+                  ord <- seq_len(nrow(base))
+                }
+                base <- base[ord[seq_len(.HTML_SMALL_MAX)]]
+                cap_note <- sprintf(
+                  "Showing top %s of %s rows (filtered by IMPACT severity).",
+                  format(.HTML_SMALL_MAX, big.mark = ","),
+                  format(n_pre,           big.mark = ","))
+              }
+            }
+          }
+
+          detail_df <- as.data.frame(base[, ..cols], stringsAsFactors = FALSE)
           .mk_drilldown(sections[[sp$section_key]], detail_df,
                         sp$container, sp$filter_col,
-                        sp$cap_summary, sp$cap_detail)
+                        sp$cap_summary, sp$header_label,
+                        cap_note = cap_note)
         })
 
         tbl_specs <- .build_tbl_specs(sections, html = TRUE)
 
+          .tables_head <- function() {
+            head <- list(sec_h("Tables"))
+            if (band == "medium") {
+              banner <- htmltools::tags$div(
+                style = paste0("margin:10px 0 14px 0; padding:10px 14px;",
+                               " background:#FAF9F3; border-left:4px solid #FF9400;",
+                               " border-radius:6px; font-size:12.5px; color:#333;"),
+                htmltools::tags$strong(sprintf(
+                  "Cohort has %s variants. ",
+                  format(meta$n_total, big.mark = ","))),
+                "Drill-down detail tables show a pre-filtered subset ",
+                "(no MODIFIER impact, no Intron classification, no missing CLIN_SIG) ",
+                "for performance. The full per-variant data is available in the ",
+                "Excel workbook.")
+              head <- c(head, list(banner))
+            } else if (band == "large") {
+              banner <- htmltools::tags$div(
+                style = paste0("margin:10px 0 14px 0; padding:10px 14px;",
+                               " background:#FAF9F3; border-left:4px solid #FF9400;",
+                               " border-radius:6px; font-size:12.5px; color:#333;"),
+                htmltools::tags$strong(sprintf(
+                  "Cohort has %s variants. ",
+                  format(meta$n_total, big.mark = ","))),
+                "Drill-down detail tables are disabled (HTML self-contain limit exceeded). ",
+                "The full per-variant data is available in the Excel workbook.")
+              head <- c(head, list(banner))
+            }
+            head
+          }
+
         tables <- htmltools::tagList(c(
-          list(sec_h("Tables")),
+          .tables_head(),
           lapply(tbl_specs, function(sp) {
             sec_dt <- if (!is.null(sp$per_sample_key))
                         sections$top_genes_per_sample[[sp$per_sample_key]]
                       else sections[[sp$s]]
-            if (!is.null(sp$special)) {
-              # Drill-down sections: summary table + hidden detail table
+            if (!is.null(sp$special) && !is.null(dd_map) && !is.null(dd_map[[sp$special]])) {
+              # Drill-down section (small + medium bands): clickable summary
+              # table on top, cream panel with dynamic header + detail table
+              # below. The panel is hidden until a summary cell is clicked.
               dd <- dd_map[[sp$special]]
               htmltools::tags$div(
                 style = "margin:14px 0 26px 0;",
                 htmltools::tags$h3(sp$t,
                   style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
                 dd$summary_dtbl,
-                htmltools::tags$div(
-                  id = dd$container_id,
-                  style = "margin-top:12px; border-top:2px solid #ECE9E2; padding-top:10px;",
-                  dd$detail_dtbl))
+                dd$panel_tag)
             } else {
+              # Plain section (non-drill-down sections, OR drill-down sections
+              # falling through here in the large band: dd_map is NULL).
               htmltools::tags$div(style = "margin:14px 0 26px 0;",
                                   htmltools::tags$h3(sp$t,
                                     style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
