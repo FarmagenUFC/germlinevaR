@@ -22,16 +22,17 @@ BugReports: https://github.com/AKKDataAnalysis/germlinevaR/issues
 Depends: R (>= 4.1.0)
 Imports: 
     data.table,
+    ggplot2,
     grDevices,
     grid,
     openxlsx,
     parallel,
     stats,
-    utils,
-    ggplot2,
+    utils
 Suggests: 
     ComplexHeatmap,
     DT,
+    ggrepel,
     gridExtra,
     htmltools,
     htmlwidgets,

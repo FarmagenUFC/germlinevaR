@@ -29,5 +29,10 @@ utils::globalVariables(c(
   ".__rs__", "Chromosome", "Start_Position", "IMPACT",
 
   # --- gvr_plot(): matrix/summary columns ------------------------------
-  "n_var", "n_samp", "N"
+  "n_var", "n_samp", "N",
+
+  # --- gvr_lollipop(): per-dot/stem aes() symbols + internal data.table cols ----
+  "HGVSp_Short", "Tumor_Sample_Barcode",
+  ".__aa_pos__", ".__hgvsp__", ".__vc__", ".__y__", ".n",
+  "aa_pos", "y", "top", "vc", "hgvsp", "label"
 ))

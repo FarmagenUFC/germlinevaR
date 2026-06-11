@@ -5,8 +5,8 @@
 #' gene in a `read.gvr()` / `gvr_filter()` / `gvr_novel()` MAF. Each amino-acid
 #' position is a stem; each sample-variant carried at that position is one dot
 #' stacked on the stem; dots are coloured by `Variant_Classification` using the
-#' package's colourblind-safe palette. Optionally writes both an `.svg` and a
-#' `.png` to disk.
+#' package's colourblind-safe palette. By default writes both an `.svg` and a
+#' `.png` to disk (matching [gvr_plot()] behaviour).
 #'
 #' @details
 #' Variant classes are filtered down to the canonical protein-altering set (the
@@ -44,19 +44,21 @@
 #' Empty-gene behaviour: if no row matches the gene, or none survives the
 #' `vc_keep` filter, or none has a parseable amino-acid position, the function
 #' issues a warning and returns a ggplot2 object with a single centered
-#' "No protein-altering variants for <GENE>" annotation. The user can still
-#' `ggsave()` it normally.
+#' "No protein-altering variants for <GENE>" annotation. No files are written
+#' for empty-gene plots.
 #'
-#' Optional file output: when BOTH `out_dir` and `out_prefix` are non-NULL,
-#' the function writes:
+#' File output: by default the function writes both SVG and PNG to `out_dir`
+#' (default `"."`, the current working directory), using `out_prefix` (default
+#' `gene`) as the filename prefix:
 #' \itemize{
 #'   \item `<out_dir>/<out_prefix>_lollipop.svg` - vector (lossless)
 #'   \item `<out_dir>/<out_prefix>_lollipop.png` - raster at `dpi`
 #' }
 #' Both files are first rendered to `tempdir()` then `cp`'d to `out_dir`, so
 #' S3-backed FUSE mounts (e.g. `/mnt/results/`) work without 0-byte issues.
-#' The function always returns the ggplot2 object regardless of whether files
-#' were written.
+#' Set `out_dir = NULL` to suppress file output and return only the ggplot2
+#' object. The function always returns the ggplot2 object regardless of whether
+#' files were written.
 #'
 #' @param maf A `data.table` / `data.frame` MAF from [read.gvr()], or any
 #'   compatible table with at least `Hugo_Symbol`, `HGVSp_Short`,
@@ -74,19 +76,22 @@
 #' @param stem_color Character(1). Stem (vertical line) colour. Default
 #'   `"grey50"`.
 #' @param base_size Numeric(1). ggplot2 base font size. Default `12`.
-#' @param out_dir Character(1) or `NULL`. If both `out_dir` and `out_prefix`
-#'   are non-NULL, the plot is written to disk (see Details). Default `NULL`
-#'   (no file output).
+#' @param out_dir Character(1) or `NULL`. Output directory for the SVG/PNG
+#'   files. Created if it does not exist. Default `"."` (current working
+#'   directory), matching [gvr_plot()]. Set to `NULL` to suppress file output.
 #' @param out_prefix Character(1) or `NULL`. Filename prefix; output files are
-#'   `<out_prefix>_lollipop.svg` / `<out_prefix>_lollipop.png`. Default `NULL`.
+#'   `<out_prefix>_lollipop.svg` / `<out_prefix>_lollipop.png`. Default `gene`
+#'   (the gene symbol), so `gvr_lollipop(f, "TP53")` writes
+#'   `TP53_lollipop.svg` and `TP53_lollipop.png`. Set to `NULL` to suppress
+#'   file output.
 #' @param width Numeric(1). Plot width in inches. Default `10`.
 #' @param height Numeric(1). Plot height in inches. Default `4`.
 #' @param dpi Numeric(1). PNG resolution. Default `300`.
 #' @param verbose Logical(1). If `TRUE` (default), emit progress messages
 #'   (counts, dropped rows, file paths).
 #'
-#' @return A ggplot2 object. If `out_dir` + `out_prefix` are passed, the SVG
-#'   and PNG files are also written to disk as a side effect.
+#' @return A ggplot2 object. By default SVG and PNG files are also written to
+#'   disk as a side effect. Set `out_dir = NULL` to suppress file output.
 #'
 #' @seealso [read.gvr()], [gvr_filter()], [gvr_novel()], [gvr_summary()],
 #'   [gvr_plot()]
@@ -96,14 +101,20 @@
 #'   maf <- read.gvr("vcf_dir/", pattern = "\\.vep\\.vcf\\.gz$")
 #'   f   <- gvr_filter(maf)
 #'
-#'   ## inline plot
-#'   p <- gvr_lollipop(f, "MUC16")
-#'   print(p)
+#'   ## default: auto-saves TP53_lollipop.svg + TP53_lollipop.png to "."
+#'   p <- gvr_lollipop(f, "TP53")
 #'
-#'   ## save SVG + PNG
+#'   ## save into a custom directory
+#'   gvr_lollipop(f, "MUC16", out_dir = "results/lollipops")
+#'
+#'   ## custom prefix (overrides gene-based default)
 #'   gvr_lollipop(f, "MUC16",
 #'                out_dir    = "results/lollipops",
-#'                out_prefix = "MUC16")
+#'                out_prefix = "MUC16_filtered")
+#'
+#'   ## suppress file output, return ggplot2 only
+#'   p <- gvr_lollipop(f, "BRCA1", out_dir = NULL)
+#'   print(p)
 #'
 #'   ## only missense
 #'   gvr_lollipop(f, "TP53", vc_keep = "Missense_Mutation")
@@ -122,8 +133,8 @@ gvr_lollipop <- function(maf, gene,
                          point_size     = 3,
                          stem_color     = "grey50",
                          base_size      = 12,
-                         out_dir        = NULL,
-                         out_prefix     = NULL,
+                         out_dir        = ".",
+                         out_prefix     = gene,
                          width          = 10,
                          height         = 4,
                          dpi            = 300,
@@ -368,11 +379,15 @@ gvr_lollipop <- function(maf, gene,
     }
   }
 
-  # ---- Optional file output ----
+  # ---- File output (default: auto-save, matching gvr_plot behaviour) ----
   if (!is.null(out_dir) && !is.null(out_prefix)) {
     if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
     svg_path <- file.path(out_dir, sprintf("%s_lollipop.svg", out_prefix))
     png_path <- file.path(out_dir, sprintf("%s_lollipop.png", out_prefix))
+
+    # announce overwrite (matching gvr_plot convention)
+    if (file.exists(png_path) && isTRUE(verbose))
+      message(sprintf("gvr_lollipop: overwriting existing %s", png_path))
 
     svg_written <- .fuse_save(svg_path, function(tmp) {
       grDevices::svg(tmp, width = width, height = height)
