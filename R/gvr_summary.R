@@ -443,6 +443,68 @@ gvr_summary <- function(maf,
     n_nogene  = sum(!is_known_gene),
     generated = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
 
+  # --------------------------------------------------------------------------
+  # Shared helpers + constants used by BOTH the PDF and HTML renderers.
+  # Hoisted to the outer scope so the two report paths cannot drift apart.
+  # --------------------------------------------------------------------------
+  fmt <- function(x) format(x, big.mark = ",", trim = TRUE)
+
+  # Colour-blind-safe shared palette (Okabe-Ito ordering for the first 9
+  # entries: PDF dashboard uses exactly these). The HTML branch extends this
+  # with Paul-Tol "muted" + extras for cohorts up to 24 distinct legend entries
+  # (defined locally inside the HTML renderer).
+  PHYLO_PAL_BASE <- c("#0279EE", "#E69F00", "#009E73", "#CC79A7", "#56B4E9",
+                      "#75A025", "#D55E00", "#332288", "#AA4499")
+
+  # Common-prefix stripper for facet/group sample labels: identifies a leading
+  # substring shared by all sample names (length >= 3, e.g. "ACRO") and strips
+  # it from chart labels so legends stay compact. Returns the identity for
+  # samples with no shared >=3-char prefix or for cohorts of size 1.
+  .lab_fun <- local({
+    sn <- as.character(samples); pre <- ""
+    if (length(sn) > 1L) {
+      mn <- min(nchar(sn)); i <- 0L
+      while (i < mn && length(unique(substr(sn, 1L, i + 1L))) == 1L) i <- i + 1L
+      if (i >= 3L) pre <- substr(sn[1], 1L, i)
+    }
+    function(x) if (nzchar(pre)) sub(paste0("^", pre), "", x) else x
+  })
+
+  # Build the report table spec list (Overview / Top genes / per-sample top
+  # genes / VC / VT / Clinical / Impact / Top variants if present). Consumed
+  # identically by the PDF and HTML renderers, with two cosmetic divergences:
+  #   * PDF appends "(table)" to the impact title because the PDF puts a
+  #     separate IMPACT chart on the same reference page (so the table needs
+  #     a label that disambiguates from the chart).
+  #   * HTML tags VC / clin_sig / impact with a `special` key so the renderer
+  #     knows to render those entries as drill-down (summary + detail) pairs.
+  .build_tbl_specs <- function(sections, html = FALSE) {
+    specs <- list(
+      list(s = "overview",  t = "Overview"),
+      list(s = "top_genes", t = "Top genes"))
+    for (sm in names(sections$top_genes_per_sample)) {
+      specs <- c(specs, list(
+        list(s = paste0("top_genes_per_sample.", sm),
+             t = sprintf("Top genes \u2013 %s", sm),
+             per_sample_key = sm)))
+    }
+    impact_t <- if (isTRUE(html)) "Functional impact" else "Functional impact (table)"
+    rest <- list(
+      list(s = "variant_classification", t = "Variant classification"),
+      list(s = "variant_type",           t = "Variant type"),
+      list(s = "clin_sig",               t = "Clinical significance"),
+      list(s = "impact",                 t = impact_t))
+    if (isTRUE(html)) {
+      rest[[1]]$special <- "vc"
+      rest[[3]]$special <- "clin_sig"
+      rest[[4]]$special <- "impact"
+    }
+    specs <- c(specs, rest)
+    if (!is.null(sections$top_variants))
+      specs <- c(specs, list(list(s = "top_variants", t = "Top variants (by rsID)")))
+    specs
+  }
+
   # ============================================================================
   # Optional Excel export  ->  <out_dir>/gvr_summary/<file_prefix>.xlsx
   # Fixed filename (no timestamp): re-running overwrites the previous workbook.
@@ -531,11 +593,10 @@ gvr_summary <- function(maf,
         CEX_HEAD_FLOOR <- 0.55
         FACET_THRESHOLD <- 6L                       # > this many samples -> facet charts
 
-        pal <- c("#0279EE", "#E69F00", "#009E73", "#CC79A7", "#56B4E9", "#75A025",
-                 "#D55E00", "#332288", "#AA4499", "#888888")
+        # PDF palette: shared 9-colour base + one neutral grey for a 10th sample
+        # before cycling. (HTML extends further; see the HTML renderer.)
+        pal <- c(PHYLO_PAL_BASE, "#888888")
         fill_vals <- stats::setNames(pal[((seq_along(samples) - 1L) %% length(pal)) + 1L], samples)
-
-        fmt <- function(x) format(x, big.mark = ",", trim = TRUE)
 
         # ---- measured grob size in inches (drive fit by measurement, not guesses) --------
         .grob_w_in <- function(g) grid::convertWidth(sum(g$widths),  "in", valueOnly = TRUE)
@@ -628,16 +689,10 @@ gvr_summary <- function(maf,
             ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", colour = PHYLO_BLUE, size = 13),
                            panel.grid.major.y = ggplot2::element_blank())
           if (many) {
-            sn <- as.character(samples); pre <- ""
-            if (length(sn) > 1L) {
-              mn <- min(nchar(sn)); i <- 0L
-              while (i < mn && length(unique(substr(sn, 1L, i + 1L))) == 1L) i <- i + 1L
-              if (i >= 3L) pre <- substr(sn[1], 1L, i)
-            }
-            lab_fun <- function(x) if (nzchar(pre)) sub(paste0("^", pre), "", x) else x
+            # Compact facet labels via the shared common-prefix stripper (.lab_fun).
             gg <- gg + ggplot2::geom_col(show.legend = FALSE) +
               ggplot2::facet_wrap(~ Sample, ncol = ceiling(sqrt(length(samples))),
-                                  labeller = ggplot2::as_labeller(lab_fun)) +
+                                  labeller = ggplot2::as_labeller(.lab_fun)) +
               ggplot2::scale_y_continuous(breaks = scales::breaks_extended(3),
                                           labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
               ggplot2::theme(legend.position = "none",
@@ -723,23 +778,7 @@ gvr_summary <- function(maf,
                                       col_gap_in = 0.30, draw_frac = 0.97) {
           content_w <- W - 1
           budget    <- (H - 1) * draw_frac
-          tbl_specs <- list(
-            list(s = "overview",               t = "Overview"),
-            list(s = "top_genes",              t = "Top genes"))
-          # Per-sample top genes: one entry per sample
-          for (sm in names(sections$top_genes_per_sample)) {
-            tbl_specs <- c(tbl_specs, list(
-              list(s = paste0("top_genes_per_sample.", sm),
-                   t = sprintf("Top genes \u2013 %s", sm),
-                   per_sample_key = sm)))
-          }
-          tbl_specs <- c(tbl_specs, list(
-            list(s = "variant_classification", t = "Variant classification"),
-            list(s = "variant_type",           t = "Variant type"),
-            list(s = "clin_sig",               t = "Clinical significance"),
-            list(s = "impact",                 t = "Functional impact (table)")))
-          if (!is.null(sections$top_variants))
-            tbl_specs <- c(tbl_specs, list(list(s = "top_variants", t = "Top variants (by rsID)")))
+          tbl_specs <- .build_tbl_specs(sections, html = FALSE)
           # MEASUREMENT must happen on a throwaway device that is opened AND closed HERE,
           # so the cairo report device is current during all subsequent drawing. (Leaving
           # pdf(NULL) open across the draw loop sends every page to the throwaway device
@@ -923,27 +962,15 @@ gvr_summary <- function(maf,
         PHYLO_BLUE <- "#0279EE"; PHYLO_GREEN <- "#75A025"; CREAM <- "#FAF9F3"; STONE <- "#ECE9E2"
         INK <- "#000000"; ORANGE <- "#E69F00"; VERMIL <- "#D55E00"
 
-        # 24-colour qualitative palette: first 9 match the PDF dashboard's palette
-        # exactly (Okabe-Ito ordering), then Paul Tol "muted" + extras for cohorts
-        # up to 24 (it cycles only beyond that - an acceptable edge case).
-        pal <- c("#0279EE", "#E69F00", "#009E73", "#CC79A7", "#56B4E9", "#75A025",
-                 "#D55E00", "#332288", "#AA4499", "#117733", "#882255", "#88CCEE",
-                 "#999933", "#661100", "#6699CC", "#DDCC77", "#44AA99", "#AA4466",
-                 "#4477AA", "#228833", "#EE6677", "#BBBBBB", "#000000", "#EE3377")
+        # 24-colour qualitative palette: shared 9-colour PHYLO_PAL_BASE (Okabe-Ito
+        # ordering, matches the PDF dashboard exactly) extended with Paul-Tol
+        # "muted" + extras for cohorts up to 24 (cycles only beyond that --
+        # an acceptable edge case).
+        pal <- c(PHYLO_PAL_BASE,
+                 "#117733", "#882255", "#88CCEE", "#999933", "#661100",
+                 "#6699CC", "#DDCC77", "#44AA99", "#AA4466", "#4477AA",
+                 "#228833", "#EE6677", "#BBBBBB", "#000000", "#EE3377")
         fill_vals <- stats::setNames(pal[((seq_along(samples) - 1L) %% length(pal)) + 1L], samples)
-
-        fmt <- function(x) format(x, big.mark = ",", trim = TRUE)
-
-        # common-prefix stripper for facet/group sample labels (matches PDF)
-        .lab_fun <- local({
-          sn <- as.character(samples); pre <- ""
-          if (length(sn) > 1L) {
-            mn <- min(nchar(sn)); i <- 0L
-            while (i < mn && length(unique(substr(sn, 1L, i + 1L))) == 1L) i <- i + 1L
-            if (i >= 3L) pre <- substr(sn[1], 1L, i)
-          }
-          function(x) if (nzchar(pre)) sub(paste0("^", pre), "", x) else x
-        })
 
         # one interactive plotly bar chart: GROUPED horizontal bars (one bar per
         # sample) at every cohort size. Unlike the static PDF (which facets >6
@@ -1102,15 +1129,18 @@ gvr_summary <- function(maf,
             caption = htmltools::tags$span(
               style = "font-weight:bold; color:#0279EE;",
               caption_detail)))
-          # Force eager DT initialization.  The htmlwidgets DT binding has a
-          # lazy-render gate in renderValue():
+          # Defensive: force eager DT initialization. The htmlwidgets DT
+          # binding has a lazy-render gate in renderValue():
           #   if ((el.offsetWidth===0 || el.offsetHeight===0) && data.lazyRender!==false)
-          # The detail-table widget div renders with height:auto; before its
-          # internal <table> is injected, offsetHeight === 0, so DT defers
-          # initialization and never adds itself to $.fn.dataTable.settings.
-          # Result: $.fn.dataTable.tables({api:true}) returns an empty set at
-          # click time, the click handler bails, no filtering visible.
-          # Setting lazyRender=FALSE on the x payload disables the gate.
+          # In practice diagnostics showed the gate did NOT fire here (the
+          # detail DT was registered before the click handler ran), so this
+          # is not the click-handler's root cause. It is kept as a low-cost
+          # safety net against future changes in widget sizing / container
+          # display that could put us back behind the gate. NB:
+          # `widget$x$lazyRender` is a private htmlwidgets field, not a
+          # documented DT::datatable() option -- it works on the current
+          # DT / htmlwidgets pairing (DT 0.34, htmlwidgets 1.6.4) but could
+          # silently regress on a future combination.
           detail_dtbl$x$lazyRender <- FALSE
 
           # Summary DT: clickable first-column cells
@@ -1130,12 +1160,28 @@ gvr_summary <- function(maf,
             "      if (val === 'missing/unclassified') return;",
             sprintf("      var container = document.getElementById('%s');", container_id),
             "      if (!container) return;",
-            # Look up the registered DataTable instance via the scroll-body table node.
-            # Background: $.fn.dataTable.tables({api:true}).length is misleading; with
-            # scrollX:true each widget has 2 <table>s (header clone + body); the body is
-            # under .dataTables_scrollBody and is the one registered in w.settings.
-            # Constructing a fresh API via new $.fn.dataTable.Api(node) resolves against
-            # w.settings, which IS populated (verified via diag-5 isDataTable=true).
+            # Look up the registered DataTable instance via the scroll-body
+            # table node. Two subtleties:
+            #   (1) With scrollX:true each DT widget renders two <table>s -- a
+            #       header clone under .dataTables_scrollHead and the live body
+            #       under .dataTables_scrollBody. Only the body is registered
+            #       in $.fn.dataTable.settings; the header clone is a layout
+            #       artefact and is NOT a registered DT instance. So
+            #       container.querySelector('table') (which picks the FIRST
+            #       table) can pick the wrong one.
+            #   (2) `new $.fn.dataTable.Api(node)` resolves against the global
+            #       settings registry and returns a usable API. We prefer this
+            #       over `$.fn.dataTable.tables({api:true})`: the latter is
+            #       documented in DT-land as returning an API that is
+            #       array-like over the matched ROWS (not over the tables in
+            #       the selection), so its `.length` is the row count of the
+            #       current selection (often 0 for a freshly constructed
+            #       wrapper) -- it cannot be used to gate "is there a table".
+            # We fall back to the last <table> in the widget when no
+            # scrollBody is present (e.g. very narrow tables that don't
+            # trigger the scrollX horizontal wrapping path), then guard with
+            # `context.length` (the registered-tables count for the API) so
+            # we only proceed when at least one DT is wired up.
             "      var bodyTable = container.querySelector('.dataTables_scrollBody table');",
             "      if (!bodyTable) {",
             "        var allTables = container.querySelectorAll('table');",
@@ -1159,68 +1205,53 @@ gvr_summary <- function(maf,
                container_id = container_id)
         }
 
-        # --- CLIN_SIG drill-down ---
-        clin_detail_cols <- c("Hugo_Symbol", "Chromosome", "Start_Position",
-                              "Variant_Classification", "HGVSc", "HGVSp_Short",
-                              "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode")
-        clin_detail_cols <- intersect(clin_detail_cols, names(dt))
-        clin_detail_df <- as.data.frame(dt[!.is_missing(dt$CLIN_SIG), ..clin_detail_cols],
-                                        stringsAsFactors = FALSE)
-        clin_dd <- .mk_drilldown(
-          sections$clin_sig, clin_detail_df, "gvr_clin_detail", "CLIN_SIG",
-          "Clinical significance (click a token to see variants)",
-          "Variants matching selected CLIN_SIG token (click a token above)")
+        # --- Drill-down build (CLIN_SIG / IMPACT / Variant_Classification) ---
+        # Each entry below drives one drill-down pair: a clickable summary DT (the
+        # category section) plus a hidden detail DT showing the underlying variant
+        # rows (curated column set). The detail rows are filtered to non-missing
+        # values of the click-target column; rows where the filter column is
+        # NA/"" can never be matched by the regex search anyway, so dropping them
+        # keeps the detail table compact. Adding a new drill-down = adding one
+        # entry here.
+        dd_specs <- list(
+          clin_sig = list(
+            section_key = "clin_sig", filter_col = "CLIN_SIG",
+            container = "gvr_clin_detail",
+            cols = c("Hugo_Symbol", "Chromosome", "Start_Position",
+                     "Variant_Classification", "HGVSc", "HGVSp_Short",
+                     "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode"),
+            cap_summary = "Clinical significance (click a token to see variants)",
+            cap_detail  = "Variants matching selected CLIN_SIG token (click a token above)"),
+          impact = list(
+            section_key = "impact", filter_col = "IMPACT",
+            container = "gvr_impact_detail",
+            cols = c("Hugo_Symbol", "Chromosome", "Start_Position",
+                     "Variant_Classification", "HGVSc", "HGVSp_Short",
+                     "IMPACT", "Consequence", "gnomADe_AF", "dbSNP_RS",
+                     "Tumor_Sample_Barcode"),
+            cap_summary = "Functional impact (click a level to see variants)",
+            cap_detail  = "Variants matching selected IMPACT level (click a level above)"),
+          vc = list(
+            section_key = "variant_classification",
+            filter_col = "Variant_Classification",
+            container = "gvr_vc_detail",
+            cols = c("Hugo_Symbol", "Chromosome", "Start_Position",
+                     "Variant_Classification", "HGVSc", "HGVSp_Short",
+                     "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode"),
+            cap_summary = "Variant classification (click a class to see variants)",
+            cap_detail  = "Variants matching selected Variant_Classification (click a class above)"))
 
-        # --- IMPACT drill-down ---
-        impact_detail_cols <- c("Hugo_Symbol", "Chromosome", "Start_Position",
-                                "Variant_Classification", "HGVSc", "HGVSp_Short",
-                                "IMPACT", "Consequence", "gnomADe_AF", "dbSNP_RS",
-                                "Tumor_Sample_Barcode")
-        impact_detail_cols <- intersect(impact_detail_cols, names(dt))
-        impact_detail_df <- as.data.frame(dt[!.is_missing(dt$IMPACT), ..impact_detail_cols],
-                                          stringsAsFactors = FALSE)
-        impact_dd <- .mk_drilldown(
-          sections$impact, impact_detail_df, "gvr_impact_detail", "IMPACT",
-          "Functional impact (click a level to see variants)",
-          "Variants matching selected IMPACT level (click a level above)")
+        dd_map <- lapply(dd_specs, function(sp) {
+          cols <- intersect(sp$cols, names(dt))
+          detail_df <- as.data.frame(
+            dt[!.is_missing(get(sp$filter_col)), ..cols],
+            stringsAsFactors = FALSE)
+          .mk_drilldown(sections[[sp$section_key]], detail_df,
+                        sp$container, sp$filter_col,
+                        sp$cap_summary, sp$cap_detail)
+        })
 
-        # --- Variant_Classification drill-down ---
-        vc_detail_cols <- c("Hugo_Symbol", "Chromosome", "Start_Position",
-                            "Variant_Classification", "HGVSc", "HGVSp_Short",
-                            "CLIN_SIG", "gnomADe_AF", "dbSNP_RS", "Tumor_Sample_Barcode")
-        vc_detail_cols <- intersect(vc_detail_cols, names(dt))
-        vc_detail_df <- as.data.frame(dt[!.is_missing(dt$Variant_Classification), ..vc_detail_cols],
-                                      stringsAsFactors = FALSE)
-        vc_dd <- .mk_drilldown(
-          sections$variant_classification, vc_detail_df, "gvr_vc_detail",
-          "Variant_Classification",
-          "Variant classification (click a class to see variants)",
-          "Variants matching selected Variant_Classification (click a class above)")
-
-        # Map from special key to drill-down pair
-        dd_map <- list(
-          clin_sig = clin_dd,
-          impact  = impact_dd,
-          vc      = vc_dd
-        )
-
-        tbl_specs <- list(
-          list(s = "overview",               t = "Overview"),
-          list(s = "top_genes",              t = "Top genes"))
-        # Per-sample top genes: one entry per sample
-        for (sm in names(sections$top_genes_per_sample)) {
-          tbl_specs <- c(tbl_specs, list(
-            list(s = paste0("top_genes_per_sample.", sm),
-                 t = sprintf("Top genes \u2013 %s", sm),
-                 per_sample_key = sm)))
-        }
-        tbl_specs <- c(tbl_specs, list(
-          list(s = "variant_classification", t = "Variant classification", special = "vc"),
-          list(s = "variant_type",           t = "Variant type"),
-          list(s = "clin_sig",               t = "Clinical significance", special = "clin_sig"),
-          list(s = "impact",                 t = "Functional impact", special = "impact")))
-        if (!is.null(sections$top_variants))
-          tbl_specs <- c(tbl_specs, list(list(s = "top_variants", t = "Top variants (by rsID)")))
+        tbl_specs <- .build_tbl_specs(sections, html = TRUE)
 
         tables <- htmltools::tagList(c(
           list(sec_h("Tables")),
