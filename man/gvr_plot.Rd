@@ -99,7 +99,8 @@ gvr_plot(gvr_filter(maf), top_n = 15, out_dir = "results/plots")
 Other germlinevaR: 
 \code{\link{gvr_filter}()},
 \code{\link{gvr_summary}()},
-\code{\link{read.gvr}()}
+\code{\link{read.gvr}()},
+\code{\link{read.gvr.snpeff}()}
 }
 \author{
 germlinevaR authors

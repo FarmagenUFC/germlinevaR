@@ -180,7 +180,8 @@ variants.
 Other germlinevaR: 
 \code{\link{gvr_plot}()},
 \code{\link{gvr_summary}()},
-\code{\link{read.gvr}()}
+\code{\link{read.gvr}()},
+\code{\link{read.gvr.snpeff}()}
 }
 \author{
 germlinevaR authors

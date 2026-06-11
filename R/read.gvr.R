@@ -1,3 +1,40 @@
+# ============================================================================
+# Sibling reader auto-load
+# ----------------------------------------------------------------------------
+# When read.gvr.R is sourced, it tries to also source its sibling file
+# read.gvr.snpeff.R (which defines .detect_annotator + read.gvr.snpeff()).
+# This enables read.gvr() to auto-route SnpEff-annotated VCFs to the SnpEff
+# reader. If the sibling file is absent, read.gvr() still works on VEP files
+# but will error out with a helpful message if a SnpEff VCF is seen.
+# ============================================================================
+.read_gvr_locate_sibling <- function() {
+  # 1) Use the active source file's directory if R can tell us where THIS
+  #    script lives (works for source() and Rscript). Recent R: getSrcFilename
+  #    on a function defined HERE returns this file's path.
+  this_dir <- tryCatch({
+    fn <- function() {}
+    fp <- utils::getSrcFilename(fn, full.names = TRUE)
+    if (length(fp) && nzchar(fp)) normalizePath(dirname(fp), mustWork = FALSE) else NULL
+  }, error = function(e) NULL)
+  # 2) Fallback: look in current working directory.
+  if (is.null(this_dir) || !nzchar(this_dir)) this_dir <- getwd()
+  candidate <- file.path(this_dir, "read.gvr.snpeff.R")
+  if (file.exists(candidate)) return(candidate)
+  NULL
+}
+
+local({
+  sib <- .read_gvr_locate_sibling()
+  if (!is.null(sib)) {
+    tryCatch(
+      source(sib, local = FALSE, chdir = FALSE),
+      error = function(e) warning(sprintf(
+        "read.gvr: failed to source sibling '%s': %s", sib, conditionMessage(e)))
+    )
+  }
+})
+
+
 #' Convert VEP-annotated germline VCF(s) to a maftools-style MAF data.table
 #'
 #' @description
@@ -49,7 +86,7 @@
 #' @param vcf_path Path to a single `.vep.vcf.gz` to convert (single-file mode).
 #'   `NULL` (default) selects folder mode.
 #' @param pattern Regular expression identifying per-sample VCFs in folder mode.
-#'   Default `"_\\d+(\\.vep)?\\.vcf\\.gz$"` (matches `_01.vep.vcf.gz`, `_01.vcf.gz`, etc.).
+#'   Default `"_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$"` (matches `_01.vep.vcf.gz`, `_01.snpeff.vcf.gz`, `_01.vcf.gz`, etc.).
 #' @param write_tsv Logical; if `TRUE`, also write the MAF as a TSV to `out_dir`.
 #'   Default `FALSE`.
 #' @param write_rds Logical; if `TRUE`, also write the MAF as an `.rds` to `out_dir`.
@@ -155,7 +192,7 @@
 #' @export
 read.gvr <- function(folder = ".",
                            vcf_path   = NULL,
-                           pattern    = "_\\d+(\\.vep)?\\.vcf\\.gz$",   # v2: _01.vep.vcf.gz, _01.vcf.gz, ...
+                           pattern    = "_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$",   # v2/v9: _01.vep.vcf.gz, _01.snpeff.vcf.gz, _01.vcf.gz, ...
                            write_tsv  = FALSE,
                            write_rds  = FALSE,
                            write_xlsx = FALSE,   # v6: also write the MAF as .xlsx (one "MAF" sheet)
@@ -177,6 +214,49 @@ read.gvr <- function(folder = ".",
                            vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                            ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
                            verbose    = TRUE) {
+  # ===========================================================================
+  # Nested helper: .detect_annotator()
+  # ---------------------------------------------------------------------------
+  # Was previously top-level (defined in read.gvr.snpeff.R and source()d via
+  # the sibling auto-loader above). Nested here so read.gvr() is self-
+  # contained for package hygiene. The sibling read.gvr.snpeff.R file also
+  # nests its own copy. Both are byte-identical pure functions.
+  # ===========================================================================
+
+  .detect_annotator <- function(path) {
+    con <- gzfile(path, "r")
+    on.exit(close(con))
+    csq_found <- FALSE
+    ann_found <- FALSE
+    info_tags <- character(0L)
+    repeat {
+      line <- readLines(con, n = 1L, warn = FALSE)
+      if (length(line) == 0L) break              # EOF before any record line
+      if (!startsWith(line, "##")) break          # hit body / #CHROM header
+      if (startsWith(line, "##INFO=<ID=")) {
+        tag <- sub("^##INFO=<ID=([^,>]+).*$", "\\1", line)
+        info_tags <- c(info_tags, tag)
+        if (identical(tag, "CSQ")) csq_found <- TRUE
+        if (identical(tag, "ANN")) ann_found <- TRUE
+      }
+    }
+    if (csq_found && ann_found) {
+      warning(sprintf(
+        "read.gvr: '%s' has both VEP CSQ and SnpEff ANN INFO tags. Using VEP (CSQ takes priority).",
+        basename(path)),
+        call. = FALSE)
+      res <- "vep"
+    } else if (csq_found) {
+      res <- "vep"
+    } else if (ann_found) {
+      res <- "snpeff"
+    } else {
+      res <- NA_character_
+    }
+    attr(res, "info_tags") <- info_tags
+    res
+  }
+
 
   # ==========================================================================
   # v4 setup: genotype-quality filter flags
@@ -215,6 +295,84 @@ read.gvr <- function(folder = ".",
     message(sprintf("Found %d file(s):", length(vcf_paths)))
     for (p in vcf_paths) message("  - ", basename(p))
   }
+  # ==========================================================================
+  # 0b. Auto-detect annotator per file + dispatch
+  #     read.gvr() handles VEP-annotated VCFs (its original role); SnpEff
+  #     batches are delegated to read.gvr.snpeff() loaded from the sibling
+  #     file. Mixed or unannotated batches abort with a clear error message.
+  # ==========================================================================
+  if (!exists(".detect_annotator", mode = "function")) {
+    stop("read.gvr: '.detect_annotator' is not defined. ",
+         "Source 'read.gvr.snpeff.R' (placed next to this file) before ",
+         "calling read.gvr().", call. = FALSE)
+  }
+  detected <- vapply(vcf_paths, .detect_annotator, character(1L))
+  na_mask  <- is.na(detected)
+  if (any(na_mask)) {
+    ## Surface up to 7 INFO tags from the first un-annotated file so the user
+    ## can see what *was* annotated (e.g. raw GATK output vs. exotic annotator).
+    ## .detect_annotator() returns NA with attr 'info_tags' attached.
+    .unann_first <- vcf_paths[na_mask][1L]
+    .tags_first  <- attr(.detect_annotator(.unann_first), "info_tags")
+    .tag_str <- if (length(.tags_first))
+      sprintf("INFO tags found in '%s': %s.\n",
+              basename(.unann_first),
+              paste(utils::head(.tags_first, 7L), collapse = ", "))
+    else ""
+    stop(sprintf(
+      "read.gvr: file(s) have no VEP CSQ or SnpEff ANN INFO tag:\n%s\n%s%s",
+      paste(sprintf("  - %s", basename(vcf_paths[na_mask])), collapse = "\n"),
+      .tag_str,
+      paste0("Annotate these VCFs with Ensembl VEP (writes ##INFO=<ID=CSQ>) ",
+             "or SnpEff (writes ##INFO=<ID=ANN>) before passing to read.gvr() ",
+             "/ read.gvr.snpeff().")
+    ), call. = FALSE)
+  }
+  uniq_ann <- unique(detected)
+  if (length(uniq_ann) > 1L) {
+    by_ann <- split(basename(vcf_paths), detected)
+    parts  <- vapply(names(by_ann), function(a)
+      sprintf("  %s: %s", a, paste(by_ann[[a]], collapse = ", ")),
+      character(1L))
+    stop(sprintf("read.gvr: mixed annotators in batch -- refusing to merge:\n%s",
+                 paste(parts, collapse = "\n")), call. = FALSE)
+  }
+  if (uniq_ann == "snpeff") {
+    if (!exists("read.gvr.snpeff", mode = "function")) {
+      stop("read.gvr: detected SnpEff VCF(s) but 'read.gvr.snpeff' is not ",
+           "defined. Source 'read.gvr.snpeff.R' (placed next to this file) ",
+           "first.", call. = FALSE)
+    }
+    if (verbose) message("read.gvr: SnpEff-annotated input detected; delegating to read.gvr.snpeff().")
+    return(read.gvr.snpeff(
+      folder            = folder,
+      vcf_path          = vcf_path,
+      pattern           = pattern,
+      write_tsv         = write_tsv,
+      write_rds         = write_rds,
+      write_xlsx        = write_xlsx,
+      out_dir           = out_dir,
+      out_prefix        = out_prefix,
+      chunk_size        = chunk_size,
+      ncbi_build        = ncbi_build,
+      add_genotype      = add_genotype,
+      strip_hgvs_prefix = strip_hgvs_prefix,
+      dedup_columns     = dedup_columns,
+      drop_empty_cols   = drop_empty_cols,
+      add_abraom        = add_abraom,
+      abraom_path       = abraom_path,
+      abraom_url        = abraom_url,
+      cache_dir         = cache_dir,
+      min_DP            = min_DP,
+      min_GQ            = min_GQ,
+      genes             = genes,
+      vc_nonSyn         = vc_nonSyn,
+      ncores            = ncores,
+      verbose           = verbose
+    ))
+  }
+  # else uniq_ann == "vep": continue with the existing VEP body below.
+
 
   # ==========================================================================
   # 1. Local helper definitions (kept inside the function => fully self-contained)
@@ -536,7 +694,7 @@ read.gvr <- function(folder = ".",
           keep <- keep & (is.na(gq_num) | gq_num > min_GQ)
         }
       } else {
-        # Slow path: FORMAT varies — extract DP/GQ per record (same logic as the loop)
+        # Slow path: FORMAT varies -- extract DP/GQ per record (same logic as the loop)
         for (r in seq_len(nrow_dt)) {
           fmt_keys <- strsplit(FORMAT_v[r], ":", fixed = TRUE)[[1]]
           smp_vals <- strsplit(SAMPLE_v[r], ":", fixed = TRUE)[[1]]
@@ -581,7 +739,7 @@ read.gvr <- function(folder = ".",
     #
     # CRITICAL: gene names in the CSQ field are pipe-delimited (field 4 of each
     # CSQ block), e.g. "T|missense_variant|MODIFIER|TP53|ENSG...". A bare
-    # grepl("RET", INFO) would match "INTERVAL", "INTER", etc. — keeping ~65% of
+    # grepl("RET", INFO) would match "INTERVAL", "INTER", etc. -- keeping ~65% of
     # records instead of ~0.05%. The fix is to match |GENE| (gene name between
     # pipes), which is precise enough for a rough filter while still being
     # over-inclusive (a gene name could appear in another pipe-delimited field like
@@ -649,7 +807,7 @@ read.gvr <- function(folder = ".",
         "disruptive_inframe_insertion", "disruptive_inframe_deletion"
       )
       # Unlike gene names (O7), VEP consequence terms are long and specific enough
-      # that bare substring matching is safe — they do not appear as substrings
+      # that bare substring matching is safe -- they do not appear as substrings
       # of other CSQ field values (verified empirically). Bare matching is also
       # faster than pipe-delimited matching and correctly handles compound
       # consequences (e.g. "missense_variant&splice_region_variant") where the
@@ -1262,6 +1420,11 @@ read.gvr <- function(folder = ".",
   }
 
   if (verbose) message(sprintf("Final Table Dimensions: %d rows x %d columns.", nrow(maf), ncol(maf)))
+
+  # Tag annotator BEFORE writes so saved TSV/RDS/XLSX carry the attribute too.
+  # (R's saveRDS preserves attributes; for TSV/XLSX it's only for in-memory
+  #  consumers -- but we still keep it consistent.)
+  data.table::setattr(maf, "annotator", "vep")
 
   # ==========================================================================
   # 4. Optional file outputs

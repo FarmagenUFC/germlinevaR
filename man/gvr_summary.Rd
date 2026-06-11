@@ -218,7 +218,8 @@ summarising, \code{\link[=gvr_plot]{gvr_plot()}} for a cohort oncoplot.
 Other germlinevaR: 
 \code{\link{gvr_filter}()},
 \code{\link{gvr_plot}()},
-\code{\link{read.gvr}()}
+\code{\link{read.gvr}()},
+\code{\link{read.gvr.snpeff}()}
 }
 \author{
 germlinevaR authors

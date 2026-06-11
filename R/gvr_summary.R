@@ -1520,7 +1520,18 @@ gvr_summary <- function(maf,
             # The minimal template emits only $body$ so the body HTML is
             # passed through unmodified into the self-contained wrapper.
             tpl <- tempfile(fileext = ".html")
-            writeLines("$body$", tpl)
+            writeLines(c(
+              "<!DOCTYPE html>",
+              "<html lang=\"en\">",
+              "<head>",
+              "<meta charset=\"utf-8\" />",
+              "<title>$title$</title>",
+              "</head>",
+              "<body>",
+              "$body$",
+              "</body>",
+              "</html>"
+            ), tpl)
             on.exit(unlink(tpl), add = TRUE)
             from_fmt <- if (rmarkdown::pandoc_available("1.17")) "markdown_strict" else "markdown"
             rmarkdown::pandoc_convert(
