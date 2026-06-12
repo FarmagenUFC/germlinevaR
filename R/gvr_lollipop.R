@@ -30,6 +30,34 @@
   stop(last_err)
 }
 
+# Internal: abbreviate verbose InterPro domain names for plot readability.
+# Applies targeted substitutions (NOT generic truncation) so the meaning is
+# preserved. Returns input unchanged when `abbrev = FALSE`.
+.gvr_abbrev_domain <- function(name, abbrev = TRUE) {
+  if (!isTRUE(abbrev) || length(name) == 0L) return(name)
+  # Apply substitutions in order. Each pair is c(pattern, replacement).
+  rules <- list(
+    c("von Willebrand factor",                    "VWF"),
+    c("Cellular tumor antigen p53",               "p53"),
+    c("VWF/SSPO/Zonadhesin-like",                  "VWF/SSPO/Zon"),
+    c("cysteine-rich domain",                      "CR domain"),
+    c("cysteine rich domain",                      "CR domain"),
+    c("Trypsin Inhibitor-like",                    "Trypsin-Inh"),
+    c("Otogelin-like/Mucin, TIL domain",           "Otogelin-like TIL"),
+    c(", C-terminal",                              " C-term"),
+    c(", N-terminal",                              " N-term"),
+    c("transactivation domain",                    "TAD"),
+    c("DNA-binding domain",                        "DBD"),
+    c("tetramerisation domain",                    "tetram."),
+    c("tetramerization domain",                    "tetram."),
+    c(", type D domain",                           " type-D"),
+    c("Cystine knot",                              "Cys-knot")
+  )
+  out <- name
+  for (r in rules) out <- gsub(r[[1]], r[[2]], out, fixed = TRUE)
+  out
+}
+
 #' Per-gene amino-acid lollipop plot for a germline MAF
 #'
 #' @description
@@ -173,7 +201,28 @@
 #'   * `"number"`: numbers 1..N centered in each rectangle, with a
 #'     companion `"Domains"` legend mapping number to full name. Requires
 #'     the optional `ggnewscale` package; without it, only numbers render.
+#'   * `"auto"`: opt-in heuristic. Use `"number"` when
+#'     `protein_length > 2000` aa AND `>= 5` domains are drawn
+#'     (long, densely-annotated proteins where in-plot names overlap),
+#'     otherwise use `"name"`. With `verbose = TRUE`, the resolved mode
+#'     and reason are printed.
 #'   * `"none"`: no labels (rely on the variant legend only).
+#' @param domain_name_abbrev Logical(1). When `TRUE` (default), apply a small
+#'   set of substitutions to compress verbose InterPro domain names (e.g.
+#'   "von Willebrand factor, type D domain" becomes "VWF type-D") so that
+#'   labels fit inside narrower rectangles in `domain_label_mode = "name"`.
+#'   Set `FALSE` to keep the raw InterPro names verbatim.
+#' @param hotspot_window Integer(1). Sliding-window width (in amino
+#'   acids) used to detect mutation hotspots. A hotspot is a region
+#'   containing at least `hotspot_min_n` distinct variant positions
+#'   within `hotspot_window` aa. Drawn as a soft translucent vertical
+#'   band behind the bar/domains/stems. Default `20L` (publication-tight
+#'   rule). Increase for noisier/exploratory cohorts.
+#' @param hotspot_min_n Numeric(1). Minimum distinct variant positions
+#'   inside a `hotspot_window`-wide region for it to be drawn as a
+#'   hotspot band. Default `4`. Pass `Inf` to disable hotspot detection
+#'   entirely. Counting uses unique aa positions (not sample counts), so
+#'   a single recurrently-hit position does not by itself create a band.
 #' @param stem_alpha Numeric(1) in `[0, 1]`. Opacity of lollipop stems.
 #'   Default `0.6`. Lower this further for very dense plots; raise to `1`
 #'   for the original solid stems.
@@ -241,6 +290,21 @@
 #'   ## suppress file output, return ggplot2 only
 #'   p <- gvr_lollipop(f, "BRCA1", out_dir = NULL)
 #'   print(p)
+#'
+#'   ## Long protein, two label strategies side-by-side
+#'   ## MUC19 has 9-12 InterPro domains clustered in aa 470-1604, so
+#'   ## name-mode labels overlap. Number-mode keeps the in-plot annotation
+#'   ## compact and routes domain names into a side legend.
+#'   gvr_lollipop(f, "MUC19", domain_label_mode = "name")
+#'   gvr_lollipop(f, "MUC19", domain_label_mode = "number")
+#'
+#'   ## Opt-in heuristic chooses between "name" and "number" automatically
+#'   ## (uses "number" when protein > 2000 aa AND >= 5 InterPro domains).
+#'   gvr_lollipop(f, "MUC19", domain_label_mode = "auto")
+#'
+#'   ## Highlight hotspots: clusters of >= 4 variants within 20 aa
+#'   ## (the default; set hotspot_min_n = Inf to disable).
+#'   gvr_lollipop(f, "TP53", hotspot_window = 20, hotspot_min_n = 4)
 #' }
 #'
 #' @importFrom data.table as.data.table copy is.data.table setDT :=
@@ -258,7 +322,10 @@ gvr_lollipop <- function(maf, gene,
                          cache_dir      = NULL,
                          label_top      = 5L,
                          domain_label_min_frac = 0.05,
-                         domain_label_mode     = c("name", "id", "number", "none"),
+                         domain_label_mode     = c("name", "id", "number", "none", "auto"),
+                         domain_name_abbrev    = TRUE,
+                         hotspot_window        = 20L,
+                         hotspot_min_n         = 4,
                          stem_alpha            = 0.6,
                          point_size     = 3,
                          stem_color     = "grey50",
@@ -721,12 +788,18 @@ gvr_lollipop <- function(maf, gene,
   bar_half <- max(0.22, min(0.5, y_max_stack * 0.05))
   # y-axis lower bound expanded to fit bar with a tiny breathing room
   # Expand bottom margin if domain labels live below the bar (modes 'name'/'id').
-  .dlm_lower <- match.arg(domain_label_mode)
-  .label_below <- !is.null(domains) && (.dlm_lower %in% c("name", "id"))
+  .dlm_requested <- match.arg(domain_label_mode)
+  # Reserve label-below space for "name"/"id" and also for "auto" (since
+  # "auto" may resolve to "name" after we know n_domains). The y_lower will
+  # be slightly oversized when "auto" -> "number"; this is harmless.
+  .label_below <- !is.null(domains) && (.dlm_requested %in% c("name", "id", "auto"))
+  # Ensure y_lower accommodates the taller domain rectangles (-dom_half).
+  # dom_half multiplier is 2.4 -> ensure -2.4 * bar_half is inside the panel.
+  .dom_floor <- bar_half * 2.4
   y_lower  <- if (.label_below)
-                -bar_half - max(0.50, y_max_stack * 0.35)
+                -.dom_floor - max(0.50, y_max_stack * 0.35)
               else
-                -bar_half - max(0.05, y_max_stack * 0.01)
+                -.dom_floor - max(0.05, y_max_stack * 0.02)
   # Give a tad more head-room so the tallest stack doesn't touch the top edge.
   y_upper  <- y_max_stack + max(1, y_max_stack * 0.10)
 
@@ -791,7 +864,7 @@ gvr_lollipop <- function(maf, gene,
       }
 
       # build geom_rect-friendly frame; domains slightly taller than bar
-      dom_half <- bar_half * 1.7  # taller than bar (maftools-style highlight)
+      dom_half <- bar_half * 2.4  # clearly taller than bar (maftools-style highlight)
       domains_df <- data.frame(xmin = dom$start, xmax = dom$end,
                                ymin = -dom_half, ymax = dom_half,
                                fill = dom$color,
@@ -825,6 +898,95 @@ gvr_lollipop <- function(maf, gene,
     }
   }
 
+  # ---- Resolve domain_label_mode (handles "auto" heuristic) ----
+  # The first dispatch site (above) only knew the user-requested mode.
+  # Now that domains_df is finalized we know n_dom and can resolve "auto".
+  .n_dom <- if (is.null(domains_df)) 0L else nrow(domains_df)
+  .dlm_resolved <- if (.dlm_requested == "auto") {
+    if (protein_length > 2000L && .n_dom >= 5L) {
+      if (isTRUE(verbose))
+        message(sprintf(
+          "gvr_lollipop: '%s' - auto-selecting domain_label_mode = \"number\" (protein length %d aa, %d domain(s))",
+          gene, as.integer(protein_length), .n_dom))
+      "number"
+    } else {
+      if (isTRUE(verbose))
+        message(sprintf(
+          "gvr_lollipop: '%s' - auto-selecting domain_label_mode = \"name\" (protein length %d aa, %d domain(s))",
+          gene, as.integer(protein_length), .n_dom))
+      "name"
+    }
+  } else {
+    .dlm_requested
+  }
+
+  # ---- Hotspot detection (clusters of >= hotspot_min_n positions within hotspot_window aa) ----
+  # Validate inputs: any non-finite / <=0 value disables hotspots safely.
+  .hw <- suppressWarnings(as.numeric(hotspot_window))
+  .hm <- suppressWarnings(as.numeric(hotspot_min_n))
+  .hotspots_enabled <- isTRUE(is.finite(.hw) && .hw > 0) &&
+                       isTRUE(!is.na(.hm) && .hm > 0)  # Inf passes >0 test
+  if (isTRUE(verbose)) {
+    if (!is.null(hotspot_window) && (!is.finite(.hw) || .hw <= 0))
+      message(sprintf("gvr_lollipop: invalid hotspot_window (%s); hotspot detection disabled.",
+                      as.character(hotspot_window)))
+    if (!is.null(hotspot_min_n) && (is.na(.hm) || .hm <= 0))
+      message(sprintf("gvr_lollipop: invalid hotspot_min_n (%s); hotspot detection disabled.",
+                      as.character(hotspot_min_n)))
+  }
+  # If hotspot_min_n == Inf, detection is officially disabled (no message).
+  hotspot_df <- data.frame(xmin = numeric(0), xmax = numeric(0),
+                           xmid = numeric(0), n_in_window = integer(0),
+                           stringsAsFactors = FALSE)
+  if (.hotspots_enabled && is.finite(.hm)) {
+    # `pos_counts` holds unique aa positions (one row per .__aa_pos__).
+    .unique_pos <- sort(unique(pos_counts$.__aa_pos__))
+    if (length(.unique_pos) >= .hm) {
+      .half_w <- .hw / 2
+      # For each position, count distinct positions inside its centered window.
+      .in_win <- vapply(.unique_pos, function(p) {
+        sum(.unique_pos >= (p - .half_w) & .unique_pos <= (p + .half_w))
+      }, integer(1))
+      .seed_pos <- .unique_pos[.in_win >= .hm]
+      if (length(.seed_pos) > 0L) {
+        # Build candidate windows (one per seed), then greedy-merge overlaps.
+        .cand <- data.frame(
+          xmin        = pmax(0, .seed_pos - .half_w),
+          xmax        = pmin(protein_length, .seed_pos + .half_w),
+          n_in_window = .in_win[.in_win >= .hm],
+          stringsAsFactors = FALSE
+        )
+        .cand <- .cand[order(.cand$xmin), , drop = FALSE]
+        # Greedy merge: walk sorted candidates, extend the current band while
+        # the next xmin <= current xmax (i.e. overlap or touching).
+        .merged <- vector("list", nrow(.cand))
+        .cur <- .cand[1, , drop = FALSE]
+        .k <- 1L
+        if (nrow(.cand) > 1L) {
+          for (.i in 2:nrow(.cand)) {
+            if (.cand$xmin[.i] <= .cur$xmax) {
+              .cur$xmax        <- max(.cur$xmax, .cand$xmax[.i])
+              .cur$n_in_window <- max(.cur$n_in_window, .cand$n_in_window[.i])
+            } else {
+              .merged[[.k]] <- .cur; .k <- .k + 1L
+              .cur <- .cand[.i, , drop = FALSE]
+            }
+          }
+        }
+        .merged[[.k]] <- .cur
+        hotspot_df <- do.call(rbind, .merged[seq_len(.k)])
+        hotspot_df$xmid <- (hotspot_df$xmin + hotspot_df$xmax) / 2
+        # Reorder columns to canonical layout
+        hotspot_df <- hotspot_df[, c("xmin", "xmax", "xmid", "n_in_window"),
+                                 drop = FALSE]
+        rownames(hotspot_df) <- NULL
+        if (isTRUE(verbose))
+          message(sprintf("gvr_lollipop: '%s' - %d hotspot band(s) detected (window %g aa, min %g positions)",
+                          gene, nrow(hotspot_df), .hw, .hm))
+      }
+    }
+  }
+
   # ---- Build ggplot ----
   # convert internal dot-prefixed columns to plain names ggplot can see cleanly
   dot_df <- data.frame(aa_pos = dt$.__aa_pos__,
@@ -845,6 +1007,21 @@ gvr_lollipop <- function(maf, gene,
                        color = if (is.na(bar_border)) NA else bar_border,
                        linewidth = 0.3)
 
+  # mutation-hotspot bands (drawn on top of the bar, behind domains/stems/dots).
+  # Soft full-height vertical wash highlights clustered-mutation regions
+  # without competing with the variant-class colour scale.
+  if (nrow(hotspot_df) > 0L) {
+    p <- p + ggplot2::geom_rect(
+      data        = hotspot_df,
+      ggplot2::aes(xmin = xmin, xmax = xmax,
+                   ymin = -bar_half * 2.4,
+                   ymax =  y_upper),
+      fill        = "#FD9BED",  # phylo magenta
+      color       = NA,
+      alpha       = 0.15,
+      inherit.aes = FALSE)
+  }
+
   # optional domain rectangles (on top of bar, but below stems)
   if (!is.null(domains_df) && nrow(domains_df) > 0L) {
     # Use a single thin dark outline so adjacent same-coloured domains stay
@@ -858,7 +1035,7 @@ gvr_lollipop <- function(maf, gene,
                                 linewidth = 0.4) +
              ggplot2::scale_fill_identity()
     # domain labels: behaviour controlled by domain_label_mode
-    .dlm <- match.arg(domain_label_mode)
+    .dlm <- .dlm_resolved
     if (.dlm != "none") {
       # In 'number' mode, label EVERY domain (1..N); in other modes, respect show_label filter
       if (.dlm == "number") {
@@ -870,7 +1047,7 @@ gvr_lollipop <- function(maf, gene,
                                lab_dom$name, lab_dom$accession)
       } else {  # "name"
         lab_dom <- domains_df[domains_df$show_label, , drop = FALSE]
-        lab_dom$.lbl <- lab_dom$name
+        lab_dom$.lbl <- .gvr_abbrev_domain(lab_dom$name, abbrev = isTRUE(domain_name_abbrev))
       }
       if (nrow(lab_dom) > 0L) {
         # Repel domain labels DOWNWARD (below the bar) with leader lines.
@@ -943,15 +1120,22 @@ gvr_lollipop <- function(maf, gene,
         # is the geom_rect above using scale_fill_identity()). Use a second
         # ggplot layer with discrete fill on top.
         if (requireNamespace("ggnewscale", quietly = TRUE)) {
+          # Add a second fill scale that maps each domain to its colour with
+          # a numbered legend. The in-plot rect is invisible (alpha = 0) but
+          # the legend key glyph is forced to full opacity via override.aes
+          # so the swatches actually show the domain colours.
           p <- p + ggnewscale::new_scale_fill() +
                ggplot2::geom_rect(data = domains_df,
                                   ggplot2::aes(xmin = xmin, xmax = xmax,
                                                ymin = ymin, ymax = ymax,
                                                fill = .legend),
                                   color = NA, alpha = 0) +
-               ggplot2::scale_fill_manual(name = "Domains",
-                                          values = setNames(domains_df$fill,
-                                                            as.character(domains_df$.legend)))
+               ggplot2::scale_fill_manual(
+                 name   = "Domains",
+                 values = setNames(domains_df$fill,
+                                   as.character(domains_df$.legend))) +
+               ggplot2::guides(fill = ggplot2::guide_legend(
+                 override.aes = list(alpha = 1, color = "grey25")))
         } else if (isTRUE(verbose)) {
           message("gvr_lollipop: install 'ggnewscale' to get a numbered domain legend; rendering numbers only.")
         }
@@ -971,7 +1155,7 @@ gvr_lollipop <- function(maf, gene,
     ggplot2::geom_point(data = dot_df,
                         ggplot2::aes(x = aa_pos, y = y, color = vc),
                         size = point_size) +
-    ggplot2::scale_color_manual(values = col_map, name = "Variant_Classification") +
+    ggplot2::scale_color_manual(values = col_map, name = "Variant class") +
     ggplot2::scale_x_continuous(limits = c(0, protein_length),
                                 breaks = x_breaks, expand = c(0.01, 0.01)) +
     ggplot2::scale_y_continuous(

@@ -14,7 +14,10 @@ gvr_lollipop(
   cache_dir = NULL,
   label_top = 5L,
   domain_label_min_frac = 0.05,
-  domain_label_mode = c("name", "id", "number", "none"),
+  domain_label_mode = c("name", "id", "number", "none", "auto"),
+  domain_name_abbrev = TRUE,
+  hotspot_window = 20L,
+  hotspot_min_n = 4,
   stem_alpha = 0.6,
   point_size = 3,
   stem_color = "grey50",
@@ -79,8 +82,32 @@ when accession is missing (user-supplied data.frame without it).
 \item \code{"number"}: numbers 1..N centered in each rectangle, with a
 companion \code{"Domains"} legend mapping number to full name. Requires
 the optional \code{ggnewscale} package; without it, only numbers render.
+\item \code{"auto"}: opt-in heuristic. Use \code{"number"} when
+\code{protein_length > 2000} aa AND \verb{>= 5} domains are drawn
+(long, densely-annotated proteins where in-plot names overlap),
+otherwise use \code{"name"}. With \code{verbose = TRUE}, the resolved mode
+and reason are printed.
 \item \code{"none"}: no labels (rely on the variant legend only).
 }}
+
+\item{domain_name_abbrev}{Logical(1). When \code{TRUE} (default), apply a small
+set of substitutions to compress verbose InterPro domain names (e.g.
+"von Willebrand factor, type D domain" becomes "VWF type-D") so that
+labels fit inside narrower rectangles in \code{domain_label_mode = "name"}.
+Set \code{FALSE} to keep the raw InterPro names verbatim.}
+
+\item{hotspot_window}{Integer(1). Sliding-window width (in amino
+acids) used to detect mutation hotspots. A hotspot is a region
+containing at least \code{hotspot_min_n} distinct variant positions
+within \code{hotspot_window} aa. Drawn as a soft translucent vertical
+band behind the bar/domains/stems. Default \code{20L} (publication-tight
+rule). Increase for noisier/exploratory cohorts.}
+
+\item{hotspot_min_n}{Numeric(1). Minimum distinct variant positions
+inside a \code{hotspot_window}-wide region for it to be drawn as a
+hotspot band. Default \code{4}. Pass \code{Inf} to disable hotspot detection
+entirely. Counting uses unique aa positions (not sample counts), so
+a single recurrently-hit position does not by itself create a band.}
 
 \item{stem_alpha}{Numeric(1) in \verb{[0, 1]}. Opacity of lollipop stems.
 Default \code{0.6}. Lower this further for very dense plots; raise to \code{1}
@@ -260,6 +287,21 @@ files were written.
   ## suppress file output, return ggplot2 only
   p <- gvr_lollipop(f, "BRCA1", out_dir = NULL)
   print(p)
+
+  ## Long protein, two label strategies side-by-side
+  ## MUC19 has 9-12 InterPro domains clustered in aa 470-1604, so
+  ## name-mode labels overlap. Number-mode keeps the in-plot annotation
+  ## compact and routes domain names into a side legend.
+  gvr_lollipop(f, "MUC19", domain_label_mode = "name")
+  gvr_lollipop(f, "MUC19", domain_label_mode = "number")
+
+  ## Opt-in heuristic chooses between "name" and "number" automatically
+  ## (uses "number" when protein > 2000 aa AND >= 5 InterPro domains).
+  gvr_lollipop(f, "MUC19", domain_label_mode = "auto")
+
+  ## Highlight hotspots: clusters of >= 4 variants within 20 aa
+  ## (the default; set hotspot_min_n = Inf to disable).
+  gvr_lollipop(f, "TP53", hotspot_window = 20, hotspot_min_n = 4)
 }
 
 }
