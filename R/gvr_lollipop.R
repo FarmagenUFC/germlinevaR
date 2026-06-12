@@ -159,7 +159,7 @@
 #'   caching. Ignored when `domains` is not `"auto"`.
 #' @param label_top Integer(1). Number of top-counted positions to label.
 #'   `0` disables labels, `Inf` labels every position. Default `5L`.
-#' @param domain_label_min_frac Numeric(1) in [0, 1]. Minimum domain width
+#' @param domain_label_min_frac Numeric(1) in `[0, 1]`. Minimum domain width
 #'   as a fraction of `protein_length` for a domain label to be rendered in
 #'   `"name"` and `"id"` modes. Default `0.05` (5%). Lower this for long
 #'   proteins (e.g. `0.01` so that even small domains get labelled). Ignored
@@ -174,7 +174,7 @@
 #'     companion `"Domains"` legend mapping number to full name. Requires
 #'     the optional `ggnewscale` package; without it, only numbers render.
 #'   * `"none"`: no labels (rely on the variant legend only).
-#' @param stem_alpha Numeric(1) in [0, 1]. Opacity of lollipop stems.
+#' @param stem_alpha Numeric(1) in `[0, 1]`. Opacity of lollipop stems.
 #'   Default `0.6`. Lower this further for very dense plots; raise to `1`
 #'   for the original solid stems.
 #' @param point_size Numeric(1). Dot size. Default `3`.
@@ -718,7 +718,7 @@ gvr_lollipop <- function(maf, gene,
   # ---- Protein-body bar geometry (overlapping y=0) ----
   y_max_stack <- max(pos_height$.__top__)
   # bar half-thickness = ~4% of stack height, clamped to [0.15, 0.5]
-  bar_half <- max(0.15, min(0.5, y_max_stack * 0.04))
+  bar_half <- max(0.22, min(0.5, y_max_stack * 0.05))
   # y-axis lower bound expanded to fit bar with a tiny breathing room
   # Expand bottom margin if domain labels live below the bar (modes 'name'/'id').
   .dlm_lower <- match.arg(domain_label_mode)
@@ -727,7 +727,8 @@ gvr_lollipop <- function(maf, gene,
                 -bar_half - max(0.50, y_max_stack * 0.35)
               else
                 -bar_half - max(0.05, y_max_stack * 0.01)
-  y_upper  <- y_max_stack + 1
+  # Give a tad more head-room so the tallest stack doesn't touch the top edge.
+  y_upper  <- y_max_stack + max(1, y_max_stack * 0.10)
 
   bar_df <- data.frame(xmin = 0, xmax = protein_length,
                        ymin = -bar_half, ymax = bar_half,
@@ -790,23 +791,33 @@ gvr_lollipop <- function(maf, gene,
       }
 
       # build geom_rect-friendly frame; domains slightly taller than bar
-      dom_half <- bar_half * 1.0  # same height as bar; sits on top via z-order
+      dom_half <- bar_half * 1.7  # taller than bar (maftools-style highlight)
       domains_df <- data.frame(xmin = dom$start, xmax = dom$end,
                                ymin = -dom_half, ymax = dom_half,
                                fill = dom$color,
                                name = dom$name,
                                stringsAsFactors = FALSE)
-      # label visible only if rectangle width >= domain_label_min_frac * protein_length
+      # Label visible if rectangle width is at least the smaller of:
+      #   (a) domain_label_min_frac * protein_length  (default 5%), and
+      #   (b) a 50 aa absolute floor (so long proteins still label small domains).
+      # The intent: percentage rule keeps short proteins from labelling tiny dots,
+      # while absolute floor keeps long proteins from suppressing every domain.
       .min_frac <- if (is.null(domain_label_min_frac) || !is.finite(domain_label_min_frac))
                      0.05 else max(0, min(1, as.numeric(domain_label_min_frac)))
+      .min_aa   <- min(protein_length * .min_frac, 50)
       domains_df$show_label <- (domains_df$xmax - domains_df$xmin) >=
-                               (protein_length * .min_frac) & nzchar(domains_df$name)
+                               .min_aa & nzchar(domains_df$name)
       domains_df$xmid <- (domains_df$xmin + domains_df$xmax) / 2
       # carry accession through (NA when user passed a data.frame without it)
       domains_df$accession <- if ("accession" %in% names(dom)) as.character(dom$accession) else NA_character_
 
       if (isTRUE(verbose))
         message(sprintf("gvr_lollipop: '%s' - drawing %d domain(s)", gene, nrow(domains_df)))
+        # Hint: if any domains exist but all are below the name-label threshold,
+        # tell the user how to make labels appear.
+        if (nrow(domains_df) > 0L && !any(domains_df$show_label))
+          message(sprintf("gvr_lollipop: '%s' - all %d domain(s) are below the label-width threshold (%.0f aa). Try domain_label_mode = \"number\" or lower domain_label_min_frac.",
+                          gene, nrow(domains_df), .min_aa))
     } else {
       if (isTRUE(verbose))
         message(sprintf("gvr_lollipop: '%s' - no valid domain rows after filtering",
@@ -836,12 +847,15 @@ gvr_lollipop <- function(maf, gene,
 
   # optional domain rectangles (on top of bar, but below stems)
   if (!is.null(domains_df) && nrow(domains_df) > 0L) {
+    # Use a single thin dark outline so adjacent same-coloured domains stay
+    # visually separable. (Per-domain outlines would collide with the variant
+    # color scale used by geom_point.)
     p <- p + ggplot2::geom_rect(data = domains_df,
                                 ggplot2::aes(xmin = xmin, xmax = xmax,
                                              ymin = ymin, ymax = ymax,
                                              fill = fill),
-                                color = if (is.na(bar_border)) NA else bar_border,
-                                linewidth = 0.3) +
+                                color = "grey25",
+                                linewidth = 0.4) +
              ggplot2::scale_fill_identity()
     # domain labels: behaviour controlled by domain_label_mode
     .dlm <- match.arg(domain_label_mode)
@@ -862,12 +876,33 @@ gvr_lollipop <- function(maf, gene,
         # Repel domain labels DOWNWARD (below the bar) with leader lines.
         # Numeric labels use centered geom_text (compact, no repel needed).
         if (.dlm == "number") {
-          p <- p + ggplot2::geom_text(data = lab_dom,
-                                      ggplot2::aes(x = xmid, y = 0, label = .lbl),
-                                      size  = base_size * 0.28,
-                                      color = "black",
-                                      fontface = "bold",
-                                      vjust = 0.5, hjust = 0.5)
+          # If many domains, some will collide on long proteins. Use repel to
+          # spread them ABOVE the bar when geom_text would overlap.
+          if (requireNamespace("ggrepel", quietly = TRUE) && nrow(lab_dom) >= 4L) {
+            p <- p + ggrepel::geom_text_repel(
+                       data = lab_dom,
+                       ggplot2::aes(x = xmid, y = 0, label = .lbl),
+                       size               = base_size * 0.28,
+                       color              = "black",
+                       fontface           = "bold",
+                       direction          = "y",
+                       nudge_y            = bar_half * 0.8,
+                       ylim               = c(bar_half * 0.6, Inf),
+                       segment.size       = 0.2,
+                       segment.color      = "grey60",
+                       box.padding        = 0.10,
+                       point.padding      = 0.02,
+                       min.segment.length = 0.05,
+                       max.overlaps       = Inf,
+                       seed               = 42L)
+          } else {
+            p <- p + ggplot2::geom_text(data = lab_dom,
+                                        ggplot2::aes(x = xmid, y = 0, label = .lbl),
+                                        size  = base_size * 0.30,
+                                        color = "black",
+                                        fontface = "bold",
+                                        vjust = 0.5, hjust = 0.5)
+          }
         } else if (requireNamespace("ggrepel", quietly = TRUE)) {
           # Start labels below the bar, repel them DOWN/around so they don't overlap.
           # No ylim: let repel push freely; segment lines lead back to xmid on the bar.
@@ -946,12 +981,38 @@ gvr_lollipop <- function(maf, gene,
         seq(0, ub, by = max(1, ceiling(ub / 5)))
       },
       expand = c(0, 0)) +
-    ggplot2::labs(title = sprintf("%s (protein length: %d aa)", gene, protein_length),
+    ggplot2::labs(title = gene,
+                  subtitle = sprintf("Protein length: %d aa  -  %d variant%s in %d sample%s",
+                                     protein_length,
+                                     nrow(dt),
+                                     if (nrow(dt) == 1L) "" else "s",
+                                     length(unique(dt$.__sample__)),
+                                     if (length(unique(dt$.__sample__)) == 1L) "" else "s"),
                   x = "Amino-acid position",
-                  y = "Number of sample-variants") +
+                  y = "Number of sample-variants",
+                  color = "Variant class") +
     ggplot2::theme_classic(base_size = base_size) +
-    ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", hjust = 0),
-                   legend.position = "right")
+    ggplot2::theme(
+      plot.title         = ggplot2::element_text(face = "bold",
+                                                 size = base_size * 1.25,
+                                                 hjust = 0,
+                                                 margin = ggplot2::margin(b = 2)),
+      plot.subtitle      = ggplot2::element_text(size = base_size * 0.85,
+                                                 color = "grey35",
+                                                 hjust = 0,
+                                                 margin = ggplot2::margin(b = 8)),
+      axis.title         = ggplot2::element_text(size = base_size * 0.95),
+      axis.text          = ggplot2::element_text(color = "grey20"),
+      axis.line          = ggplot2::element_line(color = "grey40", linewidth = 0.4),
+      axis.ticks         = ggplot2::element_line(color = "grey40", linewidth = 0.4),
+      legend.title       = ggplot2::element_text(face = "bold", size = base_size * 0.85),
+      legend.text        = ggplot2::element_text(size = base_size * 0.80),
+      legend.key.size    = ggplot2::unit(0.7, "lines"),
+      legend.position    = "right",
+      legend.justification = c(0, 0.5),
+      legend.box.spacing = ggplot2::unit(0.3, "lines"),
+      plot.margin        = ggplot2::margin(t = 8, r = 12, b = 6, l = 6)
+    )
 
   if (!is.null(label_df) && nrow(label_df) > 0L) {
     label_plot_df <- data.frame(aa_pos = label_df$.__aa_pos__,

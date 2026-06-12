@@ -13,6 +13,9 @@ gvr_lollipop(
   organism = 9606L,
   cache_dir = NULL,
   label_top = 5L,
+  domain_label_min_frac = 0.05,
+  domain_label_mode = c("name", "id", "number", "none"),
+  stem_alpha = 0.6,
   point_size = 3,
   stem_color = "grey50",
   bar_color = "grey85",
@@ -59,6 +62,29 @@ caching. Ignored when \code{domains} is not \code{"auto"}.}
 
 \item{label_top}{Integer(1). Number of top-counted positions to label.
 \code{0} disables labels, \code{Inf} labels every position. Default \code{5L}.}
+
+\item{domain_label_min_frac}{Numeric(1) in \verb{[0, 1]}. Minimum domain width
+as a fraction of \code{protein_length} for a domain label to be rendered in
+\code{"name"} and \code{"id"} modes. Default \code{0.05} (5\%). Lower this for long
+proteins (e.g. \code{0.01} so that even small domains get labelled). Ignored
+when \code{domain_label_mode = "number"} (all domains labelled) or \code{"none"}.}
+
+\item{domain_label_mode}{One of \code{"name"} (default), \code{"id"}, \code{"number"},
+or \code{"none"}. Controls how domain rectangles are labelled.
+\itemize{
+\item \code{"name"}: human-readable InterPro name, repelled below the bar with
+leader lines (uses \code{\link[ggrepel:geom_text_repel]{ggrepel::geom_text_repel()}} when available).
+\item \code{"id"}: InterPro accession (e.g. \code{IPR011615}); falls back to name
+when accession is missing (user-supplied data.frame without it).
+\item \code{"number"}: numbers 1..N centered in each rectangle, with a
+companion \code{"Domains"} legend mapping number to full name. Requires
+the optional \code{ggnewscale} package; without it, only numbers render.
+\item \code{"none"}: no labels (rely on the variant legend only).
+}}
+
+\item{stem_alpha}{Numeric(1) in \verb{[0, 1]}. Opacity of lollipop stems.
+Default \code{0.6}. Lower this further for very dense plots; raise to \code{1}
+for the original solid stems.}
 
 \item{point_size}{Numeric(1). Dot size. Default \code{3}.}
 
