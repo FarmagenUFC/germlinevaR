@@ -34,5 +34,8 @@ utils::globalVariables(c(
   # --- gvr_lollipop(): per-dot/stem aes() symbols + internal data.table cols ----
   "HGVSp_Short", "Tumor_Sample_Barcode",
   ".__aa_pos__", ".__hgvsp__", ".__vc__", ".__y__", ".n",
-  "aa_pos", "y", "top", "vc", "hgvsp", "label"
+  "aa_pos", "y", "top", "vc", "hgvsp", "label",
+  # --- gvr_lollipop() Phase G: geom_rect / geom_text aes() symbols ----------
+  # bar_df (xmin/xmax/ymin/ymax), domain rects (also xmid + name), stems (xend)
+  "xmin", "xmax", "ymin", "ymax", "xmid", "name", "xend"
 ))

@@ -9,12 +9,17 @@ gvr_lollipop(
   gene,
   vc_keep = NULL,
   protein_length = NULL,
+  domains = "auto",
+  organism = 9606L,
+  cache_dir = NULL,
   label_top = 5L,
   point_size = 3,
   stem_color = "grey50",
+  bar_color = "grey85",
+  bar_border = "grey40",
   base_size = 12,
-  out_dir = NULL,
-  out_prefix = NULL,
+  out_dir = ".",
+  out_prefix = gene,
   width = 10,
   height = 4,
   dpi = 300,
@@ -36,6 +41,22 @@ compatible table with at least \code{Hugo_Symbol}, \code{HGVSp_Short},
 from the \code{Protein_position} column (most-common total). Provide explicitly
 to fix the x-axis length.}
 
+\item{domains}{\code{"auto"}, \code{NULL}, or a \code{data.frame}. Default \code{"auto"}:
+domains are fetched from the EBI InterPro REST API and cached. \code{NULL}
+draws a plain bar with no domain rectangles. A \code{data.frame} with columns
+\code{start}, \code{end} (and optional \code{name}, \code{color}) draws custom domain
+rectangles. See \strong{Details} for the three accepted forms.}
+
+\item{organism}{Integer or string. NCBI taxonomy id used when
+\code{domains = "auto"} (passed through to the UniProt search as
+\code{organism_id}). Default \code{9606L} (human). Ignored when \code{domains} is not
+\code{"auto"}.}
+
+\item{cache_dir}{\code{NULL}, a directory path, or \code{FALSE}. Controls the
+on-disk cache used for \code{domains = "auto"}. \code{NULL} (default) triggers the
+precedence chain documented in \strong{Details}. \code{FALSE} disables on-disk
+caching. Ignored when \code{domains} is not \code{"auto"}.}
+
 \item{label_top}{Integer(1). Number of top-counted positions to label.
 \code{0} disables labels, \code{Inf} labels every position. Default \code{5L}.}
 
@@ -44,14 +65,23 @@ to fix the x-axis length.}
 \item{stem_color}{Character(1). Stem (vertical line) colour. Default
 \code{"grey50"}.}
 
+\item{bar_color}{Character(1). Protein-body bar fill colour. Default
+\code{"grey85"}.}
+
+\item{bar_border}{Character(1) or \code{NA}. Protein-body bar border colour.
+Default \code{"grey40"}.}
+
 \item{base_size}{Numeric(1). ggplot2 base font size. Default \code{12}.}
 
-\item{out_dir}{Character(1) or \code{NULL}. If both \code{out_dir} and \code{out_prefix}
-are non-NULL, the plot is written to disk (see Details). Default \code{NULL}
-(no file output).}
+\item{out_dir}{Character(1) or \code{NULL}. Output directory for the SVG/PNG
+files. Created if it does not exist. Default \code{"."} (current working
+directory), matching \code{\link[=gvr_plot]{gvr_plot()}}. Set to \code{NULL} to suppress file output.}
 
 \item{out_prefix}{Character(1) or \code{NULL}. Filename prefix; output files are
-\verb{<out_prefix>_lollipop.svg} / \verb{<out_prefix>_lollipop.png}. Default \code{NULL}.}
+\verb{<out_prefix>_lollipop.svg} / \verb{<out_prefix>_lollipop.png}. Default \code{gene}
+(the gene symbol), so \code{gvr_lollipop(f, "TP53")} writes
+\code{TP53_lollipop.svg} and \code{TP53_lollipop.png}. Set to \code{NULL} to suppress
+file output.}
 
 \item{width}{Numeric(1). Plot width in inches. Default \code{10}.}
 
@@ -60,19 +90,24 @@ are non-NULL, the plot is written to disk (see Details). Default \code{NULL}
 \item{dpi}{Numeric(1). PNG resolution. Default \code{300}.}
 
 \item{verbose}{Logical(1). If \code{TRUE} (default), emit progress messages
-(counts, dropped rows, file paths).}
+(counts, dropped rows, file paths, cache hits, network calls).}
 }
 \value{
-A ggplot2 object. If \code{out_dir} + \code{out_prefix} are passed, the SVG
-and PNG files are also written to disk as a side effect.
+A ggplot2 object. By default SVG and PNG files are also written to
+disk as a side effect. Set \code{out_dir = NULL} to suppress file output.
 }
 \description{
 Builds a ggplot2 lollipop plot of every protein-altering variant of a single
 gene in a \code{read.gvr()} / \code{gvr_filter()} / \code{gvr_novel()} MAF. Each amino-acid
 position is a stem; each sample-variant carried at that position is one dot
 stacked on the stem; dots are coloured by \code{Variant_Classification} using the
-package's colourblind-safe palette. Optionally writes both an \code{.svg} and a
-\code{.png} to disk.
+package's colourblind-safe palette. A horizontal protein-body bar is drawn
+along the x-axis (\code{maftools::lollipopPlot} style); protein domains are
+overlaid as coloured rectangles on top of that bar. By default, domains are
+fetched automatically from the EBI InterPro REST API (\code{domains = "auto"}).
+Pass \code{domains = NULL} for a plain bar with no domains, or supply a
+\code{data.frame} for custom domain coordinates. By default writes both an
+\code{.svg} and a \code{.png} to disk (matching \code{\link[=gvr_plot]{gvr_plot()}} behaviour).
 }
 \details{
 Variant classes are filtered down to the canonical protein-altering set (the
@@ -97,8 +132,8 @@ parseable \code{total}, the x-axis falls back to \code{max(position) * 1.1}. The
 
 Stacking: each surviving sample-variant becomes one dot. Dots sharing the
 same amino-acid position are stacked vertically, so the height of a stack
-equals the count of sample-variants at that position. Stems run from \code{y = 0}
-up to the top of the stack.
+equals the count of sample-variants at that position. Stems run from the
+top of the protein-body bar up to the top of the stack.
 
 Labels: the top-\code{label_top} positions by count are annotated with their
 \code{HGVSp_Short} (e.g. \code{p.R175H}). When multiple distinct \code{HGVSp_Short} share
@@ -107,43 +142,102 @@ a position, the most-common one is shown followed by \verb{(+N more)}. Set
 position. If \pkg{ggrepel} is installed, labels are placed via
 \code{ggrepel::geom_text_repel()}; otherwise a plain \code{geom_text()} is used.
 
+Protein-body bar: a thin horizontal rectangle is drawn straddling \code{y = 0}
+from x = 0 to x = \code{protein_length}. Bar height scales with the visible
+stack height (about 4 percent of the y range, clamped to \verb{[0.15, 0.5]}).
+The y-axis is expanded slightly below zero to accommodate the bar.
+
+Domains: \code{domains} accepts three forms:
+\itemize{
+\item \code{"auto"} (default) - the function calls the EBI InterPro REST API
+for the \code{gene} (gene -> UniProt accession via \code{rest.uniprot.org},
+then UniProt -> InterPro domains via \code{www.ebi.ac.uk/interpro}),
+keeps only InterPro-integrated entries (those with
+\code{source_database == "interpro"}, e.g. \code{IPR011615}), caches the
+result, and converts to the same \code{data.frame} shape as below.
+Requires the optional packages \pkg{httr} and \pkg{jsonlite}; if
+either is missing, or any HTTP / parsing step fails, a warning is
+emitted and the plot still renders with the plain bar.
+\item \code{NULL} - no domain rectangles, just the plain bar.
+\item A \code{data.frame} with required columns \code{start}, \code{end} and optional
+columns \code{name} (label, shown when the rectangle is wide enough) and
+\code{color} (hex code or R colour name; auto-assigned from a
+colourblind-safe palette when missing). Rows entirely outside
+\verb{[0, protein_length]} are dropped; partial overlaps are clipped.
+}
+
+Cache (used when \code{domains = "auto"}, the default): the resolved cache
+directory is picked from the first writable entry in this precedence chain:
+\enumerate{
+\item \code{cache_dir} argument (explicit override; pass \code{FALSE} to disable
+on-disk caching entirely).
+\item Environment variable \code{GVR_CACHE_DIR} (useful for HPC \verb{/scratch/$USER}).
+\item R option \code{getOption("germlinevaR.cache_dir")} (for \code{.Rprofile}).
+\item \code{tools::R_user_dir("germlinevaR", "cache")} (XDG-compliant default).
+\item \code{file.path(tempdir(), "germlinevaR_cache")} (last-resort, per-session).
+}
+Cached files: \verb{<cache_dir>/domains_interpro_<GENE>_<ORG>.rds}. To force a
+refresh, delete the file (or use the \code{\link[=gvr_domain_cache_clear]{gvr_domain_cache_clear()}} helper).
+
 Empty-gene behaviour: if no row matches the gene, or none survives the
 \code{vc_keep} filter, or none has a parseable amino-acid position, the function
 issues a warning and returns a ggplot2 object with a single centered
-"No protein-altering variants for \if{html}{\out{<GENE>}}" annotation. The user can still
-\code{ggsave()} it normally.
+"No protein-altering variants for \if{html}{\out{<GENE>}}" annotation. No files are written
+for empty-gene plots.
 
-Optional file output: when BOTH \code{out_dir} and \code{out_prefix} are non-NULL,
-the function writes:
+File output: by default the function writes both SVG and PNG to \code{out_dir}
+(default \code{"."}, the current working directory), using \code{out_prefix} (default
+\code{gene}) as the filename prefix:
 \itemize{
 \item \verb{<out_dir>/<out_prefix>_lollipop.svg} - vector (lossless)
 \item \verb{<out_dir>/<out_prefix>_lollipop.png} - raster at \code{dpi}
 }
 Both files are first rendered to \code{tempdir()} then \code{cp}'d to \code{out_dir}, so
 S3-backed FUSE mounts (e.g. \verb{/mnt/results/}) work without 0-byte issues.
-The function always returns the ggplot2 object regardless of whether files
-were written.
+Set \code{out_dir = NULL} to suppress file output and return only the ggplot2
+object. The function always returns the ggplot2 object regardless of whether
+files were written.
 }
 \examples{
 \dontrun{
   maf <- read.gvr("vcf_dir/", pattern = "\\\\.vep\\\\.vcf\\\\.gz$")
   f   <- gvr_filter(maf)
 
-  ## inline plot
-  p <- gvr_lollipop(f, "MUC16")
+  ## default: auto-fetches InterPro domains, auto-saves to "."
+  p <- gvr_lollipop(f, "TP53")
+
+  ## second call uses cache, no network
+  gvr_lollipop(f, "TP53")
+
+  ## plain bar, no domain rectangles
+  gvr_lollipop(f, "TP53", domains = NULL)
+
+  ## with user-supplied domains (TP53 example - canonical UniProt P04637)
+  tp53_dom <- data.frame(
+    start = c(95,   323),
+    end   = c(288,  356),
+    name  = c("DNA-binding", "Tetramerization"),
+    color = c("#FF9400", "#75A025")
+  )
+  gvr_lollipop(f, "TP53", domains = tp53_dom)
+
+  ## non-human cohort: pass the NCBI taxonomy id
+  gvr_lollipop(f, "Trp53", organism = 10090) # mouse
+
+  ## HPC: send the cache to scratch
+  Sys.setenv(GVR_CACHE_DIR = "/scratch/$USER/germlinevaR_cache")
+  gvr_lollipop(f, "MUC16")
+
+  ## disable on-disk caching entirely (CI / shared scratch)
+  gvr_lollipop(f, "BRCA1", cache_dir = FALSE)
+
+  ## suppress file output, return ggplot2 only
+  p <- gvr_lollipop(f, "BRCA1", out_dir = NULL)
   print(p)
-
-  ## save SVG + PNG
-  gvr_lollipop(f, "MUC16",
-               out_dir    = "results/lollipops",
-               out_prefix = "MUC16")
-
-  ## only missense
-  gvr_lollipop(f, "TP53", vc_keep = "Missense_Mutation")
 }
 
 }
 \seealso{
 \code{\link[=read.gvr]{read.gvr()}}, \code{\link[=gvr_filter]{gvr_filter()}}, \code{\link[=gvr_novel]{gvr_novel()}}, \code{\link[=gvr_summary]{gvr_summary()}},
-\code{\link[=gvr_plot]{gvr_plot()}}
+\code{\link[=gvr_plot]{gvr_plot()}}, \code{\link[=gvr_domain_cache_clear]{gvr_domain_cache_clear()}}
 }

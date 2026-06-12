@@ -36,6 +36,8 @@ Suggests:
     gridExtra,
     htmltools,
     htmlwidgets,
+    httr,
+    jsonlite,
     plotly,
     rmarkdown,
     scales,

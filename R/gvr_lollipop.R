@@ -1,3 +1,9 @@
+# Package-private in-memory cache for the InterPro auto-fetch.
+# Lives at file scope so successive `gvr_lollipop()` calls share it within
+# one R session. Keyed by sprintf("%s|%s", gene, organism).
+# Placed BEFORE the roxygen block so it does not capture the @export tag.
+.gvr_domain_mem_cache <- new.env(parent = emptyenv())
+
 #' Per-gene amino-acid lollipop plot for a germline MAF
 #'
 #' @description
@@ -5,8 +11,13 @@
 #' gene in a `read.gvr()` / `gvr_filter()` / `gvr_novel()` MAF. Each amino-acid
 #' position is a stem; each sample-variant carried at that position is one dot
 #' stacked on the stem; dots are coloured by `Variant_Classification` using the
-#' package's colourblind-safe palette. By default writes both an `.svg` and a
-#' `.png` to disk (matching [gvr_plot()] behaviour).
+#' package's colourblind-safe palette. A horizontal protein-body bar is drawn
+#' along the x-axis (`maftools::lollipopPlot` style); protein domains are
+#' overlaid as coloured rectangles on top of that bar. By default, domains are
+#' fetched automatically from the EBI InterPro REST API (`domains = "auto"`).
+#' Pass `domains = NULL` for a plain bar with no domains, or supply a
+#' `data.frame` for custom domain coordinates. By default writes both an
+#' `.svg` and a `.png` to disk (matching [gvr_plot()] behaviour).
 #'
 #' @details
 #' Variant classes are filtered down to the canonical protein-altering set (the
@@ -31,8 +42,8 @@
 #'
 #' Stacking: each surviving sample-variant becomes one dot. Dots sharing the
 #' same amino-acid position are stacked vertically, so the height of a stack
-#' equals the count of sample-variants at that position. Stems run from `y = 0`
-#' up to the top of the stack.
+#' equals the count of sample-variants at that position. Stems run from the
+#' top of the protein-body bar up to the top of the stack.
 #'
 #' Labels: the top-`label_top` positions by count are annotated with their
 #' `HGVSp_Short` (e.g. `p.R175H`). When multiple distinct `HGVSp_Short` share
@@ -40,6 +51,43 @@
 #' `label_top = 0` to disable labels, `label_top = Inf` to label every
 #' position. If \pkg{ggrepel} is installed, labels are placed via
 #' `ggrepel::geom_text_repel()`; otherwise a plain `geom_text()` is used.
+#'
+#' Protein-body bar: a thin horizontal rectangle is drawn straddling `y = 0`
+#' from x = 0 to x = `protein_length`. Bar height scales with the visible
+#' stack height (about 4 percent of the y range, clamped to `[0.15, 0.5]`).
+#' The y-axis is expanded slightly below zero to accommodate the bar.
+#'
+#' Domains: `domains` accepts three forms:
+#' \itemize{
+#'   \item `"auto"` (default) - the function calls the EBI InterPro REST API
+#'         for the `gene` (gene -> UniProt accession via `rest.uniprot.org`,
+#'         then UniProt -> InterPro domains via `www.ebi.ac.uk/interpro`),
+#'         keeps only InterPro-integrated entries (those with
+#'         `source_database == "interpro"`, e.g. `IPR011615`), caches the
+#'         result, and converts to the same `data.frame` shape as below.
+#'         Requires the optional packages \pkg{httr} and \pkg{jsonlite}; if
+#'         either is missing, or any HTTP / parsing step fails, a warning is
+#'         emitted and the plot still renders with the plain bar.
+#'   \item `NULL` - no domain rectangles, just the plain bar.
+#'   \item A `data.frame` with required columns `start`, `end` and optional
+#'         columns `name` (label, shown when the rectangle is wide enough) and
+#'         `color` (hex code or R colour name; auto-assigned from a
+#'         colourblind-safe palette when missing). Rows entirely outside
+#'         `[0, protein_length]` are dropped; partial overlaps are clipped.
+#' }
+#'
+#' Cache (used when `domains = "auto"`, the default): the resolved cache
+#' directory is picked from the first writable entry in this precedence chain:
+#' \enumerate{
+#'   \item `cache_dir` argument (explicit override; pass `FALSE` to disable
+#'         on-disk caching entirely).
+#'   \item Environment variable `GVR_CACHE_DIR` (useful for HPC `/scratch/$USER`).
+#'   \item R option `getOption("germlinevaR.cache_dir")` (for `.Rprofile`).
+#'   \item `tools::R_user_dir("germlinevaR", "cache")` (XDG-compliant default).
+#'   \item `file.path(tempdir(), "germlinevaR_cache")` (last-resort, per-session).
+#' }
+#' Cached files: `<cache_dir>/domains_interpro_<GENE>_<ORG>.rds`. To force a
+#' refresh, delete the file (or use the [gvr_domain_cache_clear()] helper).
 #'
 #' Empty-gene behaviour: if no row matches the gene, or none survives the
 #' `vc_keep` filter, or none has a parseable amino-acid position, the function
@@ -70,11 +118,28 @@
 #' @param protein_length Integer(1) or `NULL`. If `NULL` (default), derived
 #'   from the `Protein_position` column (most-common total). Provide explicitly
 #'   to fix the x-axis length.
+#' @param domains `"auto"`, `NULL`, or a `data.frame`. Default `"auto"`:
+#'   domains are fetched from the EBI InterPro REST API and cached. `NULL`
+#'   draws a plain bar with no domain rectangles. A `data.frame` with columns
+#'   `start`, `end` (and optional `name`, `color`) draws custom domain
+#'   rectangles. See \strong{Details} for the three accepted forms.
+#' @param organism Integer or string. NCBI taxonomy id used when
+#'   `domains = "auto"` (passed through to the UniProt search as
+#'   `organism_id`). Default `9606L` (human). Ignored when `domains` is not
+#'   `"auto"`.
+#' @param cache_dir `NULL`, a directory path, or `FALSE`. Controls the
+#'   on-disk cache used for `domains = "auto"`. `NULL` (default) triggers the
+#'   precedence chain documented in \strong{Details}. `FALSE` disables on-disk
+#'   caching. Ignored when `domains` is not `"auto"`.
 #' @param label_top Integer(1). Number of top-counted positions to label.
 #'   `0` disables labels, `Inf` labels every position. Default `5L`.
 #' @param point_size Numeric(1). Dot size. Default `3`.
 #' @param stem_color Character(1). Stem (vertical line) colour. Default
 #'   `"grey50"`.
+#' @param bar_color Character(1). Protein-body bar fill colour. Default
+#'   `"grey85"`.
+#' @param bar_border Character(1) or `NA`. Protein-body bar border colour.
+#'   Default `"grey40"`.
 #' @param base_size Numeric(1). ggplot2 base font size. Default `12`.
 #' @param out_dir Character(1) or `NULL`. Output directory for the SVG/PNG
 #'   files. Created if it does not exist. Default `"."` (current working
@@ -88,50 +153,70 @@
 #' @param height Numeric(1). Plot height in inches. Default `4`.
 #' @param dpi Numeric(1). PNG resolution. Default `300`.
 #' @param verbose Logical(1). If `TRUE` (default), emit progress messages
-#'   (counts, dropped rows, file paths).
+#'   (counts, dropped rows, file paths, cache hits, network calls).
 #'
 #' @return A ggplot2 object. By default SVG and PNG files are also written to
 #'   disk as a side effect. Set `out_dir = NULL` to suppress file output.
 #'
 #' @seealso [read.gvr()], [gvr_filter()], [gvr_novel()], [gvr_summary()],
-#'   [gvr_plot()]
+#'   [gvr_plot()], [gvr_domain_cache_clear()]
 #'
 #' @examples
 #' \dontrun{
 #'   maf <- read.gvr("vcf_dir/", pattern = "\\.vep\\.vcf\\.gz$")
 #'   f   <- gvr_filter(maf)
 #'
-#'   ## default: auto-saves TP53_lollipop.svg + TP53_lollipop.png to "."
+#'   ## default: auto-fetches InterPro domains, auto-saves to "."
 #'   p <- gvr_lollipop(f, "TP53")
 #'
-#'   ## save into a custom directory
-#'   gvr_lollipop(f, "MUC16", out_dir = "results/lollipops")
+#'   ## second call uses cache, no network
+#'   gvr_lollipop(f, "TP53")
 #'
-#'   ## custom prefix (overrides gene-based default)
-#'   gvr_lollipop(f, "MUC16",
-#'                out_dir    = "results/lollipops",
-#'                out_prefix = "MUC16_filtered")
+#'   ## plain bar, no domain rectangles
+#'   gvr_lollipop(f, "TP53", domains = NULL)
+#'
+#'   ## with user-supplied domains (TP53 example - canonical UniProt P04637)
+#'   tp53_dom <- data.frame(
+#'     start = c(95,   323),
+#'     end   = c(288,  356),
+#'     name  = c("DNA-binding", "Tetramerization"),
+#'     color = c("#FF9400", "#75A025")
+#'   )
+#'   gvr_lollipop(f, "TP53", domains = tp53_dom)
+#'
+#'   ## non-human cohort: pass the NCBI taxonomy id
+#'   gvr_lollipop(f, "Trp53", organism = 10090) # mouse
+#'
+#'   ## HPC: send the cache to scratch
+#'   Sys.setenv(GVR_CACHE_DIR = "/scratch/$USER/germlinevaR_cache")
+#'   gvr_lollipop(f, "MUC16")
+#'
+#'   ## disable on-disk caching entirely (CI / shared scratch)
+#'   gvr_lollipop(f, "BRCA1", cache_dir = FALSE)
 #'
 #'   ## suppress file output, return ggplot2 only
 #'   p <- gvr_lollipop(f, "BRCA1", out_dir = NULL)
 #'   print(p)
-#'
-#'   ## only missense
-#'   gvr_lollipop(f, "TP53", vc_keep = "Missense_Mutation")
 #' }
 #'
 #' @importFrom data.table as.data.table copy is.data.table setDT :=
-#' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_text annotate
-#'   scale_color_manual scale_x_continuous scale_y_continuous labs theme_classic
-#'   theme element_text element_blank ggsave
+#' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_rect geom_text
+#'   annotate scale_color_manual scale_fill_identity scale_x_continuous
+#'   scale_y_continuous labs theme_classic theme element_text element_blank
+#'   ggsave
 #' @importFrom grDevices svg dev.off
 #' @export
 gvr_lollipop <- function(maf, gene,
                          vc_keep        = NULL,
                          protein_length = NULL,
+                         domains        = "auto",
+                         organism       = 9606L,
+                         cache_dir      = NULL,
                          label_top      = 5L,
                          point_size     = 3,
                          stem_color     = "grey50",
+                         bar_color      = "grey85",
+                         bar_border     = "grey40",
                          base_size      = 12,
                          out_dir        = ".",
                          out_prefix     = gene,
@@ -156,6 +241,12 @@ gvr_lollipop <- function(maf, gene,
     "5'UTR" = "#AA4499", "3'UTR" = "#DDCC77", "5'Flank" = "#88CCEE",
     "3'Flank" = "#332288", "RNA" = "#BBBBBB", "Intron" = "#DDDDDD",
     "IGR" = "#777777", "Targeted_Region" = "#666666", "Other" = "#CCCCCC")
+
+  # colourblind-safe palette for auto-assigned domain colours
+  .GVR_DOMAIN_PALETTE <- c("#E69F00", "#56B4E9", "#009E73", "#F0E442",
+                           "#0072B2", "#D55E00", "#CC79A7", "#999999",
+                           "#88CCEE", "#44AA99", "#117733", "#DDCC77",
+                           "#AA4499")
 
   # ---- Nested helpers ----
   .is_missing <- function(x) is.na(x) | x == ""
@@ -191,6 +282,244 @@ gvr_lollipop <- function(maf, gene,
     final_path
   }
 
+  # ---- Cache directory resolver (precedence chain) ----
+  # Returns either a writable directory path, or NA_character_ if no disk
+  # caching should be performed (cache_dir == FALSE).
+  .gvr_resolve_cache_dir <- function(cache_dir_arg) {
+    # Explicit FALSE disables on-disk caching
+    if (isFALSE(cache_dir_arg)) return(NA_character_)
+
+    candidates <- character(0)
+
+    # 1. Explicit argument
+    if (!is.null(cache_dir_arg) && is.character(cache_dir_arg) &&
+        length(cache_dir_arg) == 1L && nzchar(cache_dir_arg)) {
+      candidates <- c(candidates, cache_dir_arg)
+    }
+
+    # 2. Environment variable
+    env_dir <- Sys.getenv("GVR_CACHE_DIR", unset = "")
+    if (nzchar(env_dir)) candidates <- c(candidates, env_dir)
+
+    # 3. R option
+    opt_dir <- getOption("germlinevaR.cache_dir", default = NULL)
+    if (!is.null(opt_dir) && is.character(opt_dir) && length(opt_dir) == 1L &&
+        nzchar(opt_dir)) {
+      candidates <- c(candidates, opt_dir)
+    }
+
+    # 4. XDG-compliant default via tools::R_user_dir (base R >= 4.0)
+    candidates <- c(candidates, tools::R_user_dir("germlinevaR", which = "cache"))
+
+    # 5. Last resort: tempdir
+    candidates <- c(candidates, file.path(tempdir(), "germlinevaR_cache"))
+
+    # Try each in order; return first that is creatable/writable
+    for (cand in candidates) {
+      ok <- tryCatch({
+        if (!dir.exists(cand))
+          dir.create(cand, recursive = TRUE, showWarnings = FALSE)
+        # writability test: file.access mode 2 = write
+        dir.exists(cand) && file.access(cand, mode = 2L) == 0L
+      }, error = function(e) FALSE, warning = function(w) FALSE)
+      if (isTRUE(ok)) return(cand)
+    }
+    NA_character_   # nothing worked
+  }
+
+  # tiny operator helper for null-coalesce (used inside auto-fetch)
+  `%||%` <- function(a, b) if (is.null(a)) b else a
+
+  # ---- InterPro auto-fetch (gene -> UniProt -> InterPro domains) ----
+  # Returns a data.frame of (start, end, name, color, accession, source).
+  # Any failure path returns a 0-row data.frame with a warning().
+  .gvr_interpro_get <- function(gene_sym, org, cache_dir_arg, verbose) {
+    empty_df <- data.frame(
+      start = integer(0), end = integer(0),
+      name = character(0), color = character(0),
+      accession = character(0), source = character(0),
+      stringsAsFactors = FALSE
+    )
+
+    # Soft-fail on missing optional deps
+    if (!requireNamespace("httr", quietly = TRUE) ||
+        !requireNamespace("jsonlite", quietly = TRUE)) {
+      warning("gvr_lollipop: domains='auto' requires packages 'httr' and ",
+              "'jsonlite'; install with install.packages(c('httr','jsonlite')). ",
+              "Falling back to plain bar.", call. = FALSE)
+      return(empty_df)
+    }
+
+    # In-memory cache lookup (session-scoped)
+    mem_key <- sprintf("%s|%s", gene_sym, as.character(org))
+    if (exists(mem_key, envir = .gvr_domain_mem_cache, inherits = FALSE)) {
+      if (isTRUE(verbose))
+        message(sprintf("gvr_lollipop: cached domains for %s (org %s) (session memory)",
+                        gene_sym, as.character(org)))
+      return(get(mem_key, envir = .gvr_domain_mem_cache, inherits = FALSE))
+    }
+
+    # Resolve cache_dir (may be NA if disk caching is disabled or unwritable)
+    cdir <- .gvr_resolve_cache_dir(cache_dir_arg)
+    cache_file <- if (!is.na(cdir))
+      file.path(cdir, sprintf("domains_interpro_%s_%s.rds", gene_sym, as.character(org)))
+    else NA_character_
+
+    # On-disk cache lookup
+    if (!is.na(cache_file) && file.exists(cache_file)) {
+      cached <- tryCatch(readRDS(cache_file), error = function(e) NULL)
+      if (is.data.frame(cached)) {
+        if (isTRUE(verbose))
+          message(sprintf("gvr_lollipop: cached domains for %s (org %s) from %s",
+                          gene_sym, as.character(org), cache_file))
+        assign(mem_key, cached, envir = .gvr_domain_mem_cache)
+        return(cached)
+      }
+      # Corrupt file: fall through and re-fetch
+      if (isTRUE(verbose))
+        message(sprintf("gvr_lollipop: cache file unreadable, re-fetching: %s",
+                        cache_file))
+    }
+
+    # ---- Stage A: gene -> UniProt accession (single HTTP GET) ----
+    if (isTRUE(verbose))
+      message(sprintf("gvr_lollipop: fetching UniProt accession for %s (org %s) ...",
+                      gene_sym, as.character(org)))
+
+    uniprot_url <- sprintf(
+      "https://rest.uniprot.org/uniprotkb/search?query=gene_exact:%s+AND+organism_id:%s+AND+reviewed:true&format=json&fields=accession,gene_names,length&size=5",
+      utils::URLencode(gene_sym), utils::URLencode(as.character(org))
+    )
+
+    acc <- tryCatch({
+      resp <- httr::GET(uniprot_url, httr::timeout(10))
+      if (httr::status_code(resp) >= 400L) {
+        warning(sprintf("gvr_lollipop: UniProt search returned HTTP %d for '%s'. Falling back to plain bar.",
+                        httr::status_code(resp), gene_sym), call. = FALSE)
+        return(empty_df)
+      }
+      txt <- httr::content(resp, as = "text", encoding = "UTF-8")
+      js <- jsonlite::fromJSON(txt, simplifyVector = FALSE)
+      if (length(js$results) == 0L) {
+        warning(sprintf("gvr_lollipop: no reviewed UniProt entry for gene '%s' in organism %s. Falling back to plain bar.",
+                        gene_sym, as.character(org)), call. = FALSE)
+        return(empty_df)
+      }
+      if (length(js$results) > 1L && isTRUE(verbose)) {
+        all_accs <- vapply(js$results, function(r) r$primaryAccession %||% NA_character_,
+                            character(1))
+        message(sprintf("gvr_lollipop: UniProt returned %d entries for '%s'; using first (%s). Others: %s",
+                        length(js$results), gene_sym, all_accs[1],
+                        paste(all_accs[-1], collapse = ", ")))
+      }
+      js$results[[1]]$primaryAccession
+    }, error = function(e) {
+      warning(sprintf("gvr_lollipop: UniProt fetch for '%s' failed: %s. Falling back to plain bar.",
+                      gene_sym, conditionMessage(e)), call. = FALSE)
+      NULL
+    })
+    if (is.null(acc) || !is.character(acc) || length(acc) == 0L) return(empty_df)
+    # acc may be empty data.frame if Stage A returned via the warning() path
+    if (is.data.frame(acc)) return(acc)
+
+    # ---- Stage B: UniProt accession -> InterPro domains (single HTTP GET) ----
+    if (isTRUE(verbose))
+      message(sprintf("gvr_lollipop: fetching InterPro domains for %s (UniProt %s) ...",
+                      gene_sym, acc))
+
+    interpro_url <- sprintf(
+      "https://www.ebi.ac.uk/interpro/api/entry/all/protein/UniProt/%s/?type=domain&page_size=100",
+      utils::URLencode(acc)
+    )
+
+    ip <- tryCatch({
+      resp <- httr::GET(interpro_url, httr::timeout(10))
+      sc <- httr::status_code(resp)
+      if (sc == 204L || sc == 404L) {
+        warning(sprintf("gvr_lollipop: no InterPro domains for '%s' (UniProt %s)",
+                        gene_sym, acc), call. = FALSE)
+        return(empty_df)
+      }
+      if (sc >= 400L) {
+        warning(sprintf("gvr_lollipop: InterPro returned HTTP %d for '%s'. Falling back to plain bar.",
+                        sc, gene_sym), call. = FALSE)
+        return(empty_df)
+      }
+      txt <- httr::content(resp, as = "text", encoding = "UTF-8")
+      jsonlite::fromJSON(txt, simplifyVector = FALSE)
+    }, error = function(e) {
+      warning(sprintf("gvr_lollipop: InterPro fetch for '%s' failed: %s. Falling back to plain bar.",
+                      gene_sym, conditionMessage(e)), call. = FALSE)
+      NULL
+    })
+    if (is.null(ip)) return(empty_df)
+    if (is.data.frame(ip)) return(ip)
+    if (is.null(ip$results) || length(ip$results) == 0L) {
+      warning(sprintf("gvr_lollipop: no InterPro domains for '%s' (UniProt %s)",
+                      gene_sym, acc), call. = FALSE)
+      return(empty_df)
+    }
+
+    # ---- Stage C: deduplicate + assemble ----
+    rows <- list()
+    for (entry in ip$results) {
+      md <- entry$metadata
+      if (is.null(md$source_database) || md$source_database != "interpro") next
+      protein_locs <- entry$proteins[[1]]$entry_protein_locations
+      if (is.null(protein_locs) || length(protein_locs) == 0L) next
+      for (loc in protein_locs) {
+        if (is.null(loc$fragments) || length(loc$fragments) == 0L) next
+        for (frag in loc$fragments) {
+          s <- suppressWarnings(as.integer(frag$start))
+          e <- suppressWarnings(as.integer(frag$end))
+          if (is.na(s) || is.na(e)) next
+          rows[[length(rows) + 1L]] <- list(
+            start     = s,
+            end       = e,
+            name      = md$name %||% "",
+            accession = md$accession %||% NA_character_,
+            source    = md$source_database
+          )
+        }
+      }
+    }
+    if (length(rows) == 0L) {
+      warning(sprintf("gvr_lollipop: no integrated InterPro domains for '%s' (UniProt %s)",
+                      gene_sym, acc), call. = FALSE)
+      return(empty_df)
+    }
+
+    df <- data.frame(
+      start     = vapply(rows, function(r) r$start, integer(1)),
+      end       = vapply(rows, function(r) r$end,   integer(1)),
+      name      = vapply(rows, function(r) r$name,  character(1)),
+      color     = .GVR_DOMAIN_PALETTE[((seq_along(rows) - 1L) %%
+                                       length(.GVR_DOMAIN_PALETTE)) + 1L],
+      accession = vapply(rows, function(r) r$accession %||% NA_character_, character(1)),
+      source    = vapply(rows, function(r) r$source,    character(1)),
+      stringsAsFactors = FALSE
+    )
+
+    # Write cache (graceful on FS failure)
+    if (!is.na(cache_file)) {
+      ok <- tryCatch({ saveRDS(df, cache_file); TRUE },
+                     error = function(e) {
+                       warning(sprintf("gvr_lollipop: could not write cache file '%s': %s",
+                                       cache_file, conditionMessage(e)), call. = FALSE)
+                       FALSE })
+      if (isTRUE(ok) && isTRUE(verbose))
+        message(sprintf("gvr_lollipop: wrote cache %s", cache_file))
+    }
+
+    # Populate session cache
+    assign(mem_key, df, envir = .gvr_domain_mem_cache)
+    if (isTRUE(verbose))
+      message(sprintf("gvr_lollipop: fetched %d InterPro domain(s) for %s (UniProt %s)",
+                      nrow(df), gene_sym, acc))
+
+    df
+  }
+
   # ---- Input validation ----
   if (!is.data.frame(maf)) {
     stop("gvr_lollipop: 'maf' must be a data.frame / data.table.")
@@ -208,9 +537,22 @@ gvr_lollipop <- function(maf, gene,
   req_cols <- c("Hugo_Symbol", "HGVSp_Short", "Variant_Classification",
                 "Tumor_Sample_Barcode", "Protein_position")
   miss_req <- req_cols[!req_cols %in% names(maf)]
-  if (length(miss_req) > 0) {
+  if (length(miss_req) > 0L) {
     stop(sprintf("gvr_lollipop: required column(s) not found: %s",
                  paste(miss_req, collapse = ", ")))
+  }
+
+  # ---- Auto-fetch dispatch (must happen BEFORE the existing data.frame validator) ----
+  # If domains is the literal string "auto", call the InterPro fetcher and replace
+  # domains with its result (a data.frame). Empty result -> fall through to the
+  # NULL-equivalent path (plain bar, no domain rectangles).
+  if (!is.null(domains) && is.character(domains) && length(domains) == 1L &&
+      tolower(domains) == "auto") {
+    domains <- .gvr_interpro_get(gene, organism, cache_dir, verbose)
+    if (is.data.frame(domains) && nrow(domains) == 0L) {
+      # Treat as no-domains: existing downstream code handles is.null(domains)
+      domains <- NULL
+    }
   }
 
   # ---- Resolve vc_keep ----
@@ -326,6 +668,95 @@ gvr_lollipop <- function(maf, gene,
   brk_step <- .nice_step(protein_length)
   x_breaks <- seq(0, ceiling(protein_length / brk_step) * brk_step, by = brk_step)
 
+  # ---- Protein-body bar geometry (overlapping y=0) ----
+  y_max_stack <- max(pos_height$.__top__)
+  # bar half-thickness = ~4% of stack height, clamped to [0.15, 0.5]
+  bar_half <- max(0.15, min(0.5, y_max_stack * 0.04))
+  # y-axis lower bound expanded to fit bar with a tiny breathing room
+  y_lower  <- -bar_half - max(0.05, y_max_stack * 0.01)
+  y_upper  <- y_max_stack + 1
+
+  bar_df <- data.frame(xmin = 0, xmax = protein_length,
+                       ymin = -bar_half, ymax = bar_half,
+                       stringsAsFactors = FALSE)
+
+  # ---- Optional domain rectangles ----
+  domains_df <- NULL
+  if (!is.null(domains)) {
+    if (!is.data.frame(domains)) {
+      stop("gvr_lollipop: 'domains' must be a data.frame / data.table.")
+    }
+    dom <- as.data.frame(domains, stringsAsFactors = FALSE)
+    miss_dom <- setdiff(c("start", "end"), names(dom))
+    if (length(miss_dom) > 0L) {
+      stop(sprintf("gvr_lollipop: 'domains' missing required column(s): %s",
+                   paste(miss_dom, collapse = ", ")))
+    }
+    dom$start <- suppressWarnings(as.numeric(dom$start))
+    dom$end   <- suppressWarnings(as.numeric(dom$end))
+    # drop invalid intervals
+    bad_iv <- is.na(dom$start) | is.na(dom$end) | dom$end < dom$start
+    if (any(bad_iv)) {
+      if (isTRUE(verbose))
+        message(sprintf("gvr_lollipop: domains - dropping %d row(s) with NA / inverted start..end",
+                        sum(bad_iv)))
+      dom <- dom[!bad_iv, , drop = FALSE]
+    }
+    # drop intervals entirely outside protein
+    out_iv <- dom$end < 0 | dom$start > protein_length
+    if (any(out_iv)) {
+      if (isTRUE(verbose))
+        message(sprintf("gvr_lollipop: domains - dropping %d row(s) outside [0, %d]",
+                        sum(out_iv), protein_length))
+      dom <- dom[!out_iv, , drop = FALSE]
+    }
+    if (nrow(dom) > 0L) {
+      # clip to protein bounds
+      dom$start <- pmax(dom$start, 0)
+      dom$end   <- pmin(dom$end,   protein_length)
+
+      # name column (optional) -- character or empty
+      if (!"name" %in% names(dom)) {
+        dom$name <- rep("", nrow(dom))
+      } else {
+        dom$name <- as.character(dom$name)
+        dom$name[is.na(dom$name)] <- ""
+      }
+
+      # color column (optional) -- if missing, auto-assign from palette
+      if (!"color" %in% names(dom)) {
+        dom$color <- .GVR_DOMAIN_PALETTE[((seq_len(nrow(dom)) - 1L) %%
+                                          length(.GVR_DOMAIN_PALETTE)) + 1L]
+      } else {
+        dom$color <- as.character(dom$color)
+        empty_col <- is.na(dom$color) | dom$color == ""
+        if (any(empty_col)) {
+          dom$color[empty_col] <- .GVR_DOMAIN_PALETTE[((which(empty_col) - 1L) %%
+                                                        length(.GVR_DOMAIN_PALETTE)) + 1L]
+        }
+      }
+
+      # build geom_rect-friendly frame; domains slightly taller than bar
+      dom_half <- bar_half * 1.0  # same height as bar; sits on top via z-order
+      domains_df <- data.frame(xmin = dom$start, xmax = dom$end,
+                               ymin = -dom_half, ymax = dom_half,
+                               fill = dom$color,
+                               name = dom$name,
+                               stringsAsFactors = FALSE)
+      # label visible only if rectangle width >= 5% of protein_length
+      domains_df$show_label <- (domains_df$xmax - domains_df$xmin) >=
+                               (protein_length * 0.05) & nzchar(domains_df$name)
+      domains_df$xmid <- (domains_df$xmin + domains_df$xmax) / 2
+
+      if (isTRUE(verbose))
+        message(sprintf("gvr_lollipop: '%s' - drawing %d domain(s)", gene, nrow(domains_df)))
+    } else {
+      if (isTRUE(verbose))
+        message(sprintf("gvr_lollipop: '%s' - no valid domain rows after filtering",
+                        gene))
+    }
+  }
+
   # ---- Build ggplot ----
   # convert internal dot-prefixed columns to plain names ggplot can see cleanly
   dot_df <- data.frame(aa_pos = dt$.__aa_pos__,
@@ -338,19 +769,54 @@ gvr_lollipop <- function(maf, gene,
                         stringsAsFactors = FALSE)
 
   p <- ggplot2::ggplot() +
+    # protein-body bar (drawn first so stems/dots/domains sit on top)
+    ggplot2::geom_rect(data = bar_df,
+                       ggplot2::aes(xmin = xmin, xmax = xmax,
+                                    ymin = ymin, ymax = ymax),
+                       fill = bar_color,
+                       color = if (is.na(bar_border)) NA else bar_border,
+                       linewidth = 0.3)
+
+  # optional domain rectangles (on top of bar, but below stems)
+  if (!is.null(domains_df) && nrow(domains_df) > 0L) {
+    p <- p + ggplot2::geom_rect(data = domains_df,
+                                ggplot2::aes(xmin = xmin, xmax = xmax,
+                                             ymin = ymin, ymax = ymax,
+                                             fill = fill),
+                                color = if (is.na(bar_border)) NA else bar_border,
+                                linewidth = 0.3) +
+             ggplot2::scale_fill_identity()
+    # domain labels (only those wide enough)
+    lab_dom <- domains_df[domains_df$show_label, , drop = FALSE]
+    if (nrow(lab_dom) > 0L) {
+      p <- p + ggplot2::geom_text(data = lab_dom,
+                                  ggplot2::aes(x = xmid, y = 0, label = name),
+                                  size  = base_size * 0.25,
+                                  color = "black",
+                                  vjust = 0.5, hjust = 0.5)
+    }
+  }
+
+  p <- p +
+    # stems (from top of bar up to stack top)
     ggplot2::geom_segment(data = stem_df,
                           ggplot2::aes(x = aa_pos, xend = aa_pos,
-                                       y = 0, yend = top),
+                                       y = bar_half, yend = top),
                           color = stem_color, linewidth = 0.5) +
+    # dots
     ggplot2::geom_point(data = dot_df,
                         ggplot2::aes(x = aa_pos, y = y, color = vc),
                         size = point_size) +
     ggplot2::scale_color_manual(values = col_map, name = "Variant_Classification") +
     ggplot2::scale_x_continuous(limits = c(0, protein_length),
                                 breaks = x_breaks, expand = c(0.01, 0.01)) +
-    ggplot2::scale_y_continuous(limits = c(0, max(pos_height$.__top__) + 1),
-                                breaks = function(lim) seq(0, ceiling(lim[2]), by = max(1, ceiling(lim[2] / 5))),
-                                expand = c(0, 0)) +
+    ggplot2::scale_y_continuous(
+      limits = c(y_lower, y_upper),
+      breaks = function(lim) {
+        ub <- max(1, ceiling(lim[2]))
+        seq(0, ub, by = max(1, ceiling(ub / 5)))
+      },
+      expand = c(0, 0)) +
     ggplot2::labs(title = sprintf("%s (protein length: %d aa)", gene, protein_length),
                   x = "Amino-acid position",
                   y = "Number of sample-variants") +
