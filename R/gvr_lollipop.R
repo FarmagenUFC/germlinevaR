@@ -4,6 +4,32 @@
 # Placed BEFORE the roxygen block so it does not capture the @export tag.
 .gvr_domain_mem_cache <- new.env(parent = emptyenv())
 
+# Internal: retrying HTTP GET helper. Some UniProt/InterPro requests come back
+# with transient HTTP 502/503/504 under load, or stall during TLS handshake.
+# Retries up to `tries` times on those statuses (and on `httr::GET` errors such
+# as timeout / connection reset), with exponential backoff. Returns the final
+# response object on success/error-after-retries; the caller still inspects
+# `httr::status_code()` so non-retryable 4xx responses surface as before.
+.gvr_http_get_retry <- function(url, timeout_s = 30, tries = 3) {
+  delays <- c(0.5, 1.5, 3.0)  # seconds between attempts
+  last_err <- NULL
+  for (i in seq_len(tries)) {
+    resp <- tryCatch(
+      httr::GET(url, httr::timeout(timeout_s)),
+      error = function(e) { last_err <<- e; NULL }
+    )
+    if (!is.null(resp)) {
+      sc <- httr::status_code(resp)
+      if (!(sc %in% c(429L, 500L, 502L, 503L, 504L))) return(resp)
+      # transient HTTP status: fall through to retry
+    }
+    if (i < tries) Sys.sleep(delays[i])
+  }
+  if (!is.null(resp)) return(resp)
+  # All attempts errored out; re-throw the last error for the caller's tryCatch
+  stop(last_err)
+}
+
 #' Per-gene amino-acid lollipop plot for a germline MAF
 #'
 #' @description
@@ -392,7 +418,7 @@ gvr_lollipop <- function(maf, gene,
     )
 
     acc <- tryCatch({
-      resp <- httr::GET(uniprot_url, httr::timeout(10))
+      resp <- .gvr_http_get_retry(uniprot_url, timeout_s = 30, tries = 3)
       if (httr::status_code(resp) >= 400L) {
         warning(sprintf("gvr_lollipop: UniProt search returned HTTP %d for '%s'. Falling back to plain bar.",
                         httr::status_code(resp), gene_sym), call. = FALSE)
@@ -433,7 +459,7 @@ gvr_lollipop <- function(maf, gene,
     )
 
     ip <- tryCatch({
-      resp <- httr::GET(interpro_url, httr::timeout(10))
+      resp <- .gvr_http_get_retry(interpro_url, timeout_s = 30, tries = 3)
       sc <- httr::status_code(resp)
       if (sc == 204L || sc == 404L) {
         warning(sprintf("gvr_lollipop: no InterPro domains for '%s' (UniProt %s)",
