@@ -37,5 +37,7 @@ utils::globalVariables(c(
   "aa_pos", "y", "top", "vc", "hgvsp", "label",
   # --- gvr_lollipop() Phase G: geom_rect / geom_text aes() symbols ----------
   # bar_df (xmin/xmax/ymin/ymax), domain rects (also xmid + name), stems (xend)
-  "xmin", "xmax", "ymin", "ymax", "xmid", "name", "xend"
+  "xmin", "xmax", "ymin", "ymax", "xmid", "name", "xend",
+  # --- gvr_lollipop() Phase H+: domain-label NSE columns added by aes() ----
+  ".lbl", ".legend"
 ))

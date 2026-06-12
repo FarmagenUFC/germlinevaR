@@ -159,6 +159,24 @@
 #'   caching. Ignored when `domains` is not `"auto"`.
 #' @param label_top Integer(1). Number of top-counted positions to label.
 #'   `0` disables labels, `Inf` labels every position. Default `5L`.
+#' @param domain_label_min_frac Numeric(1) in [0, 1]. Minimum domain width
+#'   as a fraction of `protein_length` for a domain label to be rendered in
+#'   `"name"` and `"id"` modes. Default `0.05` (5%). Lower this for long
+#'   proteins (e.g. `0.01` so that even small domains get labelled). Ignored
+#'   when `domain_label_mode = "number"` (all domains labelled) or `"none"`.
+#' @param domain_label_mode One of `"name"` (default), `"id"`, `"number"`,
+#'   or `"none"`. Controls how domain rectangles are labelled.
+#'   * `"name"`: human-readable InterPro name, repelled below the bar with
+#'     leader lines (uses [ggrepel::geom_text_repel()] when available).
+#'   * `"id"`: InterPro accession (e.g. `IPR011615`); falls back to name
+#'     when accession is missing (user-supplied data.frame without it).
+#'   * `"number"`: numbers 1..N centered in each rectangle, with a
+#'     companion `"Domains"` legend mapping number to full name. Requires
+#'     the optional `ggnewscale` package; without it, only numbers render.
+#'   * `"none"`: no labels (rely on the variant legend only).
+#' @param stem_alpha Numeric(1) in [0, 1]. Opacity of lollipop stems.
+#'   Default `0.6`. Lower this further for very dense plots; raise to `1`
+#'   for the original solid stems.
 #' @param point_size Numeric(1). Dot size. Default `3`.
 #' @param stem_color Character(1). Stem (vertical line) colour. Default
 #'   `"grey50"`.
@@ -239,6 +257,9 @@ gvr_lollipop <- function(maf, gene,
                          organism       = 9606L,
                          cache_dir      = NULL,
                          label_top      = 5L,
+                         domain_label_min_frac = 0.05,
+                         domain_label_mode     = c("name", "id", "number", "none"),
+                         stem_alpha            = 0.6,
                          point_size     = 3,
                          stem_color     = "grey50",
                          bar_color      = "grey85",
@@ -699,7 +720,13 @@ gvr_lollipop <- function(maf, gene,
   # bar half-thickness = ~4% of stack height, clamped to [0.15, 0.5]
   bar_half <- max(0.15, min(0.5, y_max_stack * 0.04))
   # y-axis lower bound expanded to fit bar with a tiny breathing room
-  y_lower  <- -bar_half - max(0.05, y_max_stack * 0.01)
+  # Expand bottom margin if domain labels live below the bar (modes 'name'/'id').
+  .dlm_lower <- match.arg(domain_label_mode)
+  .label_below <- !is.null(domains) && (.dlm_lower %in% c("name", "id"))
+  y_lower  <- if (.label_below)
+                -bar_half - max(0.50, y_max_stack * 0.35)
+              else
+                -bar_half - max(0.05, y_max_stack * 0.01)
   y_upper  <- y_max_stack + 1
 
   bar_df <- data.frame(xmin = 0, xmax = protein_length,
@@ -769,10 +796,14 @@ gvr_lollipop <- function(maf, gene,
                                fill = dom$color,
                                name = dom$name,
                                stringsAsFactors = FALSE)
-      # label visible only if rectangle width >= 5% of protein_length
+      # label visible only if rectangle width >= domain_label_min_frac * protein_length
+      .min_frac <- if (is.null(domain_label_min_frac) || !is.finite(domain_label_min_frac))
+                     0.05 else max(0, min(1, as.numeric(domain_label_min_frac)))
       domains_df$show_label <- (domains_df$xmax - domains_df$xmin) >=
-                               (protein_length * 0.05) & nzchar(domains_df$name)
+                               (protein_length * .min_frac) & nzchar(domains_df$name)
       domains_df$xmid <- (domains_df$xmin + domains_df$xmax) / 2
+      # carry accession through (NA when user passed a data.frame without it)
+      domains_df$accession <- if ("accession" %in% names(dom)) as.character(dom$accession) else NA_character_
 
       if (isTRUE(verbose))
         message(sprintf("gvr_lollipop: '%s' - drawing %d domain(s)", gene, nrow(domains_df)))
@@ -812,14 +843,84 @@ gvr_lollipop <- function(maf, gene,
                                 color = if (is.na(bar_border)) NA else bar_border,
                                 linewidth = 0.3) +
              ggplot2::scale_fill_identity()
-    # domain labels (only those wide enough)
-    lab_dom <- domains_df[domains_df$show_label, , drop = FALSE]
-    if (nrow(lab_dom) > 0L) {
-      p <- p + ggplot2::geom_text(data = lab_dom,
-                                  ggplot2::aes(x = xmid, y = 0, label = name),
-                                  size  = base_size * 0.25,
-                                  color = "black",
-                                  vjust = 0.5, hjust = 0.5)
+    # domain labels: behaviour controlled by domain_label_mode
+    .dlm <- match.arg(domain_label_mode)
+    if (.dlm != "none") {
+      # In 'number' mode, label EVERY domain (1..N); in other modes, respect show_label filter
+      if (.dlm == "number") {
+        lab_dom <- domains_df
+        lab_dom$.lbl <- as.character(seq_len(nrow(lab_dom)))
+      } else if (.dlm == "id") {
+        lab_dom <- domains_df[domains_df$show_label, , drop = FALSE]
+        lab_dom$.lbl <- ifelse(is.na(lab_dom$accession) | !nzchar(lab_dom$accession),
+                               lab_dom$name, lab_dom$accession)
+      } else {  # "name"
+        lab_dom <- domains_df[domains_df$show_label, , drop = FALSE]
+        lab_dom$.lbl <- lab_dom$name
+      }
+      if (nrow(lab_dom) > 0L) {
+        # Repel domain labels DOWNWARD (below the bar) with leader lines.
+        # Numeric labels use centered geom_text (compact, no repel needed).
+        if (.dlm == "number") {
+          p <- p + ggplot2::geom_text(data = lab_dom,
+                                      ggplot2::aes(x = xmid, y = 0, label = .lbl),
+                                      size  = base_size * 0.28,
+                                      color = "black",
+                                      fontface = "bold",
+                                      vjust = 0.5, hjust = 0.5)
+        } else if (requireNamespace("ggrepel", quietly = TRUE)) {
+          # Start labels below the bar, repel them DOWN/around so they don't overlap.
+          # No ylim: let repel push freely; segment lines lead back to xmid on the bar.
+          .y_start <- -bar_half - max(0.05, y_max_stack * 0.04)
+          p <- p + ggrepel::geom_text_repel(
+                     data = lab_dom,
+                     ggplot2::aes(x = xmid, y = .y_start, label = .lbl),
+                     size               = base_size * 0.23,
+                     color              = "black",
+                     direction          = "y",
+                     nudge_y            = -max(0.10, y_max_stack * 0.06),
+                     segment.size       = 0.25,
+                     segment.color      = "grey50",
+                     box.padding        = 0.30,
+                     point.padding      = 0.05,
+                     min.segment.length = 0,
+                     max.overlaps       = Inf,
+                     seed               = 42L)
+        } else {
+          p <- p + ggplot2::geom_text(data = lab_dom,
+                                      ggplot2::aes(x = xmid, y = 0, label = .lbl),
+                                      size  = base_size * 0.23,
+                                      color = "black",
+                                      vjust = 0.5, hjust = 0.5)
+        }
+      }
+      # In 'number' mode, also draw a side caption mapping number -> name
+      # (rendered as a labelled fill scale legend via a sentinel aesthetic).
+      if (.dlm == "number") {
+        # rebuild fill so legend can show numbered legend entries
+        legend_lvl <- sprintf("%d. %s", seq_len(nrow(domains_df)),
+                              ifelse(nzchar(domains_df$name), domains_df$name,
+                                     ifelse(is.na(domains_df$accession), "(unnamed)",
+                                            domains_df$accession)))
+        # keep order via factor levels
+        domains_df$.legend <- factor(legend_lvl, levels = legend_lvl)
+        # overlay an invisible rect just to inject the legend (the real fill
+        # is the geom_rect above using scale_fill_identity()). Use a second
+        # ggplot layer with discrete fill on top.
+        if (requireNamespace("ggnewscale", quietly = TRUE)) {
+          p <- p + ggnewscale::new_scale_fill() +
+               ggplot2::geom_rect(data = domains_df,
+                                  ggplot2::aes(xmin = xmin, xmax = xmax,
+                                               ymin = ymin, ymax = ymax,
+                                               fill = .legend),
+                                  color = NA, alpha = 0) +
+               ggplot2::scale_fill_manual(name = "Domains",
+                                          values = setNames(domains_df$fill,
+                                                            as.character(domains_df$.legend)))
+        } else if (isTRUE(verbose)) {
+          message("gvr_lollipop: install 'ggnewscale' to get a numbered domain legend; rendering numbers only.")
+        }
+      }
     }
   }
 
@@ -828,7 +929,9 @@ gvr_lollipop <- function(maf, gene,
     ggplot2::geom_segment(data = stem_df,
                           ggplot2::aes(x = aa_pos, xend = aa_pos,
                                        y = bar_half, yend = top),
-                          color = stem_color, linewidth = 0.5) +
+                          color = stem_color,
+                          alpha = as.numeric(stem_alpha),
+                          linewidth = 0.5) +
     # dots
     ggplot2::geom_point(data = dot_df,
                         ggplot2::aes(x = aa_pos, y = y, color = vc),

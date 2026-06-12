@@ -33,6 +33,7 @@ Suggests:
     ComplexHeatmap,
     DT,
     ggrepel,
+    ggnewscale,
     gridExtra,
     htmltools,
     htmlwidgets,
