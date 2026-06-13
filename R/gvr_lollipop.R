@@ -1381,12 +1381,45 @@ gvr_lollipop <- function(maf, gene,
         .font_floor <- 0.6   # minimum font multiplier (60%)
         .shrink_steps <- c(0.9, 0.8, 0.7, 0.6)  # tried only in Tier 3
         
-        # Helper: max_chars for a given rect width and font multiplier.
-        # width = nchar * (protein_length/80) * (text_size*fm/11), bound by 0.9 * rect_w.
+        # Phase M: Grid-measured cascade calibration.
+        # text_size is in mm (ggplot text size unit); convert to grid fontsize
+        # in pt for measurement. Panel width fraction 0.72 calibrated against
+        # default theme + VC legend at width=10 (panel = 7.25 in measured).
+        .panel_frac <- 0.72
+        .panel_mm   <- width * 25.4 * .panel_frac
+        
+        # Helper: max_chars at given rect-aa and font multiplier, using actual
+        # measured 'n' glyph width. Used by .try_wrap as a planning hint to
+        # pick a break point; .text_fits_in_rect is the authoritative check.
         .max_chars_at <- function(rw, fm) {
-          .ts <- .text_size_preview * fm
-          .caa <- (protein_length / 80) * (.ts / 11)
-          floor(0.9 * rw / .caa)
+          .rect_mm <- rw * .panel_mm / protein_length
+          .max_text_mm <- 0.9 * .rect_mm
+          .ts_mm <- .text_size_preview * fm
+          .fontsize_pt <- .ts_mm * 72 / 25.4
+          grid::pushViewport(grid::viewport(
+            gp = grid::gpar(fontfamily = "sans", fontsize = .fontsize_pt)))
+          on.exit(grid::popViewport(), add = TRUE)
+          .one_char_mm <- grid::convertWidth(
+            grid::stringWidth("n"), "mm", valueOnly = TRUE)
+          if (!is.finite(.one_char_mm) || .one_char_mm <= 0) return(0L)
+          floor(.max_text_mm / .one_char_mm)
+        }
+        # Helper: authoritative fit check via grid::stringWidth on each line.
+        # Accepts single-line labels and "line1\\nline2" wrapped strings.
+        .text_fits_in_rect <- function(text, rw, fm) {
+          if (!nzchar(text)) return(TRUE)
+          .rect_mm <- rw * .panel_mm / protein_length
+          .max_text_mm <- 0.9 * .rect_mm
+          .ts_mm <- .text_size_preview * fm
+          .fontsize_pt <- .ts_mm * 72 / 25.4
+          grid::pushViewport(grid::viewport(
+            gp = grid::gpar(fontfamily = "sans", fontsize = .fontsize_pt)))
+          on.exit(grid::popViewport(), add = TRUE)
+          .lines <- strsplit(text, "\n", fixed = TRUE)[[1L]]
+          .widths <- vapply(.lines, function(.l)
+            grid::convertWidth(grid::stringWidth(.l), "mm", valueOnly = TRUE),
+            numeric(1L))
+          all(.widths <= .max_text_mm)
         }
         # Helper: try a 2-line wrap at a given max_chars.
         # Returns NA_character_ if wrap fails (line2 empty or any line over limit),
@@ -1409,14 +1442,14 @@ gvr_lollipop <- function(maf, gene,
           
           # Tier 1: 1 line at full font
           .mx_full <- .max_chars_at(.rw, 1.0)
-          if (.mx_full >= 1L && nchar(.lab) <= .mx_full) {
+          if (.text_fits_in_rect(.lab, .rw, 1.0)) {
             .ok <- TRUE
             .resolved_lbl <- .lab
             .resolved_font <- 1.0
           } else if (isTRUE(domain_label_wrap)) {
             # Tier 2: 2-line wrap at full font
             .w <- .try_wrap(.lab, .mx_full)
-            if (!is.na(.w)) {
+            if (!is.na(.w) && .text_fits_in_rect(.w, .rw, 1.0)) {
               .ok <- TRUE
               .resolved_lbl <- .w
               .resolved_font <- 1.0
@@ -1425,7 +1458,7 @@ gvr_lollipop <- function(maf, gene,
               for (.fm in .shrink_steps) {
                 .mx <- .max_chars_at(.rw, .fm)
                 .w <- .try_wrap(.lab, .mx)
-                if (!is.na(.w)) {
+                if (!is.na(.w) && .text_fits_in_rect(.w, .rw, .fm)) {
                   .ok <- TRUE
                   .resolved_lbl <- .w
                   .resolved_font <- .fm
@@ -1433,7 +1466,7 @@ gvr_lollipop <- function(maf, gene,
                 }
                 # Also try 1-line at the shrunk font (cheap: catches labels with no
                 # internal split points like an InterPro id 'IPR011615').
-                if (.mx >= 1L && nchar(.lab) <= .mx) {
+                if (.text_fits_in_rect(.lab, .rw, .fm)) {
                   .ok <- TRUE
                   .resolved_lbl <- .lab
                   .resolved_font <- .fm
@@ -1445,7 +1478,7 @@ gvr_lollipop <- function(maf, gene,
             # Wrap disabled: also try 1-line at shrunk fonts (no 2-line option).
             for (.fm in .shrink_steps) {
               .mx <- .max_chars_at(.rw, .fm)
-              if (.mx >= 1L && nchar(.lab) <= .mx) {
+              if (.text_fits_in_rect(.lab, .rw, .fm)) {
                 .ok <- TRUE
                 .resolved_lbl <- .lab
                 .resolved_font <- .fm
