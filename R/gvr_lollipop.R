@@ -58,6 +58,58 @@
   out
 }
 
+# Internal: 2-line word-wrap helper used by inside-mode domain labels.
+# Returns c(line1, line2). line2 == "" means the label fits on one line.
+# Splits on commas first (",\\s*"), falls back to spaces when no commas or
+# when the comma-split still yields a line wider than max_chars. Greedy
+# left-to-right packer (no full optimization). Never produces more than 2 lines:
+# if the wrapped result still won't fit, the renderer falls back to 'below'.
+.gvr_wrap_two_lines <- function(label, max_chars) {
+  if (length(label) == 0L) return(c("", ""))
+  if (is.na(label) || !nzchar(label)) return(c(label, ""))
+  max_chars <- max(1L, as.integer(max_chars))
+  if (nchar(label) <= max_chars) return(c(label, ""))
+
+  pack <- function(tokens, joiner) {
+    # Greedy 2-line packer. Returns c(l1, l2). If everything overflows, returns
+    # c(label, "") so caller can decide to fall back.
+    if (length(tokens) == 0L) return(c(label, ""))
+    l1 <- tokens[1]
+    if (length(tokens) == 1L) return(c(l1, ""))
+    cur <- 1L  # current line index (1 or 2)
+    out <- c(l1, "")
+    for (i in 2:length(tokens)) {
+      tk <- tokens[i]
+      cand <- if (nzchar(out[cur])) paste0(out[cur], joiner, tk) else tk
+      if (nchar(cand) <= max_chars) {
+        out[cur] <- cand
+      } else if (cur == 1L) {
+        cur <- 2L
+        out[2L] <- tk
+      } else {
+        # Already on line 2 and overflowing — append anyway; caller handles fallback.
+        out[2L] <- paste0(out[2L], joiner, tk)
+      }
+    }
+    out
+  }
+
+  # Stage 1: split on commas (with optional trailing whitespace)
+  if (grepl(",", label, fixed = TRUE)) {
+    toks <- strsplit(label, ",\\s*", perl = TRUE)[[1]]
+    toks <- toks[nzchar(toks)]
+    out <- pack(toks, ", ")
+    if (max(nchar(out)) <= max_chars) return(out)
+  }
+
+  # Stage 2: split on whitespace (re-tokenize from scratch — comma-split tokens
+  # may still be too wide individually).
+  toks <- strsplit(label, "\\s+", perl = TRUE)[[1]]
+  toks <- toks[nzchar(toks)]
+  out <- pack(toks, " ")
+  out
+}
+
 #' Per-gene amino-acid lollipop plot for a germline MAF
 #'
 #' @description
@@ -169,9 +221,24 @@
 #' @param vc_keep Character vector of `Variant_Classification` values to keep.
 #'   `NULL` (default) uses the 9-class protein-altering set from
 #'   [gvr_filter()].
-#' @param protein_length Integer(1) or `NULL`. If `NULL` (default), derived
-#'   from the `Protein_position` column (most-common total). Provide explicitly
-#'   to fix the x-axis length.
+#' @param protein_length Integer(1) or `NULL`. Sets the x-axis length (in
+#'   amino acids). Resolved with the following precedence:
+#'   \enumerate{
+#'     \item UniProt canonical sequence length, fetched via the same
+#'       UniProt REST query used for `domains = "auto"`. Wins by default;
+#'       see `protein_length_strict` to opt out.
+#'     \item User-supplied value when `protein_length_strict = TRUE`, or
+#'       when UniProt is unreachable.
+#'     \item Mode of the `<pos>/<total>` totals parsed from the MAF
+#'       `Protein_position` column (entries without a `/` are skipped).
+#'     \item `ceiling(max(positions) * 1.1)` fallback.
+#'   }
+#'   The final value is always at least `max(positions)` so no mutation is
+#'   clipped. A one-line `message()` is emitted when UniProt overrides a
+#'   user-supplied value by more than 5%.
+#' @param protein_length_strict Logical(1). When `TRUE`, the user's
+#'   `protein_length` is kept verbatim and the UniProt canonical length is
+#'   not used (the max-position safety net still applies). Default `FALSE`.
 #' @param domains `"auto"`, `NULL`, or a `data.frame`. Default `"auto"`:
 #'   domains are fetched from the EBI InterPro REST API and cached. `NULL`
 #'   draws a plain bar with no domain rectangles. A `data.frame` with columns
@@ -225,6 +292,15 @@
 #'   fall back to the `"below"` style with a leader line on a per-domain
 #'   basis so no information is lost. A verbose message reports the count of
 #'   overflowing labels.
+#' @param domain_label_wrap Logical(1). When `TRUE` (default), inside-mode
+#'   domain labels that don't fit on one line are wrapped onto a second
+#'   line at the nearest comma (or at a space if no commas) and the font is
+#'   shrunk in 10% steps down to a floor of 60% of base. Wrapping is
+#'   per-domain: labels that already fit on one line stay unchanged. If a
+#'   label still overflows after the 2-line + 60% font cascade, it falls
+#'   back to the existing below-bar leader (so no information is lost).
+#'   Set `FALSE` to keep the pre-Phase-L behaviour: 1-line labels only, with
+#'   any overflow going directly to the below-bar fallback.
 #' @param hotspot_window Integer(1). Sliding-window width (in amino
 #'   acids) used to detect mutation hotspots. A hotspot is a region
 #'   containing at least `hotspot_min_n` distinct variant positions
@@ -397,6 +473,7 @@
 gvr_lollipop <- function(maf, gene,
                          vc_keep        = NULL,
                          protein_length = NULL,
+                         protein_length_strict = FALSE,
                          domains        = "auto",
                          organism       = 9606L,
                          cache_dir      = NULL,
@@ -405,6 +482,7 @@ gvr_lollipop <- function(maf, gene,
                          domain_label_mode     = c("name", "id", "number", "none", "auto"),
                          domain_name_abbrev    = TRUE,
                          domain_label_position = c("inside", "below"),
+                         domain_label_wrap     = TRUE,
                          hotspot_window        = 20L,
                          hotspot_min_n         = 4,
                          stem_alpha            = 0.6,
@@ -692,7 +770,7 @@ gvr_lollipop <- function(maf, gene,
       utils::URLencode(gene_sym), utils::URLencode(as.character(org))
     )
 
-    acc <- tryCatch({
+    acc_and_len <- tryCatch({
       resp <- .gvr_http_get_retry(uniprot_url, timeout_s = 30, tries = 3)
       if (httr::status_code(resp) >= 400L) {
         warning(sprintf("gvr_lollipop: UniProt search returned HTTP %d for '%s'. Falling back to plain bar.",
@@ -713,12 +791,23 @@ gvr_lollipop <- function(maf, gene,
                         length(js$results), gene_sym, all_accs[1],
                         paste(all_accs[-1], collapse = ", ")))
       }
-      js$results[[1]]$primaryAccession
+      # Phase L: capture canonical sequence length for the precedence resolver
+      raw_len <- js$results[[1]]$sequence$length
+      parsed_len <- if (!is.null(raw_len)) suppressWarnings(as.integer(raw_len)) else NA_integer_
+      if (length(parsed_len) != 1L || is.na(parsed_len) || parsed_len <= 0L)
+        parsed_len <- NA_integer_
+      # Return list(accession, length); outer unpack picks both out.
+      list(acc = js$results[[1]]$primaryAccession,
+           uniprot_length = parsed_len)
     }, error = function(e) {
       warning(sprintf("gvr_lollipop: UniProt fetch for '%s' failed: %s. Falling back to plain bar.",
                       gene_sym, conditionMessage(e)), call. = FALSE)
       NULL
     })
+    # Phase L: unpack (accession, length) from the tryCatch result.
+    acc <- if (is.list(acc_and_len) && !is.null(acc_and_len$acc)) acc_and_len$acc else acc_and_len
+    uniprot_length_holder <- if (is.list(acc_and_len) && !is.null(acc_and_len$uniprot_length))
+      as.integer(acc_and_len$uniprot_length) else NA_integer_
     if (is.null(acc) || !is.character(acc) || length(acc) == 0L) return(empty_df)
     # acc may be empty data.frame if Stage A returned via the warning() path
     if (is.data.frame(acc)) return(acc)
@@ -787,6 +876,8 @@ gvr_lollipop <- function(maf, gene,
     if (length(rows) == 0L) {
       warning(sprintf("gvr_lollipop: no integrated InterPro domains for '%s' (UniProt %s)",
                       gene_sym, acc), call. = FALSE)
+      # Phase L: even if no domains, propagate the UniProt length we captured.
+      attr(empty_df, "uniprot_length") <- uniprot_length_holder
       return(empty_df)
     }
 
@@ -798,6 +889,9 @@ gvr_lollipop <- function(maf, gene,
       source    = vapply(rows, function(r) r$source,    character(1)),
       stringsAsFactors = FALSE
     )
+    # Phase L: attach UniProt canonical length to the cached object as an attribute.
+    attr(df, "uniprot_length") <- uniprot_length_holder
+
 
     # Write cache (graceful on FS failure)
     if (!is.na(cache_file)) {
@@ -817,6 +911,95 @@ gvr_lollipop <- function(maf, gene,
                       nrow(df), gene_sym, acc))
 
     df
+  }
+
+  # ---- Phase L: standalone UniProt length fetcher (used when domains != 'auto') ----
+  # Performs the same UniProt search as .gvr_interpro_get's Stage A, returning the
+  # canonical sequence length only. Soft-fails to NA_integer_ on HTTP errors or
+  # missing fields. Reuses the same on-disk cache file so subsequent runs hit cache.
+  .gvr_uniprot_length <- function(gene_sym, org, cache_dir_arg, verbose) {
+    if (!requireNamespace("httr", quietly = TRUE) ||
+        !requireNamespace("jsonlite", quietly = TRUE)) {
+      return(NA_integer_)
+    }
+
+    # Cache lookup: same per-gene RDS as .gvr_interpro_get. May exist with attribute
+    # already attached, even if the domains data.frame inside is 0-row.
+    cdir <- .gvr_resolve_cache_dir(cache_dir_arg)
+    cache_file <- if (!is.na(cdir))
+      file.path(cdir, sprintf("domains_interpro_%s_%s.rds", gene_sym, as.character(org)))
+    else NA_character_
+    if (!is.na(cache_file) && file.exists(cache_file)) {
+      cached <- tryCatch(readRDS(cache_file), error = function(e) NULL)
+      if (is.data.frame(cached)) {
+        cached_len <- suppressWarnings(as.integer(attr(cached, "uniprot_length")))
+        if (length(cached_len) == 1L && !is.na(cached_len) && cached_len > 0L) {
+          if (isTRUE(verbose))
+            message(sprintf("gvr_lollipop: cached UniProt length for %s (org %s) = %d aa",
+                            gene_sym, as.character(org), cached_len))
+          return(cached_len)
+        }
+      }
+    }
+
+    if (isTRUE(verbose))
+      message(sprintf("gvr_lollipop: fetching UniProt canonical length for %s (org %s) ...",
+                      gene_sym, as.character(org)))
+
+    uniprot_url <- sprintf(
+      "https://rest.uniprot.org/uniprotkb/search?query=gene_exact:%s+AND+organism_id:%s+AND+reviewed:true&format=json&fields=accession,gene_names,length&size=5",
+      utils::URLencode(gene_sym), utils::URLencode(as.character(org))
+    )
+
+    len <- tryCatch({
+      resp <- .gvr_http_get_retry(uniprot_url, timeout_s = 30, tries = 3)
+      if (httr::status_code(resp) >= 400L) {
+        warning(sprintf("gvr_lollipop: UniProt search returned HTTP %d for '%s'. Length unavailable.",
+                        httr::status_code(resp), gene_sym), call. = FALSE)
+        return(NA_integer_)
+      }
+      txt <- httr::content(resp, as = "text", encoding = "UTF-8")
+      js <- jsonlite::fromJSON(txt, simplifyVector = FALSE)
+      if (length(js$results) == 0L) return(NA_integer_)
+      raw_len <- js$results[[1]]$sequence$length
+      if (is.null(raw_len)) return(NA_integer_)
+      as.integer(raw_len)
+    }, error = function(e) {
+      warning(sprintf("gvr_lollipop: UniProt length fetch for '%s' failed: %s.",
+                      gene_sym, conditionMessage(e)), call. = FALSE)
+      NA_integer_
+    })
+    if (is.null(len) || !is.integer(len) || length(len) != 1L || is.na(len) || len <= 0L) {
+      return(NA_integer_)
+    }
+
+    # Cache: write a 0-row domains df with the length attribute attached, so that a
+    # later 'auto'-mode call upgrades naturally and so non-auto calls don't refetch.
+    if (!is.na(cache_file) && !file.exists(cache_file)) {
+      empty_with_len <- data.frame(
+        start = integer(0), end = integer(0),
+        name = character(0), accession = character(0), source = character(0),
+        stringsAsFactors = FALSE
+      )
+      attr(empty_with_len, "uniprot_length") <- len
+      tryCatch(saveRDS(empty_with_len, cache_file),
+               error = function(e) {
+                 if (isTRUE(verbose))
+                   message(sprintf("gvr_lollipop: could not write length cache '%s': %s",
+                                   cache_file, conditionMessage(e)))
+               })
+    } else if (!is.na(cache_file) && file.exists(cache_file)) {
+      # Upgrade existing cache file by re-saving with the new attribute.
+      cached <- tryCatch(readRDS(cache_file), error = function(e) NULL)
+      if (is.data.frame(cached) && is.null(attr(cached, "uniprot_length"))) {
+        attr(cached, "uniprot_length") <- len
+        tryCatch(saveRDS(cached, cache_file), error = function(e) NULL)
+      }
+    }
+
+    if (isTRUE(verbose))
+      message(sprintf("gvr_lollipop: UniProt canonical length for %s = %d aa", gene_sym, len))
+    len
   }
 
   # ---- Input validation ----
@@ -845,9 +1028,23 @@ gvr_lollipop <- function(maf, gene,
   # If domains is the literal string "auto", call the InterPro fetcher and replace
   # domains with its result (a data.frame). Empty result -> fall through to the
   # NULL-equivalent path (plain bar, no domain rectangles).
+  # Phase L: also preserve the uniprot_length attribute even when domains is empty,
+  # so the precedence resolver below can still use it.
+  .__was_auto_domains__ <- FALSE
+  .__uniprot_length_capture__ <- NA_integer_
   if (!is.null(domains) && is.character(domains) && length(domains) == 1L &&
       tolower(domains) == "auto") {
+    .__was_auto_domains__ <- TRUE
     domains <- .gvr_interpro_get(gene, organism, cache_dir, verbose)
+    # Phase L: snatch the length attribute before any NULL replacement.
+    if (is.data.frame(domains)) {
+      .__uniprot_length_capture__ <- suppressWarnings(
+        as.integer(attr(domains, "uniprot_length")))
+      if (length(.__uniprot_length_capture__) != 1L ||
+          is.na(.__uniprot_length_capture__) ||
+          .__uniprot_length_capture__ <= 0L)
+        .__uniprot_length_capture__ <- NA_integer_
+    }
     if (is.data.frame(domains) && nrow(domains) == 0L) {
       # Treat as no-domains: existing downstream code handles is.null(domains)
       domains <- NULL
@@ -913,6 +1110,39 @@ gvr_lollipop <- function(maf, gene,
         ceiling(max(dt$.__aa_pos__, na.rm = TRUE) * 1.1))
     }
   }
+  protein_length <- max(protein_length, max(dt$.__aa_pos__, na.rm = TRUE))
+
+  # ---- Phase L: precedence resolver — UniProt > user-supplied > MAF inference ----
+  # Pull the UniProt canonical length (already captured for auto; standalone fetch otherwise).
+  .__uniprot_length__ <- if (isTRUE(.__was_auto_domains__))
+    .__uniprot_length_capture__
+  else
+    .gvr_uniprot_length(gene, organism, cache_dir, verbose)
+
+  if (!is.na(.__uniprot_length__) && .__uniprot_length__ > 0L) {
+    if (!isTRUE(.user_supplied_length)) {
+      # User did not supply -> silent override.
+      protein_length <- as.integer(.__uniprot_length__)
+    } else if (isTRUE(protein_length_strict)) {
+      # User supplied AND requested strict -> keep user's value, no override, no message.
+    } else {
+      # User supplied but did not opt out -> override; emit message only if >5% diff.
+      .user_val <- as.integer(protein_length)
+      .uni_val  <- as.integer(.__uniprot_length__)
+      .frac_diff <- abs(.uni_val - .user_val) / .uni_val
+      if (is.finite(.frac_diff) && .frac_diff > 0.05) {
+        message(sprintf(
+          "gvr_lollipop: UniProt canonical length for %s is %d aa; user supplied %d aa (%.1f%% diff). Using %d (UniProt). Pass protein_length_strict = TRUE to override.",
+          gene, .uni_val, .user_val, 100 * .frac_diff, .uni_val))
+      }
+      protein_length <- .uni_val
+    }
+  } else if (isTRUE(verbose)) {
+    message(sprintf(
+      "gvr_lollipop: UniProt length unavailable for %s; using inferred/user-supplied length %d aa.",
+      gene, as.integer(protein_length)))
+  }
+  # Re-apply max-position safety net so a too-low strict value cannot clip mutations.
   protein_length <- max(protein_length, max(dt$.__aa_pos__, na.rm = TRUE))
 
   # ---- Build per-dot table: one dot per surviving sample-variant ----
@@ -1127,14 +1357,110 @@ gvr_lollipop <- function(maf, gene,
                                           abbrev = isTRUE(domain_name_abbrev))
       }
       if (domain_label_position == "inside") {
-        .char_aa  <- (protein_length / 80) * (.text_size_preview / 11)
-        .est_w    <- nchar(.lbl_preview) * .char_aa
-        .rect_w   <- domains_df$xmax[.lab_idx] - domains_df$xmin[.lab_idx]
-        .fits_vec <- .est_w <= .rect_w * 0.9
+        # Phase L: 4-tier fit cascade per labeled domain.
+        # Tier 1: 1 line, full font.
+        # Tier 2: 2-line wrap, full font (if domain_label_wrap = TRUE).
+        # Tier 3: 2-line wrap, shrunk font in 10% steps down to 60% floor.
+        # Tier 4: still overflows -> .fits_preview = FALSE -> below-bar fallback.
+        # The cascade fills three per-row columns on domains_df:
+        #   .lbl_resolved : final string (with "\n" if wrapped)
+        #   .font_mult    : multiplier on .text_size_preview in [0.6, 1.0]
+        #   .fits_preview : TRUE if a tier accepted, FALSE if must go below
+        domains_df$.lbl_resolved <- rep(NA_character_, nrow(domains_df))
+        domains_df$.font_mult    <- rep(NA_real_,      nrow(domains_df))
+        
+        .rect_w     <- domains_df$xmax[.lab_idx] - domains_df$xmin[.lab_idx]
+        .fits_vec   <- logical(length(.lab_idx))
+        .lbl_done   <- character(length(.lab_idx))
+        .font_done  <- numeric(length(.lab_idx))
+        .font_floor <- 0.6   # minimum font multiplier (60%)
+        .shrink_steps <- c(0.9, 0.8, 0.7, 0.6)  # tried only in Tier 3
+        
+        # Helper: max_chars for a given rect width and font multiplier.
+        # width = nchar * (protein_length/80) * (text_size*fm/11), bound by 0.9 * rect_w.
+        .max_chars_at <- function(rw, fm) {
+          .ts <- .text_size_preview * fm
+          .caa <- (protein_length / 80) * (.ts / 11)
+          floor(0.9 * rw / .caa)
+        }
+        # Helper: try a 2-line wrap at a given max_chars.
+        # Returns NA_character_ if wrap fails (line2 empty or any line over limit),
+        # else a single string with "\n" between line1 and line2.
+        .try_wrap <- function(lab, mx) {
+          if (mx < 1L) return(NA_character_)
+          .lines <- .gvr_wrap_two_lines(lab, mx)
+          if (nzchar(.lines[2L]) && all(nchar(.lines) <= mx))
+            paste(.lines[1L], .lines[2L], sep = "\n")
+          else
+            NA_character_
+        }
+        
+        for (.k in seq_along(.lab_idx)) {
+          .lab <- .lbl_preview[.k]
+          .rw  <- .rect_w[.k]
+          .ok <- FALSE
+          .resolved_lbl <- .lab
+          .resolved_font <- 1.0
+          
+          # Tier 1: 1 line at full font
+          .mx_full <- .max_chars_at(.rw, 1.0)
+          if (.mx_full >= 1L && nchar(.lab) <= .mx_full) {
+            .ok <- TRUE
+            .resolved_lbl <- .lab
+            .resolved_font <- 1.0
+          } else if (isTRUE(domain_label_wrap)) {
+            # Tier 2: 2-line wrap at full font
+            .w <- .try_wrap(.lab, .mx_full)
+            if (!is.na(.w)) {
+              .ok <- TRUE
+              .resolved_lbl <- .w
+              .resolved_font <- 1.0
+            } else {
+              # Tier 3: 2-line wrap, shrunk in 10% steps down to 60%
+              for (.fm in .shrink_steps) {
+                .mx <- .max_chars_at(.rw, .fm)
+                .w <- .try_wrap(.lab, .mx)
+                if (!is.na(.w)) {
+                  .ok <- TRUE
+                  .resolved_lbl <- .w
+                  .resolved_font <- .fm
+                  break
+                }
+                # Also try 1-line at the shrunk font (cheap: catches labels with no
+                # internal split points like an InterPro id 'IPR011615').
+                if (.mx >= 1L && nchar(.lab) <= .mx) {
+                  .ok <- TRUE
+                  .resolved_lbl <- .lab
+                  .resolved_font <- .fm
+                  break
+                }
+              }
+            }
+          } else {
+            # Wrap disabled: also try 1-line at shrunk fonts (no 2-line option).
+            for (.fm in .shrink_steps) {
+              .mx <- .max_chars_at(.rw, .fm)
+              if (.mx >= 1L && nchar(.lab) <= .mx) {
+                .ok <- TRUE
+                .resolved_lbl <- .lab
+                .resolved_font <- .fm
+                break
+              }
+            }
+          }
+          # Tier 4: nothing worked -> .ok = FALSE; will go to below-bar fallback.
+          
+          .fits_vec[.k]  <- .ok
+          .lbl_done[.k]  <- if (.ok) .resolved_lbl else .lab
+          .font_done[.k] <- if (.ok) .resolved_font else 1.0
+        }
+        
         domains_df$.fits_preview[.lab_idx] <- .fits_vec
+        domains_df$.lbl_resolved[.lab_idx] <- .lbl_done
+        domains_df$.font_mult[.lab_idx]    <- .font_done
         .n_overflow_preview <- sum(!.fits_vec)
       } else {  # "below"
-        # In below mode every labeled row renders below by construction
+        # In below mode every labeled row renders below by construction.
         domains_df$.fits_preview[.lab_idx] <- FALSE
         .n_overflow_preview <- length(.lab_idx)
       }
@@ -1282,6 +1608,27 @@ gvr_lollipop <- function(maf, gene,
         lab_dom$.lbl <- .gvr_abbrev_domain(lab_dom$name, abbrev = isTRUE(domain_name_abbrev))
       }
 
+      # Phase L: pull the per-row wrap-cascade results onto lab_dom if available.
+      # The precompute attached .lbl_resolved + .font_mult to domains_df when
+      # .dlm_resolved %in% c("name", "id") AND domain_label_position == "inside".
+      # For number mode or below mode, those columns don't exist -> defaults.
+      if (".lbl_resolved" %in% names(domains_df)) {
+        if (.dlm == "number") {
+          .lr <- domains_df$.lbl_resolved
+          .fm <- domains_df$.font_mult
+        } else {
+          .lr <- domains_df$.lbl_resolved[domains_df$show_label]
+          .fm <- domains_df$.font_mult[domains_df$show_label]
+        }
+      } else {
+        .lr <- rep(NA_character_, nrow(lab_dom))
+        .fm <- rep(NA_real_,      nrow(lab_dom))
+      }
+      # Default to the abbreviated label when cascade did not produce a value
+      # (number mode, below mode, or unlabeled rows).
+      lab_dom$.lbl_resolved <- ifelse(!is.na(.lr) & nzchar(.lr), .lr, lab_dom$.lbl)
+      lab_dom$.font_mult    <- ifelse(!is.na(.fm) & .fm > 0,     .fm, 1.0)
+
       if (nrow(lab_dom) > 0L) {
         # ---- Decide inside vs below per domain ----
         # For position="below", everything goes below (legacy path).
@@ -1330,13 +1677,17 @@ gvr_lollipop <- function(maf, gene,
         # ---- Inside renderer: centered geom_text with auto-contrast color ----
         if (nrow(inside_dom) > 0L) {
           inside_dom$.text_col <- .pick_contrast_color(inside_dom$fill)
+          # Phase L: per-row label (with optional \n) and per-row size.
+          # .lbl_resolved carries the wrap result; .font_mult shrinks the font.
+          # lineheight=0.85 keeps 2-line stacks tight inside the rect.
           p <- p + ggplot2::geom_text(
                      data = inside_dom,
-                     ggplot2::aes(x = xmid, y = 0, label = .lbl),
-                     color    = inside_dom$.text_col,
-                     size     = .text_size,
-                     fontface = if (.dlm == "number") "bold" else "plain",
-                     vjust    = 0.5, hjust = 0.5,
+                     ggplot2::aes(x = xmid, y = 0, label = .lbl_resolved),
+                     color      = inside_dom$.text_col,
+                     size       = .text_size * inside_dom$.font_mult,
+                     fontface   = if (.dlm == "number") "bold" else "plain",
+                     vjust      = 0.5, hjust = 0.5,
+                     lineheight = 0.85,
                      inherit.aes = FALSE)
         }
 

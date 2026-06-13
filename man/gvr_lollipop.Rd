@@ -9,6 +9,7 @@ gvr_lollipop(
   gene,
   vc_keep = NULL,
   protein_length = NULL,
+  protein_length_strict = FALSE,
   domains = "auto",
   organism = 9606L,
   cache_dir = NULL,
@@ -17,6 +18,7 @@ gvr_lollipop(
   domain_label_mode = c("name", "id", "number", "none", "auto"),
   domain_name_abbrev = TRUE,
   domain_label_position = c("inside", "below"),
+  domain_label_wrap = TRUE,
   hotspot_window = 20L,
   hotspot_min_n = 4,
   stem_alpha = 0.6,
@@ -52,9 +54,25 @@ compatible table with at least \code{Hugo_Symbol}, \code{HGVSp_Short},
 \code{NULL} (default) uses the 9-class protein-altering set from
 \code{\link[=gvr_filter]{gvr_filter()}}.}
 
-\item{protein_length}{Integer(1) or \code{NULL}. If \code{NULL} (default), derived
-from the \code{Protein_position} column (most-common total). Provide explicitly
-to fix the x-axis length.}
+\item{protein_length}{Integer(1) or \code{NULL}. Sets the x-axis length (in
+amino acids). Resolved with the following precedence:
+\enumerate{
+\item UniProt canonical sequence length, fetched via the same
+UniProt REST query used for \code{domains = "auto"}. Wins by default;
+see \code{protein_length_strict} to opt out.
+\item User-supplied value when \code{protein_length_strict = TRUE}, or
+when UniProt is unreachable.
+\item Mode of the \verb{<pos>/<total>} totals parsed from the MAF
+\code{Protein_position} column (entries without a \code{/} are skipped).
+\item \code{ceiling(max(positions) * 1.1)} fallback.
+}
+The final value is always at least \code{max(positions)} so no mutation is
+clipped. A one-line \code{message()} is emitted when UniProt overrides a
+user-supplied value by more than 5\%.}
+
+\item{protein_length_strict}{Logical(1). When \code{TRUE}, the user's
+\code{protein_length} is kept verbatim and the UniProt canonical length is
+not used (the max-position safety net still applies). Default \code{FALSE}.}
 
 \item{domains}{\code{"auto"}, \code{NULL}, or a \code{data.frame}. Default \code{"auto"}:
 domains are fetched from the EBI InterPro REST API and cached. \code{NULL}
@@ -118,6 +136,16 @@ their domain rectangle (estimated by character count vs rectangle width)
 fall back to the \code{"below"} style with a leader line on a per-domain
 basis so no information is lost. A verbose message reports the count of
 overflowing labels.}
+
+\item{domain_label_wrap}{Logical(1). When \code{TRUE} (default), inside-mode
+domain labels that don't fit on one line are wrapped onto a second
+line at the nearest comma (or at a space if no commas) and the font is
+shrunk in 10\% steps down to a floor of 60\% of base. Wrapping is
+per-domain: labels that already fit on one line stay unchanged. If a
+label still overflows after the 2-line + 60\% font cascade, it falls
+back to the existing below-bar leader (so no information is lost).
+Set \code{FALSE} to keep the pre-Phase-L behaviour: 1-line labels only, with
+any overflow going directly to the below-bar fallback.}
 
 \item{hotspot_window}{Integer(1). Sliding-window width (in amino
 acids) used to detect mutation hotspots. A hotspot is a region
