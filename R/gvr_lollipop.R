@@ -969,21 +969,10 @@ gvr_lollipop <- function(maf, gene,
   y_max_stack <- max(pos_height$.__top__)
   # bar half-thickness = ~4% of stack height, clamped to [0.15, 0.5]
   bar_half <- max(0.22, min(0.5, y_max_stack * 0.05))
-  # y-axis lower bound expanded to fit bar with a tiny breathing room
-  # Expand bottom margin if domain labels live below the bar (modes 'name'/'id').
+  # Top y-bound (does not depend on label fit; we compute y_lower later).
+  # Resolve user-requested mode + position here; .dlm_resolved comes later.
   .dlm_requested <- match.arg(domain_label_mode)
   domain_label_position <- match.arg(domain_label_position)
-  # Reserve label-below space for "name"/"id" and also for "auto" (since
-  # "auto" may resolve to "name" after we know n_domains). The y_lower will
-  # be slightly oversized when "auto" -> "number"; this is harmless.
-  .label_below <- !is.null(domains) && (.dlm_requested %in% c("name", "id", "auto"))
-  # Ensure y_lower accommodates the taller domain rectangles (-dom_half).
-  # dom_half multiplier is 2.4 -> ensure -2.4 * bar_half is inside the panel.
-  .dom_floor <- bar_half * 2.4
-  y_lower  <- if (.label_below)
-                -.dom_floor - max(0.50, y_max_stack * 0.35)
-              else
-                -.dom_floor - max(0.05, y_max_stack * 0.02)
   # Give a tad more head-room so the tallest stack doesn't touch the top edge.
   y_upper  <- y_max_stack + max(1, y_max_stack * 0.10)
 
@@ -1102,6 +1091,60 @@ gvr_lollipop <- function(maf, gene,
   } else {
     .dlm_requested
   }
+
+  # ---- Precompute label-fit decisions and choose tight vs generous y_lower ----
+  # Phase K: y_lower must reflect actual overflow, not just requested mode.
+  # We mimic the renderer's per-domain fit heuristic here, then reuse the
+  # same .fits_preview decisions when the renderer draws labels.
+  .text_size_preview <- if (.dlm_resolved == "number") base_size * 0.28 else base_size * 0.23
+
+  if (.dlm_resolved == "none" || is.null(domains_df) || nrow(domains_df) == 0L) {
+    .n_overflow_preview <- 0L
+  } else if (.dlm_resolved == "number") {
+    # Numbers (1, 2, ...) always fit; mark every row as fit
+    domains_df$.fits_preview <- rep(TRUE, nrow(domains_df))
+    .n_overflow_preview <- 0L
+  } else {
+    # "name" or "id" -- estimate fit for labeled rows only
+    domains_df$.fits_preview <- rep(NA, nrow(domains_df))
+    .lab_idx <- which(domains_df$show_label)
+    if (length(.lab_idx) == 0L) {
+      .n_overflow_preview <- 0L
+    } else {
+      if (.dlm_resolved == "id") {
+        .lbl_preview <- ifelse(
+          is.na(domains_df$accession[.lab_idx]) | !nzchar(domains_df$accession[.lab_idx]),
+          domains_df$name[.lab_idx],
+          domains_df$accession[.lab_idx])
+      } else {  # "name"
+        .lbl_preview <- .gvr_abbrev_domain(domains_df$name[.lab_idx],
+                                          abbrev = isTRUE(domain_name_abbrev))
+      }
+      if (domain_label_position == "inside") {
+        .char_aa  <- (protein_length / 80) * (.text_size_preview / 11)
+        .est_w    <- nchar(.lbl_preview) * .char_aa
+        .rect_w   <- domains_df$xmax[.lab_idx] - domains_df$xmin[.lab_idx]
+        .fits_vec <- .est_w <= .rect_w * 0.9
+        domains_df$.fits_preview[.lab_idx] <- .fits_vec
+        .n_overflow_preview <- sum(!.fits_vec)
+      } else {  # "below"
+        # In below mode every labeled row renders below by construction
+        domains_df$.fits_preview[.lab_idx] <- FALSE
+        .n_overflow_preview <- length(.lab_idx)
+      }
+    }
+  }
+
+  # Decide y_lower based on whether any label needs the below-band
+  .dom_floor <- bar_half * 2.4
+  .need_below_space <-
+    (domain_label_position == "below"  && .dlm_resolved %in% c("name", "id")) ||
+    (domain_label_position == "inside" && .n_overflow_preview > 0L)
+  y_lower <- if (.need_below_space)
+               -.dom_floor - max(0.50, y_max_stack * 0.35)   # generous (legacy)
+             else
+               -.dom_floor - max(0.05, y_max_stack * 0.02)   # tight (Phase K)
+
 
   # ---- Hotspot detection (clusters of >= hotspot_min_n positions within hotspot_window aa) ----
   # Validate inputs: any non-finite / <=0 value disables hotspots safely.
@@ -1244,14 +1287,28 @@ gvr_lollipop <- function(maf, gene,
           .text_size <- base_size * 0.23
         }
 
-        if (domain_label_position == "inside" && nrow(lab_dom) > 0L) {
-          # Estimate width: aa per character roughly = (protein_length / 80) * (text_size / 11)
-          .char_aa <- (protein_length / 80) * (.text_size / 11)
-          .est_w   <- nchar(lab_dom$.lbl) * .char_aa
-          .rect_w  <- lab_dom$xmax - lab_dom$xmin
-          .fits    <- .est_w <= .rect_w * 0.9   # 10% padding
+        # Phase K: reuse .fits_preview attached during the y_lower precompute.
+        # Identical inputs guarantee identical decisions; this also lets us
+        # avoid the same heuristic getting computed twice.
+        if (".fits_preview" %in% names(domains_df)) {
+          if (.dlm == "number") {
+            .fits <- as.logical(domains_df$.fits_preview)
+          } else {
+            .fits <- as.logical(domains_df$.fits_preview[domains_df$show_label])
+          }
+          # Defensive: if NAs ended up here (e.g. unlabeled rows leaked through),
+          # treat NA as not-fit so they render below rather than failing silently.
+          .fits[is.na(.fits)] <- FALSE
         } else {
-          .fits <- rep(FALSE, nrow(lab_dom))   # force everything below
+          # Safety fallback: recompute identically to the precompute heuristic.
+          if (domain_label_position == "inside" && nrow(lab_dom) > 0L) {
+            .char_aa <- (protein_length / 80) * (.text_size / 11)
+            .est_w   <- nchar(lab_dom$.lbl) * .char_aa
+            .rect_w  <- lab_dom$xmax - lab_dom$xmin
+            .fits    <- .est_w <= .rect_w * 0.9
+          } else {
+            .fits <- rep(FALSE, nrow(lab_dom))
+          }
         }
 
         inside_dom <- lab_dom[ .fits, , drop = FALSE]

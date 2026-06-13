@@ -474,6 +474,46 @@ gvr_color_palette <- function(palette = "okabe_ito", n = 8L) {
 #'
 #' @return Character vector of palette names.
 #'
+#' @details
+#' The 56 palette names returned by this function are organized into the
+#' following 11 families.  The same taxonomy is used by
+#' [gvr_color_palette()] and the sibling `plot_multiple_compounds()` plotting
+#' function so the two packages share the same color vocabulary.
+#'
+#' \emph{Base:} `"hue"`, `"ggplot2"`.
+#'
+#' \emph{ColorBrewer qualitative (good for distinct categories):}
+#'   `"set1"`, `"set2"`, `"set3"`, `"dark2"`, `"paired"`, `"accent"`,
+#'   `"pastel1"`, `"pastel2"`.
+#'
+#' \emph{ColorBrewer sequential (ordered data):}
+#'   `"blues"`, `"reds"`, `"greens"`, `"purples"`, `"oranges"`, `"greys"`.
+#'
+#' \emph{ColorBrewer diverging:} `"spectral"`, `"rdylbu"`, `"rdylgn"`,
+#'   `"piyg"`, `"prgn"`.
+#'
+#' \emph{Viridis (perceptually uniform):} `"viridis"`, `"magma"`,
+#'   `"inferno"`, `"plasma"`.
+#'
+#' \emph{Journal palettes:} `"nature"`, `"science"`, `"cell"`, `"plos"`,
+#'   `"elife"`.
+#'
+#' \emph{Publisher palettes:} `"bmc"`, `"frontiers"`, `"wiley"`, `"elsevier"`,
+#'   `"oxford"`, `"springer"`, `"acs"`, `"rsc"`.
+#'
+#' \emph{Corporate brand palettes:} `"ibm"`, `"google"`, `"microsoft"`,
+#'   `"twitter"`.
+#'
+#' \emph{Colorblind-friendly:} `"okabe_ito"`, `"colorblind"`, `"cud"`,
+#'   `"tol"`.
+#'
+#' \emph{Gradient palettes:} `"blue_red"`, `"green_red"`, `"purple_orange"`,
+#'   `"cool_warm"`, `"blue_yellow"`.
+#'
+#' \emph{Classic R:} `"rainbow"`, `"heat"`, `"terrain"`, `"topo"`, `"cm"`.
+#'
+#' See [gvr_color_palette()] for example hex codes from each family.
+#'
 #' @examples
 #' gvr_list_palettes()
 #' # Generate a 5-color sample of every palette

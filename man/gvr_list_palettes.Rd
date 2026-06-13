@@ -14,6 +14,46 @@ Returns the sorted character vector of every palette name accepted by
 \code{\link[=gvr_color_palette]{gvr_color_palette()}}.  Use this for documentation, autocomplete, or
 programmatic iteration over palettes.
 }
+\details{
+The 56 palette names returned by this function are organized into the
+following 11 families.  The same taxonomy is used by
+\code{\link[=gvr_color_palette]{gvr_color_palette()}} and the sibling \code{plot_multiple_compounds()} plotting
+function so the two packages share the same color vocabulary.
+
+\emph{Base:} \code{"hue"}, \code{"ggplot2"}.
+
+\emph{ColorBrewer qualitative (good for distinct categories):}
+\code{"set1"}, \code{"set2"}, \code{"set3"}, \code{"dark2"}, \code{"paired"}, \code{"accent"},
+\code{"pastel1"}, \code{"pastel2"}.
+
+\emph{ColorBrewer sequential (ordered data):}
+\code{"blues"}, \code{"reds"}, \code{"greens"}, \code{"purples"}, \code{"oranges"}, \code{"greys"}.
+
+\emph{ColorBrewer diverging:} \code{"spectral"}, \code{"rdylbu"}, \code{"rdylgn"},
+\code{"piyg"}, \code{"prgn"}.
+
+\emph{Viridis (perceptually uniform):} \code{"viridis"}, \code{"magma"},
+\code{"inferno"}, \code{"plasma"}.
+
+\emph{Journal palettes:} \code{"nature"}, \code{"science"}, \code{"cell"}, \code{"plos"},
+\code{"elife"}.
+
+\emph{Publisher palettes:} \code{"bmc"}, \code{"frontiers"}, \code{"wiley"}, \code{"elsevier"},
+\code{"oxford"}, \code{"springer"}, \code{"acs"}, \code{"rsc"}.
+
+\emph{Corporate brand palettes:} \code{"ibm"}, \code{"google"}, \code{"microsoft"},
+\code{"twitter"}.
+
+\emph{Colorblind-friendly:} \code{"okabe_ito"}, \code{"colorblind"}, \code{"cud"},
+\code{"tol"}.
+
+\emph{Gradient palettes:} \code{"blue_red"}, \code{"green_red"}, \code{"purple_orange"},
+\code{"cool_warm"}, \code{"blue_yellow"}.
+
+\emph{Classic R:} \code{"rainbow"}, \code{"heat"}, \code{"terrain"}, \code{"topo"}, \code{"cm"}.
+
+See \code{\link[=gvr_color_palette]{gvr_color_palette()}} for example hex codes from each family.
+}
 \examples{
 gvr_list_palettes()
 # Generate a 5-color sample of every palette
