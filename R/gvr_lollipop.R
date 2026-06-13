@@ -1114,7 +1114,12 @@ gvr_lollipop <- function(maf, gene,
 
   # ---- Phase L: precedence resolver — UniProt > user-supplied > MAF inference ----
   # Pull the UniProt canonical length (already captured for auto; standalone fetch otherwise).
-  .__uniprot_length__ <- if (isTRUE(.__was_auto_domains__))
+  # Hotfix 1: if auto-dispatch returned a domains df without uniprot_length
+  # attribute (e.g. pre-Phase-L cache hit, in-memory OR on-disk), the capture
+  # is NA. Fall back to the standalone resolver, which reads the per-gene
+  # .rds first and HTTPS-fetches + upgrades disk only if needed.
+  .__uniprot_length__ <- if (isTRUE(.__was_auto_domains__) &&
+                             !is.na(.__uniprot_length_capture__))
     .__uniprot_length_capture__
   else
     .gvr_uniprot_length(gene, organism, cache_dir, verbose)
