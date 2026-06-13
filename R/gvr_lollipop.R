@@ -896,15 +896,21 @@ gvr_lollipop <- function(maf, gene,
 
   dt$.__aa_pos__ <- aa_pos
 
-  # ---- Derive protein length from Protein_position ----
+  # ---- Phase L: capture whether the user supplied a length (precedence input) ----
+  .user_supplied_length <- !is.null(protein_length)
+
+  # ---- Derive protein length from Protein_position (regex hardened: requires '/') ----
   if (is.null(protein_length)) {
-    totals <- suppressWarnings(as.integer(sub("^[^/]*/", "", dt$Protein_position)))
+    pp <- as.character(dt$Protein_position)
+    with_slash <- grepl("/", pp, fixed = TRUE)
+    totals <- suppressWarnings(as.integer(sub("^[^/]*/", "", pp[with_slash])))
     totals <- totals[!is.na(totals) & totals > 0]
     if (length(totals) > 0L) {
       tab <- sort(table(totals), decreasing = TRUE)
       protein_length <- as.integer(names(tab)[1])
     } else {
-      protein_length <- as.integer(ceiling(max(dt$.__aa_pos__, na.rm = TRUE) * 1.1))
+      protein_length <- as.integer(
+        ceiling(max(dt$.__aa_pos__, na.rm = TRUE) * 1.1))
     }
   }
   protein_length <- max(protein_length, max(dt$.__aa_pos__, na.rm = TRUE))
