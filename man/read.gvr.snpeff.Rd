@@ -27,6 +27,7 @@ read.gvr.snpeff(
   min_DP = 10,
   min_GQ = 30,
   genes = NULL,
+  panel = NULL,
   vc_nonSyn = FALSE,
   ncores = 1L,
   verbose = TRUE
@@ -103,6 +104,16 @@ disables the genotype-quality filter. Default \code{30}.}
 
 \item{genes}{Character vector of \code{Hugo_Symbol}s to keep (exact, case-insensitive),
 or \code{NULL} (default) to keep all genes.}
+
+\item{panel}{Character vector of curated disease panel name(s) (e.g.
+\code{"breast cancer"}). Each name is resolved to a gene vector via
+\code{\link[=gvr_panel_genes]{gvr_panel_genes()}} and the union of all resolved genes is taken with
+\code{genes} (deduplicated, uppercased). Names are matched case-insensitively,
+trimmed, and \verb{_} is treated as a space, so \code{"Breast_Cancer"}, \code{"breast cancer"},
+and \code{" BREAST CANCER "} all resolve identically. An unknown name raises an
+error listing the available panels. \code{NULL} (default) disables panel
+filtering; behaviour is then byte-identical to omitting the argument. Use
+\code{\link[=gvr_list_panels]{gvr_list_panels()}} to see what's available.}
 
 \item{vc_nonSyn}{Logical or character vector. Controls which
 \code{Variant_Classification} values are retained (mirroring maftools'
@@ -227,6 +238,14 @@ maf <- read.gvr.snpeff("/path/to/folder", min_DP = NULL, min_GQ = NULL)
 ## Restrict to genes of interest
 maf <- read.gvr.snpeff("/path/to/folder",
                        genes = c("MEN1", "RET", "CDKN1B", "CDC73"))
+
+## Or use a curated disease panel:
+gvr_list_panels()
+maf <- read.gvr.snpeff("/path/to/folder", panel = "breast cancer")
+
+## Multiple panels are unioned (deduplicated):
+maf <- read.gvr.snpeff("/path/to/folder",
+                       panel = c("breast cancer", "hereditary prostate cancer"))
 }
 
 }
@@ -237,6 +256,8 @@ entrypoint, which auto-routes SnpEff input to this function),
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},
+\code{\link{gvr_list_panels}()},
+\code{\link{gvr_panel_genes}()},
 \code{\link{gvr_plot}()},
 \code{\link{gvr_summary}()},
 \code{\link{read.gvr}()}

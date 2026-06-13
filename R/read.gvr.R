@@ -93,6 +93,15 @@
 #'   disables the genotype-quality filter. Default `30`.
 #' @param genes Character vector of `Hugo_Symbol`s to keep (exact, case-insensitive),
 #'   or `NULL` (default) to keep all genes.
+#' @param panel Character vector of curated disease panel name(s) (e.g.
+#'   `"breast cancer"`). Each name is resolved to a gene vector via
+#'   [gvr_panel_genes()] and the union of all resolved genes is taken with
+#'   `genes` (deduplicated, uppercased). Names are matched case-insensitively,
+#'   trimmed, and `_` is treated as a space, so `"Breast_Cancer"`, `"breast cancer"`,
+#'   and `" BREAST CANCER "` all resolve identically. An unknown name raises an
+#'   error listing the available panels. `NULL` (default) disables panel
+#'   filtering; behaviour is then byte-identical to omitting the argument. Use
+#'   [gvr_list_panels()] to see what's available.
 #' @param vc_nonSyn Logical or character vector. Controls which
 #'   `Variant_Classification` values are retained (mirroring maftools'
 #'   `vc_nonSyn` argument). `FALSE` (default) keeps ALL variant classifications.
@@ -143,6 +152,20 @@
 #' maf <- read.gvr("/path/to/folder",
 #'                 genes = c("MEN1", "RET", "CDKN1B", "CDC73", "CASR", "AIP"))
 #'
+#' ## Or use a curated disease panel:
+#' gvr_list_panels()                              # what panels ship?
+#' gvr_panel_genes("breast cancer")               # inspect a panel's genes
+#' maf <- read.gvr("/path/to/folder", panel = "breast cancer")
+#'
+#' ## Multiple panels are unioned (deduplicated):
+#' maf <- read.gvr("/path/to/folder",
+#'                 panel = c("breast cancer", "hereditary prostate cancer"))
+#'
+#' ## `panel` and `genes` can be combined:
+#' maf <- read.gvr("/path/to/folder",
+#'                 panel = "breast cancer",
+#'                 genes = c("CDKN2A", "KRAS"))   # adds 2 to the 6-gene panel
+#'
 #' ## Then filter freely, e.g.:
 #' maf[FILTER == "PASS" & Variant_Classification == "Missense_Mutation"]
 #' }
@@ -174,6 +197,7 @@ read.gvr <- function(folder = ".",
                            min_DP            = 10,     # v4: keep only DP > min_DP (NULL = no DP filter)
                            min_GQ            = 30,     # v4: keep only GQ > min_GQ (NULL = no GQ filter)
                            genes             = NULL,   # v4: keep only these Hugo_Symbols
+                           panel             = NULL,   # vN: curated disease gene panel(s); union'd with `genes`
                            vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                            ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
                            verbose    = TRUE) {
@@ -257,6 +281,38 @@ read.gvr <- function(folder = ".",
     res
   }
 
+
+  # ==========================================================================
+  # vN setup: disease-panel resolution (Phase N)
+  #   If `panel` is supplied, resolve each name to its gene vector via
+  #   .gvr_resolve_panels() and UNION with `genes`. The resulting vector is
+  #   stored back in `genes` so the downstream filtering machinery (rough
+  #   INFO prefilter + final exact Hugo_Symbol filter) needs no further
+  #   changes. When `panel = NULL` this block is a strict no-op and `genes`
+  #   is byte-identical to the caller-supplied value.
+  # ==========================================================================
+  if (!is.null(panel)) {
+    if (!exists(".gvr_resolve_panels", mode = "function", inherits = TRUE)) {
+      stop("read.gvr: panel resolution requires gvr_panels.R; please source/load the package.")
+    }
+    panel_genes <- .gvr_resolve_panels(panel)        # uppercased, deduplicated
+    if (length(panel_genes) > 0L) {
+      effective_genes <- unique(toupper(trimws(c(panel_genes, as.character(genes)))))
+      effective_genes <- effective_genes[!is.na(effective_genes) & nzchar(effective_genes)]
+      if (verbose) {
+        message(sprintf(
+          "panel: resolved %d panel(s) -> %d unique Hugo_Symbol(s)%s.",
+          length(unique(as.character(panel))),
+          length(effective_genes),
+          if (!is.null(genes) && length(as.character(genes)) > 0L)
+            sprintf(" (panel %d + extras %d)",
+                    length(panel_genes),
+                    length(setdiff(toupper(trimws(as.character(genes))), panel_genes)))
+          else ""))
+      }
+      genes <- effective_genes
+    }
+  }
 
   # ==========================================================================
   # v4 setup: genotype-quality filter flags
@@ -360,7 +416,8 @@ read.gvr <- function(folder = ".",
       cache_dir         = cache_dir,
       min_DP            = min_DP,
       min_GQ            = min_GQ,
-      genes             = genes,
+      genes             = genes,  # already unioned with resolved `panel` above
+      panel             = NULL,   # resolution done in this dispatcher; sibling gets NULL
       vc_nonSyn         = vc_nonSyn,
       ncores            = ncores,
       verbose           = verbose

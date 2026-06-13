@@ -178,6 +178,8 @@ gvr_filter(maf, vc_nonSyn = TRUE, genes = c("TP53", "BRCA1", "BRCA2"))
 variants.
 
 Other germlinevaR: 
+\code{\link{gvr_list_panels}()},
+\code{\link{gvr_panel_genes}()},
 \code{\link{gvr_plot}()},
 \code{\link{gvr_summary}()},
 \code{\link{read.gvr}()},

@@ -27,6 +27,7 @@ read.gvr(
   min_DP = 10,
   min_GQ = 30,
   genes = NULL,
+  panel = NULL,
   vc_nonSyn = FALSE,
   ncores = 1L,
   verbose = TRUE
@@ -102,6 +103,16 @@ disables the genotype-quality filter. Default \code{30}.}
 
 \item{genes}{Character vector of \code{Hugo_Symbol}s to keep (exact, case-insensitive),
 or \code{NULL} (default) to keep all genes.}
+
+\item{panel}{Character vector of curated disease panel name(s) (e.g.
+\code{"breast cancer"}). Each name is resolved to a gene vector via
+\code{\link[=gvr_panel_genes]{gvr_panel_genes()}} and the union of all resolved genes is taken with
+\code{genes} (deduplicated, uppercased). Names are matched case-insensitively,
+trimmed, and \verb{_} is treated as a space, so \code{"Breast_Cancer"}, \code{"breast cancer"},
+and \code{" BREAST CANCER "} all resolve identically. An unknown name raises an
+error listing the available panels. \code{NULL} (default) disables panel
+filtering; behaviour is then byte-identical to omitting the argument. Use
+\code{\link[=gvr_list_panels]{gvr_list_panels()}} to see what's available.}
 
 \item{vc_nonSyn}{Logical or character vector. Controls which
 \code{Variant_Classification} values are retained (mirroring maftools'
@@ -198,6 +209,20 @@ maf <- read.gvr("/path/to/folder", min_DP = 20,  min_GQ = 50)    # stricter
 maf <- read.gvr("/path/to/folder",
                 genes = c("MEN1", "RET", "CDKN1B", "CDC73", "CASR", "AIP"))
 
+## Or use a curated disease panel:
+gvr_list_panels()                              # what panels ship?
+gvr_panel_genes("breast cancer")               # inspect a panel's genes
+maf <- read.gvr("/path/to/folder", panel = "breast cancer")
+
+## Multiple panels are unioned (deduplicated):
+maf <- read.gvr("/path/to/folder",
+                panel = c("breast cancer", "hereditary prostate cancer"))
+
+## `panel` and `genes` can be combined:
+maf <- read.gvr("/path/to/folder",
+                panel = "breast cancer",
+                genes = c("CDKN2A", "KRAS"))   # adds 2 to the 6-gene panel
+
 ## Then filter freely, e.g.:
 maf[FILTER == "PASS" & Variant_Classification == "Missense_Mutation"]
 }
@@ -208,6 +233,8 @@ maf[FILTER == "PASS" & Variant_Classification == "Missense_Mutation"]
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},
+\code{\link{gvr_list_panels}()},
+\code{\link{gvr_panel_genes}()},
 \code{\link{gvr_plot}()},
 \code{\link{gvr_summary}()},
 \code{\link{read.gvr.snpeff}()}

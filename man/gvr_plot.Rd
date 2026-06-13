@@ -98,6 +98,8 @@ gvr_plot(gvr_filter(maf), top_n = 15, out_dir = "results/plots")
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},
+\code{\link{gvr_list_panels}()},
+\code{\link{gvr_panel_genes}()},
 \code{\link{gvr_summary}()},
 \code{\link{read.gvr}()},
 \code{\link{read.gvr.snpeff}()}
