@@ -212,6 +212,19 @@
 #'   "von Willebrand factor, type D domain" becomes "VWF type-D") so that
 #'   labels fit inside narrower rectangles in `domain_label_mode = "name"`.
 #'   Set `FALSE` to keep the raw InterPro names verbatim.
+#' @param domain_label_position One of `"inside"` (default) or `"below"`.
+#'   Controls where InterPro domain labels render relative to the domain
+#'   rectangle. `"inside"` places labels centred inside each rectangle with
+#'   an automatically chosen black/white text colour for contrast against the
+#'   domain fill (WCAG luminance rule). `"below"` reproduces the legacy
+#'   layout used in earlier versions (labels under the bar, leader lines from
+#'   each rectangle).
+#'
+#'   When `domain_label_position = "inside"`, labels that don't fit inside
+#'   their domain rectangle (estimated by character count vs rectangle width)
+#'   fall back to the `"below"` style with a leader line on a per-domain
+#'   basis so no information is lost. A verbose message reports the count of
+#'   overflowing labels.
 #' @param hotspot_window Integer(1). Sliding-window width (in amino
 #'   acids) used to detect mutation hotspots. A hotspot is a region
 #'   containing at least `hotspot_min_n` distinct variant positions
@@ -234,6 +247,23 @@
 #' @param bar_border Character(1) or `NA`. Protein-body bar border colour.
 #'   Default `"grey40"`.
 #' @param base_size Numeric(1). ggplot2 base font size. Default `12`.
+#' @param axis_text_size Numeric(1). Font size of axis tick labels (aa
+#'   positions on x, count on y). Default `11`, matching the existing visual
+#'   output. Set to `12` or higher for publication-style figures.
+#' @param axis_title_size Numeric(1). Font size of axis titles ("Amino acid
+#'   position" / "Variant count"). Default `12`. Set to `14` for sibling-
+#'   package publication defaults.
+#' @param axis_text_color Character(1). Colour of axis tick labels. Default
+#'   `"grey20"` (current visual). Set to `"black"` for sibling-package
+#'   publication defaults.
+#' @param axis_title_color Character(1). Colour of axis titles. Default
+#'   `"black"`.
+#' @param axis_line_color Character(1). Colour of axis lines and ticks.
+#'   Default `"grey40"` (current visual). Set to `"black"` for sibling-
+#'   package publication defaults.
+#' @param axis_line_width Numeric(1). Line width (in `ggplot2` linewidth
+#'   units) of axis lines and ticks. Default `0.4` (current visual). Set to
+#'   `0.8` for sibling-package publication defaults.
 #' @param out_dir Character(1) or `NULL`. Output directory for the SVG/PNG
 #'   files. Created if it does not exist. Default `"."` (current working
 #'   directory), matching [gvr_plot()]. Set to `NULL` to suppress file output.
@@ -245,6 +275,26 @@
 #' @param width Numeric(1). Plot width in inches. Default `10`.
 #' @param height Numeric(1). Plot height in inches. Default `4`.
 #' @param dpi Numeric(1). PNG resolution. Default `300`.
+#' @param variant_palette Character. Variant colour assignment. Accepts three
+#'   forms. (1) A palette name (e.g. `"gvr"`, `"nature"`, `"set2"`); the
+#'   default `"gvr"` is the semantic palette where, e.g., `Missense_Mutation`
+#'   is always green and `Nonsense_Mutation` always orange regardless of which
+#'   classes are present. Any other palette name is treated as positional
+#'   ordinal (colours assigned in the order classes appear in the data).
+#'   (2) A named character vector of explicit hex codes for specific
+#'   `Variant_Classification` values, e.g.
+#'   `c(Missense_Mutation = "#FF0000", Nonsense_Mutation = "#000000")`;
+#'   classes not listed inherit the `"gvr"` defaults. (3) A mixed vector
+#'   with one unnamed element used as the fallback palette name, e.g.
+#'   `c(Missense_Mutation = "#FF00FF", "nature")` (Missense magenta, all
+#'   other classes from the `nature` palette). Use [gvr_list_palettes()] to
+#'   discover names and [gvr_color_palette()] to inspect colours.
+#' @param domain_palette Character. Palette used for InterPro domain
+#'   rectangle fills. Accepts the same three forms as `variant_palette`:
+#'   palette name (default `"okabe_ito"`), named vector keyed by accession
+#'   or domain name, or mixed vector with fallback palette name. Unlike
+#'   `variant_palette` there is no `"gvr"` semantic special case; the
+#'   default cycles a 9-colour colour-blind-safe palette across all domains.
 #' @param verbose Logical(1). If `TRUE` (default), emit progress messages
 #'   (counts, dropped rows, file paths, cache hits, network calls).
 #'
@@ -305,6 +355,36 @@
 #'   ## Highlight hotspots: clusters of >= 4 variants within 20 aa
 #'   ## (the default; set hotspot_min_n = Inf to disable).
 #'   gvr_lollipop(f, "TP53", hotspot_window = 20, hotspot_min_n = 4)
+#'
+#'   ## Inside-rectangle domain labels (new default in Phase J)
+#'   gvr_lollipop(f, "TP53", domain_label_position = "inside")
+#'
+#'   ## Legacy below-rectangle labels with leader lines
+#'   gvr_lollipop(f, "TP53", domain_label_position = "below")
+#'
+#'   ## Sibling-package publication defaults for axes
+#'   gvr_lollipop(f, "TP53",
+#'                axis_text_size = 12, axis_title_size = 14,
+#'                axis_text_color = "black", axis_title_color = "black",
+#'                axis_line_color = "black", axis_line_width = 0.8)
+#'
+#'   ## Colour-blind-safe variant palette (positional, not semantic)
+#'   gvr_lollipop(f, "TP53", variant_palette = "okabe_ito")
+#'
+#'   ## Override Missense colour only; rest stay GVR semantic
+#'   gvr_lollipop(f, "TP53",
+#'                variant_palette = c(Missense_Mutation = "#FF00FF"))
+#'
+#'   ## Override Missense + use Nature palette for the remaining classes
+#'   gvr_lollipop(f, "TP53",
+#'                variant_palette = c(Missense_Mutation = "#FF00FF", "nature"))
+#'
+#'   ## Domain rectangles coloured along the viridis gradient
+#'   gvr_lollipop(f, "MUC19", domain_palette = "viridis")
+#'
+#'   ## List available palettes / inspect colours
+#'   gvr_list_palettes()
+#'   gvr_color_palette("nature", n = 5)
 #' }
 #'
 #' @importFrom data.table as.data.table copy is.data.table setDT :=
@@ -324,6 +404,7 @@ gvr_lollipop <- function(maf, gene,
                          domain_label_min_frac = 0.05,
                          domain_label_mode     = c("name", "id", "number", "none", "auto"),
                          domain_name_abbrev    = TRUE,
+                         domain_label_position = c("inside", "below"),
                          hotspot_window        = 20L,
                          hotspot_min_n         = 4,
                          stem_alpha            = 0.6,
@@ -332,11 +413,19 @@ gvr_lollipop <- function(maf, gene,
                          bar_color      = "grey85",
                          bar_border     = "grey40",
                          base_size      = 12,
+                         axis_text_size   = 11,
+                         axis_title_size  = 12,
+                         axis_text_color  = "grey20",
+                         axis_title_color = "black",
+                         axis_line_color  = "grey40",
+                         axis_line_width  = 0.4,
                          out_dir        = ".",
                          out_prefix     = gene,
                          width          = 10,
                          height         = 4,
                          dpi            = 300,
+                         variant_palette = "gvr",
+                         domain_palette  = "okabe_ito",
                          verbose        = TRUE) {
 
   # ---- Nested constants (byte-identical copies from gvr_filter.R / gvr_plot.R) ----
@@ -361,6 +450,102 @@ gvr_lollipop <- function(maf, gene,
                            "#0072B2", "#D55E00", "#CC79A7", "#999999",
                            "#88CCEE", "#44AA99", "#117733", "#DDCC77",
                            "#AA4499")
+
+
+  # ---- Palette resolvers (variant + domain) ---------------------------
+  # Accept three input forms:
+  #   (a) single palette name ("gvr" / one of gvr_list_palettes())
+  #   (b) named character vector of fixed overrides; rest = GVR default
+  #   (c) mixed: named overrides + ONE unnamed palette-name fallback
+
+  .resolve_variant_palette <- function(vp, classes_present) {
+    classes_present <- as.character(classes_present)
+    if (length(classes_present) == 0L) return(character(0))
+
+    # Case (a): single character string with no names
+    if (is.character(vp) && length(vp) == 1L && is.null(names(vp))) {
+      if (identical(vp, "gvr")) {
+        out <- GVR_CLASS_COLORS[classes_present]
+        out[is.na(out)] <- GVR_CLASS_COLORS[["Other"]]
+        names(out) <- classes_present
+        return(out)
+      }
+      cols <- gvr_color_palette(vp, length(classes_present))
+      return(setNames(cols, classes_present))
+    }
+
+    # Case (b) / (c): named vector (possibly with one unnamed fallback)
+    if (!is.character(vp))
+      stop("`variant_palette` must be a character string or character vector")
+    nm <- names(vp); if (is.null(nm)) nm <- rep("", length(vp))
+    overrides <- vp[nzchar(nm)]
+    fallbacks <- vp[!nzchar(nm)]
+    if (length(fallbacks) > 1L)
+      stop("`variant_palette` accepts at most one unnamed element ",
+           "(used as the fallback palette name); got ", length(fallbacks))
+    fallback_name <- if (length(fallbacks) == 1L) unname(fallbacks) else "gvr"
+
+    # Build base from fallback palette
+    out <- if (identical(fallback_name, "gvr")) {
+      tmp <- GVR_CLASS_COLORS[classes_present]
+      tmp[is.na(tmp)] <- GVR_CLASS_COLORS[["Other"]]
+      names(tmp) <- classes_present; tmp
+    } else {
+      setNames(gvr_color_palette(fallback_name, length(classes_present)),
+               classes_present)
+    }
+    # Apply explicit overrides
+    keep <- intersect(names(overrides), classes_present)
+    if (length(keep)) out[keep] <- overrides[keep]
+    out
+  }
+
+  .resolve_domain_palette <- function(dp, dom_df) {
+    n_d <- if (is.null(dom_df)) 0L else nrow(dom_df)
+    if (n_d == 0L) return(character(0))
+
+    # Case (a): single palette name
+    if (is.character(dp) && length(dp) == 1L && is.null(names(dp))) {
+      return(gvr_color_palette(dp, n_d))
+    }
+
+    if (!is.character(dp))
+      stop("`domain_palette` must be a character string or character vector")
+    nm <- names(dp); if (is.null(nm)) nm <- rep("", length(dp))
+    overrides <- dp[nzchar(nm)]
+    fallbacks <- dp[!nzchar(nm)]
+    if (length(fallbacks) > 1L)
+      stop("`domain_palette` accepts at most one unnamed element ",
+           "(used as the fallback palette name); got ", length(fallbacks))
+    fallback_name <- if (length(fallbacks) == 1L) unname(fallbacks)
+                     else "okabe_ito"
+
+    # Base palette over all domains
+    out <- gvr_color_palette(fallback_name, n_d)
+
+    # Apply overrides keyed by accession (preferred) or name
+    if (length(overrides)) {
+      acc <- as.character(dom_df$accession)
+      nms <- as.character(dom_df$name)
+      for (k in names(overrides)) {
+        idx <- which(acc == k)
+        if (length(idx) == 0L) idx <- which(nms == k)
+        if (length(idx) > 0L) out[idx] <- overrides[[k]]
+      }
+    }
+    out
+  }
+
+  # ---- Contrast helper for inside-domain labels ------------------------
+  # Returns "black" or "white" per input hex, by WCAG relative luminance.
+  .pick_contrast_color <- function(fill_hex) {
+    rgb <- grDevices::col2rgb(fill_hex) / 255
+    # Linearize per WCAG (approximation: skip the sRGB->linear conversion
+    # since our threshold of 0.5 is robust to the small bias)
+    lum <- 0.2126 * rgb["red", ] + 0.7152 * rgb["green", ] +
+           0.0722 * rgb["blue", ]
+    ifelse(lum > 0.5, "black", "white")
+  }
 
   # ---- Nested helpers ----
   .is_missing <- function(x) is.na(x) | x == ""
@@ -483,6 +668,8 @@ gvr_lollipop <- function(maf, gene,
     if (!is.na(cache_file) && file.exists(cache_file)) {
       cached <- tryCatch(readRDS(cache_file), error = function(e) NULL)
       if (is.data.frame(cached)) {
+        # Phase J: drop legacy color column so domain_palette resolves fresh.
+        if ("color" %in% names(cached)) cached$color <- NULL
         if (isTRUE(verbose))
           message(sprintf("gvr_lollipop: cached domains for %s (org %s) from %s",
                           gene_sym, as.character(org), cache_file))
@@ -607,8 +794,6 @@ gvr_lollipop <- function(maf, gene,
       start     = vapply(rows, function(r) r$start, integer(1)),
       end       = vapply(rows, function(r) r$end,   integer(1)),
       name      = vapply(rows, function(r) r$name,  character(1)),
-      color     = .GVR_DOMAIN_PALETTE[((seq_along(rows) - 1L) %%
-                                       length(.GVR_DOMAIN_PALETTE)) + 1L],
       accession = vapply(rows, function(r) r$accession %||% NA_character_, character(1)),
       source    = vapply(rows, function(r) r$source,    character(1)),
       stringsAsFactors = FALSE
@@ -765,11 +950,9 @@ gvr_lollipop <- function(maf, gene,
     label_df <- NULL
   }
 
-  # ---- Class palette: present classes mapped via GVR_CLASS_COLORS ----
+  # ---- Class palette: resolved via .resolve_variant_palette ----
   classes_present <- sort(unique(dt$.__vc__))
-  col_map <- GVR_CLASS_COLORS[classes_present]
-  col_map[is.na(col_map)] <- GVR_CLASS_COLORS[["Other"]]
-  names(col_map) <- classes_present
+  col_map <- .resolve_variant_palette(variant_palette, classes_present)
 
   # ---- x-axis breaks: aim for ~10-12 ticks regardless of protein length ----
   .nice_step <- function(L) {
@@ -789,6 +972,7 @@ gvr_lollipop <- function(maf, gene,
   # y-axis lower bound expanded to fit bar with a tiny breathing room
   # Expand bottom margin if domain labels live below the bar (modes 'name'/'id').
   .dlm_requested <- match.arg(domain_label_mode)
+  domain_label_position <- match.arg(domain_label_position)
   # Reserve label-below space for "name"/"id" and also for "auto" (since
   # "auto" may resolve to "name" after we know n_domains). The y_lower will
   # be slightly oversized when "auto" -> "number"; this is harmless.
@@ -850,16 +1034,15 @@ gvr_lollipop <- function(maf, gene,
         dom$name[is.na(dom$name)] <- ""
       }
 
-      # color column (optional) -- if missing, auto-assign from palette
+      # color column (optional) -- if missing/empty, fill from domain_palette
+      .auto_dom_colors <- .resolve_domain_palette(domain_palette, dom)
       if (!"color" %in% names(dom)) {
-        dom$color <- .GVR_DOMAIN_PALETTE[((seq_len(nrow(dom)) - 1L) %%
-                                          length(.GVR_DOMAIN_PALETTE)) + 1L]
+        dom$color <- .auto_dom_colors
       } else {
         dom$color <- as.character(dom$color)
         empty_col <- is.na(dom$color) | dom$color == ""
         if (any(empty_col)) {
-          dom$color[empty_col] <- .GVR_DOMAIN_PALETTE[((which(empty_col) - 1L) %%
-                                                        length(.GVR_DOMAIN_PALETTE)) + 1L]
+          dom$color[empty_col] <- .auto_dom_colors[empty_col]
         }
       }
 
@@ -1034,10 +1217,10 @@ gvr_lollipop <- function(maf, gene,
                                 color = "grey25",
                                 linewidth = 0.4) +
              ggplot2::scale_fill_identity()
-    # domain labels: behaviour controlled by domain_label_mode
+    # domain labels: behaviour controlled by domain_label_mode + domain_label_position
     .dlm <- .dlm_resolved
     if (.dlm != "none") {
-      # In 'number' mode, label EVERY domain (1..N); in other modes, respect show_label filter
+      # Build lab_dom + the label string in .lbl per mode
       if (.dlm == "number") {
         lab_dom <- domains_df
         lab_dom$.lbl <- as.character(seq_len(nrow(lab_dom)))
@@ -1049,61 +1232,102 @@ gvr_lollipop <- function(maf, gene,
         lab_dom <- domains_df[domains_df$show_label, , drop = FALSE]
         lab_dom$.lbl <- .gvr_abbrev_domain(lab_dom$name, abbrev = isTRUE(domain_name_abbrev))
       }
+
       if (nrow(lab_dom) > 0L) {
-        # Repel domain labels DOWNWARD (below the bar) with leader lines.
-        # Numeric labels use centered geom_text (compact, no repel needed).
+        # ---- Decide inside vs below per domain ----
+        # For position="below", everything goes below (legacy path).
+        # For position="inside", estimate fit per domain; overflows -> below.
         if (.dlm == "number") {
-          # If many domains, some will collide on long proteins. Use repel to
-          # spread them ABOVE the bar when geom_text would overlap.
-          if (requireNamespace("ggrepel", quietly = TRUE) && nrow(lab_dom) >= 4L) {
+          # numbers are short; default to inside unless explicitly below
+          .text_size <- base_size * 0.28
+        } else {
+          .text_size <- base_size * 0.23
+        }
+
+        if (domain_label_position == "inside" && nrow(lab_dom) > 0L) {
+          # Estimate width: aa per character roughly = (protein_length / 80) * (text_size / 11)
+          .char_aa <- (protein_length / 80) * (.text_size / 11)
+          .est_w   <- nchar(lab_dom$.lbl) * .char_aa
+          .rect_w  <- lab_dom$xmax - lab_dom$xmin
+          .fits    <- .est_w <= .rect_w * 0.9   # 10% padding
+        } else {
+          .fits <- rep(FALSE, nrow(lab_dom))   # force everything below
+        }
+
+        inside_dom <- lab_dom[ .fits, , drop = FALSE]
+        below_dom  <- lab_dom[!.fits, , drop = FALSE]
+
+        n_overflow <- nrow(below_dom)
+        if (domain_label_position == "inside" && n_overflow > 0L && isTRUE(verbose)) {
+          message(sprintf(
+            "gvr_lollipop: '%s' - %d domain label(s) overflow rectangle; rendering below",
+            gene, n_overflow))
+        }
+
+        # ---- Inside renderer: centered geom_text with auto-contrast color ----
+        if (nrow(inside_dom) > 0L) {
+          inside_dom$.text_col <- .pick_contrast_color(inside_dom$fill)
+          p <- p + ggplot2::geom_text(
+                     data = inside_dom,
+                     ggplot2::aes(x = xmid, y = 0, label = .lbl),
+                     color    = inside_dom$.text_col,
+                     size     = .text_size,
+                     fontface = if (.dlm == "number") "bold" else "plain",
+                     vjust    = 0.5, hjust = 0.5,
+                     inherit.aes = FALSE)
+        }
+
+        # ---- Below renderer: ggrepel with leader lines (legacy path) ----
+        if (nrow(below_dom) > 0L) {
+          if (.dlm == "number") {
+            if (requireNamespace("ggrepel", quietly = TRUE) && nrow(below_dom) >= 4L) {
+              p <- p + ggrepel::geom_text_repel(
+                         data = below_dom,
+                         ggplot2::aes(x = xmid, y = 0, label = .lbl),
+                         size               = base_size * 0.28,
+                         color              = "black",
+                         fontface           = "bold",
+                         direction          = "y",
+                         nudge_y            = bar_half * 0.8,
+                         ylim               = c(bar_half * 0.6, Inf),
+                         segment.size       = 0.2,
+                         segment.color      = "grey60",
+                         box.padding        = 0.10,
+                         point.padding      = 0.02,
+                         min.segment.length = 0.05,
+                         max.overlaps       = Inf,
+                         seed               = 42L)
+            } else {
+              p <- p + ggplot2::geom_text(data = below_dom,
+                                          ggplot2::aes(x = xmid, y = 0, label = .lbl),
+                                          size  = base_size * 0.30,
+                                          color = "black",
+                                          fontface = "bold",
+                                          vjust = 0.5, hjust = 0.5)
+            }
+          } else if (requireNamespace("ggrepel", quietly = TRUE)) {
+            .y_start <- -bar_half - max(0.05, y_max_stack * 0.04)
             p <- p + ggrepel::geom_text_repel(
-                       data = lab_dom,
-                       ggplot2::aes(x = xmid, y = 0, label = .lbl),
-                       size               = base_size * 0.28,
+                       data = below_dom,
+                       ggplot2::aes(x = xmid, y = .y_start, label = .lbl),
+                       size               = base_size * 0.23,
                        color              = "black",
-                       fontface           = "bold",
                        direction          = "y",
-                       nudge_y            = bar_half * 0.8,
-                       ylim               = c(bar_half * 0.6, Inf),
-                       segment.size       = 0.2,
-                       segment.color      = "grey60",
-                       box.padding        = 0.10,
-                       point.padding      = 0.02,
-                       min.segment.length = 0.05,
+                       nudge_y            = -max(0.10, y_max_stack * 0.06),
+                       segment.size       = 0.25,
+                       segment.color      = "grey50",
+                       box.padding        = 0.30,
+                       point.padding      = 0.05,
+                       min.segment.length = 0,
                        max.overlaps       = Inf,
                        seed               = 42L)
           } else {
-            p <- p + ggplot2::geom_text(data = lab_dom,
+            p <- p + ggplot2::geom_text(data = below_dom,
                                         ggplot2::aes(x = xmid, y = 0, label = .lbl),
-                                        size  = base_size * 0.30,
+                                        size  = base_size * 0.23,
                                         color = "black",
-                                        fontface = "bold",
                                         vjust = 0.5, hjust = 0.5)
           }
-        } else if (requireNamespace("ggrepel", quietly = TRUE)) {
-          # Start labels below the bar, repel them DOWN/around so they don't overlap.
-          # No ylim: let repel push freely; segment lines lead back to xmid on the bar.
-          .y_start <- -bar_half - max(0.05, y_max_stack * 0.04)
-          p <- p + ggrepel::geom_text_repel(
-                     data = lab_dom,
-                     ggplot2::aes(x = xmid, y = .y_start, label = .lbl),
-                     size               = base_size * 0.23,
-                     color              = "black",
-                     direction          = "y",
-                     nudge_y            = -max(0.10, y_max_stack * 0.06),
-                     segment.size       = 0.25,
-                     segment.color      = "grey50",
-                     box.padding        = 0.30,
-                     point.padding      = 0.05,
-                     min.segment.length = 0,
-                     max.overlaps       = Inf,
-                     seed               = 42L)
-        } else {
-          p <- p + ggplot2::geom_text(data = lab_dom,
-                                      ggplot2::aes(x = xmid, y = 0, label = .lbl),
-                                      size  = base_size * 0.23,
-                                      color = "black",
-                                      vjust = 0.5, hjust = 0.5)
         }
       }
       # In 'number' mode, also draw a side caption mapping number -> name
@@ -1185,10 +1409,10 @@ gvr_lollipop <- function(maf, gene,
                                                  color = "grey35",
                                                  hjust = 0,
                                                  margin = ggplot2::margin(b = 8)),
-      axis.title         = ggplot2::element_text(size = base_size * 0.95),
-      axis.text          = ggplot2::element_text(color = "grey20"),
-      axis.line          = ggplot2::element_line(color = "grey40", linewidth = 0.4),
-      axis.ticks         = ggplot2::element_line(color = "grey40", linewidth = 0.4),
+      axis.title         = ggplot2::element_text(size = axis_title_size, color = axis_title_color),
+      axis.text          = ggplot2::element_text(size = axis_text_size, color = axis_text_color),
+      axis.line          = ggplot2::element_line(color = axis_line_color, linewidth = axis_line_width),
+      axis.ticks         = ggplot2::element_line(color = axis_line_color, linewidth = axis_line_width),
       legend.title       = ggplot2::element_text(face = "bold", size = base_size * 0.85),
       legend.text        = ggplot2::element_text(size = base_size * 0.80),
       legend.key.size    = ggplot2::unit(0.7, "lines"),

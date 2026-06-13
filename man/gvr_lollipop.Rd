@@ -16,6 +16,7 @@ gvr_lollipop(
   domain_label_min_frac = 0.05,
   domain_label_mode = c("name", "id", "number", "none", "auto"),
   domain_name_abbrev = TRUE,
+  domain_label_position = c("inside", "below"),
   hotspot_window = 20L,
   hotspot_min_n = 4,
   stem_alpha = 0.6,
@@ -24,11 +25,19 @@ gvr_lollipop(
   bar_color = "grey85",
   bar_border = "grey40",
   base_size = 12,
+  axis_text_size = 11,
+  axis_title_size = 12,
+  axis_text_color = "grey20",
+  axis_title_color = "black",
+  axis_line_color = "grey40",
+  axis_line_width = 0.4,
   out_dir = ".",
   out_prefix = gene,
   width = 10,
   height = 4,
   dpi = 300,
+  variant_palette = "gvr",
+  domain_palette = "okabe_ito",
   verbose = TRUE
 )
 }
@@ -96,6 +105,20 @@ set of substitutions to compress verbose InterPro domain names (e.g.
 labels fit inside narrower rectangles in \code{domain_label_mode = "name"}.
 Set \code{FALSE} to keep the raw InterPro names verbatim.}
 
+\item{domain_label_position}{One of \code{"inside"} (default) or \code{"below"}.
+Controls where InterPro domain labels render relative to the domain
+rectangle. \code{"inside"} places labels centred inside each rectangle with
+an automatically chosen black/white text colour for contrast against the
+domain fill (WCAG luminance rule). \code{"below"} reproduces the legacy
+layout used in earlier versions (labels under the bar, leader lines from
+each rectangle).
+
+When \code{domain_label_position = "inside"}, labels that don't fit inside
+their domain rectangle (estimated by character count vs rectangle width)
+fall back to the \code{"below"} style with a leader line on a per-domain
+basis so no information is lost. A verbose message reports the count of
+overflowing labels.}
+
 \item{hotspot_window}{Integer(1). Sliding-window width (in amino
 acids) used to detect mutation hotspots. A hotspot is a region
 containing at least \code{hotspot_min_n} distinct variant positions
@@ -126,6 +149,29 @@ Default \code{"grey40"}.}
 
 \item{base_size}{Numeric(1). ggplot2 base font size. Default \code{12}.}
 
+\item{axis_text_size}{Numeric(1). Font size of axis tick labels (aa
+positions on x, count on y). Default \code{11}, matching the existing visual
+output. Set to \code{12} or higher for publication-style figures.}
+
+\item{axis_title_size}{Numeric(1). Font size of axis titles ("Amino acid
+position" / "Variant count"). Default \code{12}. Set to \code{14} for sibling-
+package publication defaults.}
+
+\item{axis_text_color}{Character(1). Colour of axis tick labels. Default
+\code{"grey20"} (current visual). Set to \code{"black"} for sibling-package
+publication defaults.}
+
+\item{axis_title_color}{Character(1). Colour of axis titles. Default
+\code{"black"}.}
+
+\item{axis_line_color}{Character(1). Colour of axis lines and ticks.
+Default \code{"grey40"} (current visual). Set to \code{"black"} for sibling-
+package publication defaults.}
+
+\item{axis_line_width}{Numeric(1). Line width (in \code{ggplot2} linewidth
+units) of axis lines and ticks. Default \code{0.4} (current visual). Set to
+\code{0.8} for sibling-package publication defaults.}
+
 \item{out_dir}{Character(1) or \code{NULL}. Output directory for the SVG/PNG
 files. Created if it does not exist. Default \code{"."} (current working
 directory), matching \code{\link[=gvr_plot]{gvr_plot()}}. Set to \code{NULL} to suppress file output.}
@@ -141,6 +187,28 @@ file output.}
 \item{height}{Numeric(1). Plot height in inches. Default \code{4}.}
 
 \item{dpi}{Numeric(1). PNG resolution. Default \code{300}.}
+
+\item{variant_palette}{Character. Variant colour assignment. Accepts three
+forms. (1) A palette name (e.g. \code{"gvr"}, \code{"nature"}, \code{"set2"}); the
+default \code{"gvr"} is the semantic palette where, e.g., \code{Missense_Mutation}
+is always green and \code{Nonsense_Mutation} always orange regardless of which
+classes are present. Any other palette name is treated as positional
+ordinal (colours assigned in the order classes appear in the data).
+(2) A named character vector of explicit hex codes for specific
+\code{Variant_Classification} values, e.g.
+\code{c(Missense_Mutation = "#FF0000", Nonsense_Mutation = "#000000")};
+classes not listed inherit the \code{"gvr"} defaults. (3) A mixed vector
+with one unnamed element used as the fallback palette name, e.g.
+\code{c(Missense_Mutation = "#FF00FF", "nature")} (Missense magenta, all
+other classes from the \code{nature} palette). Use \code{\link[=gvr_list_palettes]{gvr_list_palettes()}} to
+discover names and \code{\link[=gvr_color_palette]{gvr_color_palette()}} to inspect colours.}
+
+\item{domain_palette}{Character. Palette used for InterPro domain
+rectangle fills. Accepts the same three forms as \code{variant_palette}:
+palette name (default \code{"okabe_ito"}), named vector keyed by accession
+or domain name, or mixed vector with fallback palette name. Unlike
+\code{variant_palette} there is no \code{"gvr"} semantic special case; the
+default cycles a 9-colour colour-blind-safe palette across all domains.}
 
 \item{verbose}{Logical(1). If \code{TRUE} (default), emit progress messages
 (counts, dropped rows, file paths, cache hits, network calls).}
@@ -302,6 +370,36 @@ files were written.
   ## Highlight hotspots: clusters of >= 4 variants within 20 aa
   ## (the default; set hotspot_min_n = Inf to disable).
   gvr_lollipop(f, "TP53", hotspot_window = 20, hotspot_min_n = 4)
+
+  ## Inside-rectangle domain labels (new default in Phase J)
+  gvr_lollipop(f, "TP53", domain_label_position = "inside")
+
+  ## Legacy below-rectangle labels with leader lines
+  gvr_lollipop(f, "TP53", domain_label_position = "below")
+
+  ## Sibling-package publication defaults for axes
+  gvr_lollipop(f, "TP53",
+               axis_text_size = 12, axis_title_size = 14,
+               axis_text_color = "black", axis_title_color = "black",
+               axis_line_color = "black", axis_line_width = 0.8)
+
+  ## Colour-blind-safe variant palette (positional, not semantic)
+  gvr_lollipop(f, "TP53", variant_palette = "okabe_ito")
+
+  ## Override Missense colour only; rest stay GVR semantic
+  gvr_lollipop(f, "TP53",
+               variant_palette = c(Missense_Mutation = "#FF00FF"))
+
+  ## Override Missense + use Nature palette for the remaining classes
+  gvr_lollipop(f, "TP53",
+               variant_palette = c(Missense_Mutation = "#FF00FF", "nature"))
+
+  ## Domain rectangles coloured along the viridis gradient
+  gvr_lollipop(f, "MUC19", domain_palette = "viridis")
+
+  ## List available palettes / inspect colours
+  gvr_list_palettes()
+  gvr_color_palette("nature", n = 5)
 }
 
 }
