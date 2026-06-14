@@ -65,8 +65,13 @@ from the input.}
 \item{chunk_size}{Integer; number of VCF records processed per chunk (controls peak
 memory and progress granularity). Default \code{25000L}.}
 
-\item{ncbi_build}{Reference build label recorded in the MAF (\code{NCBI_Build}). Default
-\code{"GRCh38"}.}
+\item{ncbi_build}{Reference build label written verbatim into the MAF
+\code{NCBI_Build} column. Default \code{"GRCh38"}. Accepts any string (no
+validation); the rest of the pipeline does not branch on its value.
+Note: the package has only been validated against GRCh38 input VCFs.
+The ABraOM rsID+allele join (added in v3) is build-stable, but
+pipeline behaviour on non-GRCh38 inputs is otherwise untested -- supply
+a non-GRCh38 label only if you understand your VCF's coordinate space.}
 
 \item{add_genotype}{Logical; if \code{TRUE} (default) add the \code{Genotype} column.}
 

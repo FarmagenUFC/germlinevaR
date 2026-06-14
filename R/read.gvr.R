@@ -66,8 +66,13 @@
 #'   from the input.
 #' @param chunk_size Integer; number of VCF records processed per chunk (controls peak
 #'   memory and progress granularity). Default `25000L`.
-#' @param ncbi_build Reference build label recorded in the MAF (`NCBI_Build`). Default
-#'   `"GRCh38"`.
+#' @param ncbi_build Reference build label written verbatim into the MAF
+#'   `NCBI_Build` column. Default `"GRCh38"`. Accepts any string (no
+#'   validation); the rest of the pipeline does not branch on its value.
+#'   Note: the package has only been validated against GRCh38 input VCFs.
+#'   The ABraOM rsID+allele join (added in v3) is build-stable, but
+#'   pipeline behaviour on non-GRCh38 inputs is otherwise untested -- supply
+#'   a non-GRCh38 label only if you understand your VCF's coordinate space.
 #' @param add_genotype Logical; if `TRUE` (default) add the `Genotype` column.
 #' @param strip_hgvs_prefix Logical; if `TRUE` (default) strip the Ensembl feature
 #'   prefix from `HGVSc`/`HGVSp`.
@@ -299,6 +304,17 @@ read.gvr <- function(folder = ".",
     if (length(panel_genes) > 0L) {
       effective_genes <- unique(toupper(trimws(c(panel_genes, as.character(genes)))))
       effective_genes <- effective_genes[!is.na(effective_genes) & nzchar(effective_genes)]
+      # Phase N+1: capture pre-union panel state for the post-filter
+      # "panel subset:" coverage message (sibling of "gene subset:" below).
+      # Only created when panel was supplied AND resolved to >=1 gene; the
+      # post-filter block gates on exists(.panel_genes_for_summary).
+      .panel_genes_for_summary  <- panel_genes
+      .panel_extras_for_summary <- setdiff(
+        toupper(trimws(as.character(genes))), panel_genes
+      )
+      .panel_extras_for_summary <- .panel_extras_for_summary[
+        !is.na(.panel_extras_for_summary) & nzchar(.panel_extras_for_summary)
+      ]
       if (verbose) {
         message(sprintf(
           "panel: resolved %d panel(s) -> %d unique Hugo_Symbol(s)%s.",
@@ -417,7 +433,10 @@ read.gvr <- function(folder = ".",
       min_DP            = min_DP,
       min_GQ            = min_GQ,
       genes             = genes,  # already unioned with resolved `panel` above
-      panel             = NULL,   # resolution done in this dispatcher; sibling gets NULL
+      panel             = panel,  # Phase N+1: pass through so sibling can run its
+                                  # own "panel subset:" verbose block; sibling
+                                  # re-resolves (idempotent: same registry, same
+                                  # union math, returns the same effective_genes).
       vc_nonSyn         = vc_nonSyn,
       ncores            = ncores,
       verbose           = verbose
@@ -1422,6 +1441,35 @@ read.gvr <- function(folder = ".",
         length(found), length(want),
         if (length(notfound)) paste0(" (not found: ", paste(notfound, collapse = ", "), ")") else ""))
     }
+  }
+
+  ## 3d-bis2. Phase N+1: post-filter panel coverage message -----------------
+  ##     Sibling of "gene subset:" (3d-bis). Fires only when `panel` was
+  ##     supplied AND resolved to >=1 gene (gated on
+  ##     exists(.panel_genes_for_summary), which was set inside the vN setup
+  ##     block at the top of the body). Reports how many of the ORIGINAL
+  ##     (pre-union) panel genes are present in the post-filter result,
+  ##     lists present + missing, and (when `panel` was combined with
+  ##     explicit `genes` extras) names them inline. Observation point
+  ##     matches "gene subset:" semantics (pre vc_nonSyn / drop_empty_cols).
+  if (verbose && exists(".panel_genes_for_summary", inherits = FALSE)) {
+    data.table::setDT(maf)
+    have_syms <- unique(toupper(trimws(as.character(maf$Hugo_Symbol))))
+    p_present <- intersect(.panel_genes_for_summary, have_syms)
+    p_missing <- setdiff(.panel_genes_for_summary, have_syms)
+    extras_chunk <- if (length(.panel_extras_for_summary) > 0L) {
+      sprintf(" (+ %d extra gene(s) from `genes`: %s)",
+              length(.panel_extras_for_summary),
+              paste(.panel_extras_for_summary, collapse = ", "))
+    } else ""
+    missing_chunk <- if (length(p_missing) > 0L) {
+      sprintf(" (missing: %s)", paste(p_missing, collapse = ", "))
+    } else ""
+    message(sprintf(
+      "panel subset: %d / %d panel gene(s) present: %s%s%s.",
+      length(p_present), length(.panel_genes_for_summary),
+      if (length(p_present) > 0L) paste(p_present, collapse = ", ") else "(none)",
+      missing_chunk, extras_chunk))
   }
 
   ## 3d-ter. Variant-Classification non-synonymous filter (opt-in) -----------
