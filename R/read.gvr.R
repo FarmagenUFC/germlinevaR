@@ -66,13 +66,20 @@
 #'   from the input.
 #' @param chunk_size Integer; number of VCF records processed per chunk (controls peak
 #'   memory and progress granularity). Default `25000L`.
-#' @param ncbi_build Reference build label written verbatim into the MAF
-#'   `NCBI_Build` column. Default `"GRCh38"`. Accepts any string (no
-#'   validation); the rest of the pipeline does not branch on its value.
-#'   Note: the package has only been validated against GRCh38 input VCFs.
-#'   The ABraOM rsID+allele join (added in v3) is build-stable, but
-#'   pipeline behaviour on non-GRCh38 inputs is otherwise untested -- supply
-#'   a non-GRCh38 label only if you understand your VCF's coordinate space.
+#' @param ncbi_build Reference build label written into the MAF `NCBI_Build`
+#'   column. Default `"auto"`: the function inspects the input VCF header
+#'   (VEP `assembly=` / SnpEff `SnpEffCmd` database token / first `##contig=`
+#'   length) and picks the canonical label among `"GRCh38"`, `"GRCh37"`,
+#'   `"T2T-CHM13v2.0"`. When detection cannot decide, falls back to `"GRCh38"`
+#'   with a verbose-mode message. Pass any literal (`"GRCh37"`, `"hg19"`,
+#'   `"T2T-CHM13v2.0"`, internal lab codes) to override; the user-supplied
+#'   value is written verbatim into `NCBI_Build` and the rest of the pipeline
+#'   does not branch on its value. The ABraOM join uses dbSNP rsID + alleles
+#'   and is build-stable. The aliases `"hg19"` and `"hg38"` are mapped to
+#'   `"GRCh37"` / `"GRCh38"` for the mismatch check; a diagnostic warning
+#'   fires when an explicit `ncbi_build` value (canonical or alias) disagrees
+#'   with what auto-detection found at high confidence. Off-table user labels
+#'   (e.g. internal lab codes) pass through silently.
 #' @param add_genotype Logical; if `TRUE` (default) add the `Genotype` column.
 #' @param strip_hgvs_prefix Logical; if `TRUE` (default) strip the Ensembl feature
 #'   prefix from `HGVSc`/`HGVSp`.
@@ -190,7 +197,7 @@ read.gvr <- function(folder = ".",
                            out_dir    = NULL,
                            out_prefix = NULL,
                            chunk_size = 25000L,
-                           ncbi_build = "GRCh38",
+                           ncbi_build = "auto",
                            add_genotype      = TRUE,   # v2
                            strip_hgvs_prefix = TRUE,   # v2
                            dedup_columns     = TRUE,   # v2
@@ -284,6 +291,105 @@ read.gvr <- function(folder = ".",
     }
     attr(res, "info_tags") <- info_tags
     res
+  }
+
+
+  # ===========================================================================
+  # Nested helper: .detect_build()  (Phase N+2)
+  # ---------------------------------------------------------------------------
+  # Reads a VCF header and returns a list:
+  #   list(label = <canonical or NA_character_>,
+  #        confidence = c("high", "low", "none"),
+  #        signals = list(vep = ..., snpeff = ..., contig = ...))
+  # Canonical labels: "GRCh38", "GRCh37", "T2T-CHM13v2.0".
+  # Sources combined: VEP `##VEP=` `assembly=` attr, SnpEff `##SnpEffCmd=`
+  # database token, and the FIRST `##contig=<ID=...>` whose ID matches a
+  # standard autosome -- length is compared against a small built-in table.
+  # confidence='high' when >=2 signals agree on a canonical label;
+  # confidence='low' when exactly one signal is present; 'none' otherwise.
+  # ===========================================================================
+  .detect_build <- function(path) {
+    # Canonical contig lookup. chr1 length is the most discriminating signal:
+    #   GRCh38         chr1 = 248,956,422  (NCBI GRCh38.p14)
+    #   GRCh37         chr1 = 249,250,621  (NCBI GRCh37.p13)
+    #   T2T-CHM13v2.0  chr1 = 248,387,328  (T2T consortium)
+    contig_lookup <- list(
+      `1` = list(`248956422` = "GRCh38",
+                 `249250621` = "GRCh37",
+                 `248387328` = "T2T-CHM13v2.0"),
+      `M` = list(`16569` = "GRCh38",  `16571` = "GRCh37")  # chrM tiebreaker
+    )
+
+    con <- gzfile(path, "r")
+    on.exit(close(con))
+    vep_sig <- NA_character_
+    snpeff_sig <- NA_character_
+    contig_sig <- NA_character_
+    first_std_contig_seen <- FALSE
+    repeat {
+      line <- readLines(con, n = 1L, warn = FALSE)
+      if (length(line) == 0L) break
+      if (!startsWith(line, "##")) break
+
+      # VEP signal: ##VEP="v113.0" ... assembly="GRCh38.p14" ...
+      if (is.na(vep_sig) && startsWith(line, "##VEP=")) {
+        m <- regmatches(line, regexec("assembly=\"(GRCh3[78])", line))[[1]]
+        if (length(m) == 2L) vep_sig <- m[2]
+      }
+
+      # SnpEff signal: ##SnpEffCmd="SnpEff ... GRCh38.99 input.vcf"
+      if (is.na(snpeff_sig) && startsWith(line, "##SnpEffCmd=")) {
+        # database token is the first GRCh38.x / GRCh37.x / hg38 / hg19 occurrence
+        m <- regmatches(line, regexec("\\b(GRCh3[78])\\.[0-9]+\\b", line))[[1]]
+        if (length(m) == 2L) {
+          snpeff_sig <- m[2]
+        } else {
+          m2 <- regmatches(line, regexec("\\b(hg19|hg38)\\b", line))[[1]]
+          if (length(m2) == 2L) {
+            snpeff_sig <- c(hg19 = "GRCh37", hg38 = "GRCh38")[m2[2]]
+          }
+        }
+      }
+
+      # Contig signal: first ##contig=<ID=(chr)?(1|M),length=N>
+      if (!first_std_contig_seen && startsWith(line, "##contig=<ID=")) {
+        m <- regmatches(line, regexec(
+          "^##contig=<ID=(?:chr)?([0-9XYM]+),length=([0-9]+)", line))[[1]]
+        if (length(m) == 3L) {
+          first_std_contig_seen <- TRUE
+          chrom_key <- m[2]
+          len_key   <- m[3]
+          if (!is.null(contig_lookup[[chrom_key]]) &&
+              !is.null(contig_lookup[[chrom_key]][[len_key]])) {
+            contig_sig <- contig_lookup[[chrom_key]][[len_key]]
+          }
+          # else: first std contig found but length doesn't match any known build
+        }
+      }
+    }
+
+    # Combine signals: 2-of-3 agreement => high confidence;
+    # 1 signal => low confidence; 0 or all-disagree => none.
+    sigs <- c(vep = vep_sig, snpeff = snpeff_sig, contig = contig_sig)
+    sigs_present <- sigs[!is.na(sigs)]
+    if (length(sigs_present) == 0L) {
+      return(list(label = NA_character_, confidence = "none",
+                  signals = as.list(sigs)))
+    }
+    tbl <- sort(table(sigs_present), decreasing = TRUE)
+    top <- names(tbl)[1L]
+    top_count <- as.integer(tbl[1L])
+    if (top_count >= 2L) {
+      return(list(label = top, confidence = "high",
+                  signals = as.list(sigs)))
+    }
+    if (length(sigs_present) == 1L) {
+      return(list(label = top, confidence = "low",
+                  signals = as.list(sigs)))
+    }
+    # All 2-3 signals present but no two agree -> conflict
+    list(label = NA_character_, confidence = "none",
+         signals = as.list(sigs))
   }
 
 
@@ -443,6 +549,79 @@ read.gvr <- function(folder = ".",
     ))
   }
   # else uniq_ann == "vep": continue with the existing VEP body below.
+
+
+  # ==========================================================================
+  # 0c. Resolve ncbi_build: auto-detect from VCF header(s), honour user override.
+  #     (Phase N+2)
+  #     - ncbi_build = "auto" (default): inspect first file's header via
+  #       .detect_build(); use detected canonical label; fall back to "GRCh38"
+  #       when detection is ambiguous; emit a verbose diagnostic either way.
+  #     - ncbi_build = <any literal> (override): use the value verbatim; warn()
+  #       loudly if auto-detection finds a CONFIDENT canonical label that
+  #       disagrees with the user-supplied value (catches typos).
+  # ==========================================================================
+  {
+    .bd_first <- vcf_paths[1L]
+    .bd <- tryCatch(.detect_build(.bd_first),
+                    error = function(e) list(label = NA_character_,
+                                             confidence = "none",
+                                             signals = list(vep = NA_character_,
+                                                            snpeff = NA_character_,
+                                                            contig = NA_character_)))
+    .bd_label <- .bd$label
+    .bd_conf  <- .bd$confidence
+    .bd_sigs  <- .bd$signals
+    .bd_present <- vapply(.bd_sigs, function(x) !is.na(x), logical(1L))
+    .bd_sig_str <- if (any(.bd_present))
+      paste(names(.bd_sigs)[.bd_present], collapse = " + ") else "none"
+
+    if (identical(ncbi_build, "auto")) {
+      if (!is.na(.bd_label)) {
+        effective_ncbi_build <- .bd_label
+        if (verbose) message(sprintf(
+          "genome build: detected %s (%s agree, %s confidence).",
+          .bd_label, .bd_sig_str, .bd_conf))
+      } else {
+        effective_ncbi_build <- "GRCh38"
+        if (verbose) message(
+          "genome build: could not detect from VCF header (signals: ",
+          .bd_sig_str, "); defaulting to 'GRCh38'. Pass ncbi_build= to override.")
+      }
+    } else {
+      effective_ncbi_build <- ncbi_build
+      # Map user value through the same alias table the detector uses, so we
+      # treat 'hg19'/'hg38' as canonical equivalents and only warn when the
+      # user supplied a build-aware label that contradicts a high-confidence
+      # detection. Arbitrary lab codes (no alias hit) pass silently.
+      .alias <- c(GRCh38 = "GRCh38", GRCh37 = "GRCh37",
+                  `T2T-CHM13v2.0` = "T2T-CHM13v2.0",
+                  hg38 = "GRCh38", hg19 = "GRCh37")
+      .user_canon <- if (ncbi_build %in% names(.alias)) unname(.alias[ncbi_build]) else NA_character_
+      if (!is.na(.bd_label) && identical(.bd_conf, "high") &&
+          !is.na(.user_canon) && !identical(.user_canon, .bd_label)) {
+        warning(sprintf(
+          "read.gvr: ncbi_build='%s' but VCF appears to be %s (%s agree). Continuing with user-supplied value.",
+          ncbi_build, .bd_label, .bd_sig_str), call. = FALSE)
+      } else if (verbose) {
+        message(sprintf(
+          "genome build: '%s' (user-supplied%s).",
+          ncbi_build,
+          if (!is.na(.bd_label) && !is.na(.user_canon) && identical(.user_canon, .bd_label))
+            "; agrees with auto-detection"
+          else if (!is.na(.bd_label) && is.na(.user_canon))
+            "; not in detection table"
+          else if (!is.na(.bd_label))
+            sprintf("; auto-detection found %s [%s]", .bd_label, .bd_conf)
+          else
+            "; auto-detection could not corroborate"))
+      }
+    }
+    # The downstream row-construction site reads `ncbi_build` from lexical
+    # scope; rebind so a single call site (`NCBI_Build = ncbi_build` below)
+    # remains the canonical write -- no second NCBI_Build= reference needed.
+    ncbi_build <- effective_ncbi_build
+  }
 
 
   # ==========================================================================

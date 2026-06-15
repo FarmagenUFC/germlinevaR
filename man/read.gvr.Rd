@@ -14,7 +14,7 @@ read.gvr(
   out_dir = NULL,
   out_prefix = NULL,
   chunk_size = 25000L,
-  ncbi_build = "GRCh38",
+  ncbi_build = "auto",
   add_genotype = TRUE,
   strip_hgvs_prefix = TRUE,
   dedup_columns = TRUE,
@@ -65,13 +65,20 @@ from the input.}
 \item{chunk_size}{Integer; number of VCF records processed per chunk (controls peak
 memory and progress granularity). Default \code{25000L}.}
 
-\item{ncbi_build}{Reference build label written verbatim into the MAF
-\code{NCBI_Build} column. Default \code{"GRCh38"}. Accepts any string (no
-validation); the rest of the pipeline does not branch on its value.
-Note: the package has only been validated against GRCh38 input VCFs.
-The ABraOM rsID+allele join (added in v3) is build-stable, but
-pipeline behaviour on non-GRCh38 inputs is otherwise untested -- supply
-a non-GRCh38 label only if you understand your VCF's coordinate space.}
+\item{ncbi_build}{Reference build label written into the MAF \code{NCBI_Build}
+column. Default \code{"auto"}: the function inspects the input VCF header
+(VEP \verb{assembly=} / SnpEff \code{SnpEffCmd} database token / first \verb{##contig=}
+length) and picks the canonical label among \code{"GRCh38"}, \code{"GRCh37"},
+\code{"T2T-CHM13v2.0"}. When detection cannot decide, falls back to \code{"GRCh38"}
+with a verbose-mode message. Pass any literal (\code{"GRCh37"}, \code{"hg19"},
+\code{"T2T-CHM13v2.0"}, internal lab codes) to override; the user-supplied
+value is written verbatim into \code{NCBI_Build} and the rest of the pipeline
+does not branch on its value. The ABraOM join uses dbSNP rsID + alleles
+and is build-stable. The aliases \code{"hg19"} and \code{"hg38"} are mapped to
+\code{"GRCh37"} / \code{"GRCh38"} for the mismatch check; a diagnostic warning
+fires when an explicit \code{ncbi_build} value (canonical or alias) disagrees
+with what auto-detection found at high confidence. Off-table user labels
+(e.g. internal lab codes) pass through silently.}
 
 \item{add_genotype}{Logical; if \code{TRUE} (default) add the \code{Genotype} column.}
 
