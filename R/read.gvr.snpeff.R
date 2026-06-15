@@ -96,11 +96,19 @@
 #'
 #' @param folder Directory to scan in folder mode; every file matching `pattern` is
 #'   converted and row-bound. Default `"."`. Ignored when `vcf_path` is supplied.
-#' @param vcf_path Path to a single `.snpeff.vcf.gz` to convert (single-file mode).
-#'   `NULL` (default) selects folder mode.
+#'   Also used as the search root for `file=`.
+#' @param vcf_path Character vector of one or more full paths to `.vcf.gz`
+#'   files to convert. Mutually exclusive with `file=`. `NULL` (default)
+#'   selects folder mode.
+#' @param file Character vector of basenames (e.g.
+#'   `c("S1.snpeff.vcf.gz", "S2.snpeff.vcf.gz")`) resolved against `folder=`.
+#'   Use this to pick specific files from a folder that contains files you
+#'   do NOT want to merge. Mutually exclusive with `vcf_path=`. `NULL`
+#'   (default) selects either `vcf_path=` mode or folder-pattern mode.
 #' @param pattern Regular expression identifying per-sample VCFs in folder mode.
-#'   Default `"_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$"` (matches
-#'   `_01.vep.vcf.gz`, `_01.snpeff.vcf.gz`, `_01.vcf.gz`, etc.).
+#'   Default `"\\.vcf\\.gz$"` (matches any `.vcf.gz` file). The old default
+#'   `"_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$"` is still available by passing
+#'   it explicitly.
 #' @param write_tsv Logical; if `TRUE`, also write the MAF as a TSV to `out_dir`.
 #'   Default `FALSE`.
 #' @param write_rds Logical; if `TRUE`, also write the MAF as an `.rds` to `out_dir`.
@@ -176,6 +184,11 @@
 #'   pass a custom character vector of classifications to keep. Rows with
 #'   missing/blank `Variant_Classification` are always removed when this filter
 #'   is active.
+#' @param canonical_only Logical; accepted for API symmetry with [read.gvr()].
+#'   SnpEff's ANN field has no `CANONICAL` flag, so this filter cannot be
+#'   applied. When `TRUE` (the default), `read.gvr.snpeff()` emits a one-time
+#'   warning and returns the unfiltered MAF (same result as
+#'   `canonical_only = FALSE`).
 #' @param ncores Integer; number of worker processes for converting MULTIPLE input
 #'   files in parallel via [parallel::mclapply()] (fork-based; Unix/macOS only).
 #'   Default `1L` runs sequentially and is byte-identical to previous behaviour.
@@ -206,8 +219,16 @@
 #' ## Or use read.gvr() to auto-route (SnpEff inputs are dispatched here):
 #' maf <- read.gvr("/path/to/folder")
 #'
-#' ## Single-file mode
+#' ## Single-file mode: full path
 #' maf <- read.gvr.snpeff(vcf_path = "/path/to/SAMPLE_01.snpeff.vcf.gz")
+#'
+#' ## Multi-file mode by full path
+#' maf <- read.gvr.snpeff(
+#'   vcf_path = c("/p/S1.snpeff.vcf.gz", "/p/S2.snpeff.vcf.gz"))
+#'
+#' ## Pick basenames from a folder (merges these two but ignores other .vcf.gz)
+#' maf <- read.gvr.snpeff(folder = "/p",
+#'                        file   = c("S1.snpeff.vcf.gz", "S2.snpeff.vcf.gz"))
 #'
 #' ## Disable the DP/GQ genotype filter entirely
 #' maf <- read.gvr.snpeff("/path/to/folder", min_DP = NULL, min_GQ = NULL)
@@ -233,7 +254,8 @@
 #' @export
 read.gvr.snpeff <- function(folder = ".",
                            vcf_path   = NULL,
-                           pattern    = "_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$",   # v9: _01.vep.vcf.gz, _01.snpeff.vcf.gz, _01.vcf.gz, ...
+                           file       = NULL,   # vN+4: basename(s) inside `folder`; mutex with vcf_path
+                           pattern    = "\\.vcf\\.gz$",   # vN+4: any .vcf.gz; old default was "_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$"
                            write_tsv  = FALSE,
                            write_rds  = FALSE,
                            write_xlsx = FALSE,   # v6: also write the MAF as .xlsx (one "MAF" sheet)
@@ -254,6 +276,7 @@ read.gvr.snpeff <- function(folder = ".",
                            genes             = NULL,   # v4: keep only these Hugo_Symbols
                            panel             = NULL,   # vN: curated disease gene panel(s); union'd with `genes`
                            vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
+                           canonical_only    = TRUE,   # vN+4: API symmetry; SnpEff ANN has no CANONICAL -> warn and ignore
                            ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
                            verbose    = TRUE) {
   # ===========================================================================
@@ -985,23 +1008,59 @@ read.gvr.snpeff <- function(folder = ".",
 
   # ==========================================================================
   # 0. Locate the input VCF(s)
-  #    - folder mode  : process EVERY file matching `pattern` (multi-file merge).
-  #    - vcf_path mode : process exactly that one file (backward compatible).
+  #    Three input modes, precedence vcf_path > file > folder (vN+4):
+  #      - vcf_path : character vector of full paths to process (multi-file OK).
+  #      - file     : character vector of basenames resolved against `folder`.
+  #      - folder   : list.files(folder, pattern) -- the default fan-out mode.
+  #    `vcf_path` and `file` are mutually exclusive.
   # ==========================================================================
-  if (is.null(vcf_path)) {
+  if (!is.null(vcf_path) && !is.null(file))
+    stop("read.gvr.snpeff: pass either `vcf_path=` (full paths) or `file=` ",
+         "(basenames inside `folder=`), not both.", call. = FALSE)
+
+  if (!is.null(vcf_path)) {
+    vcf_path <- as.character(vcf_path)
+    if (!length(vcf_path) || any(!nzchar(vcf_path)))
+      stop("read.gvr.snpeff: `vcf_path=` must be a non-empty character vector.",
+           call. = FALSE)
+    miss <- vcf_path[!file.exists(vcf_path)]
+    if (length(miss))
+      stop(sprintf("read.gvr.snpeff: vcf_path file(s) do not exist:\n%s",
+                   paste0("  - ", miss, collapse = "\n")), call. = FALSE)
+    vcf_paths <- vcf_path
+  } else if (!is.null(file)) {
+    file <- as.character(file)
+    if (!length(file) || any(!nzchar(file)))
+      stop("read.gvr.snpeff: `file=` must be a non-empty character vector of basenames.",
+           call. = FALSE)
     if (!dir.exists(folder))
-      stop(sprintf("Folder does not exist: %s", folder))
+      stop(sprintf("Folder does not exist: %s", folder), call. = FALSE)
+    candidates <- file.path(folder, file)
+    miss <- file[!file.exists(candidates)]
+    if (length(miss))
+      stop(sprintf("read.gvr.snpeff: file(s) not found under folder='%s':\n%s",
+                   folder, paste0("  - ", miss, collapse = "\n")),
+           call. = FALSE)
+    vcf_paths <- candidates
+  } else {
+    if (!dir.exists(folder))
+      stop(sprintf("Folder does not exist: %s", folder), call. = FALSE)
     hits <- list.files(folder, pattern = pattern, full.names = TRUE,
                        ignore.case = FALSE)
     if (length(hits) == 0L)
-      stop(sprintf("No file matching '%s' found in: %s", pattern, folder))
+      stop(sprintf("No file matching '%s' found in: %s", pattern, folder),
+           call. = FALSE)
     # deterministic order: by filename ascending so _01 precedes _02 precedes _03 ...
     hits <- hits[order(basename(hits))]
     vcf_paths <- hits
-  } else {
-    if (!file.exists(vcf_path))
-      stop(sprintf("vcf_path does not exist: %s", vcf_path))
-    vcf_paths <- vcf_path
+  }
+
+  # vN+4: warn loudly once if canonical_only=TRUE was passed to snpeff -- ANN
+  # has no CANONICAL flag, so the filter is silently no-op. Emit and continue.
+  if (isTRUE(canonical_only)) {
+    warning("read.gvr.snpeff: SnpEff ANN field has no CANONICAL flag; ",
+            "canonical_only=TRUE has no effect. Result is identical to ",
+            "canonical_only=FALSE.", call. = FALSE)
   }
 
   if (verbose) {
@@ -1765,7 +1824,10 @@ read.gvr.snpeff <- function(folder = ".",
   # 4. Optional file outputs
   # ==========================================================================
   if (write_tsv || write_rds || write_xlsx) {
-    if (is.null(out_dir)) out_dir <- if (is.null(vcf_path)) folder else dirname(vcf_path)
+    # vN+4: handle vector vcf_path (use first), file= mode (folder), and folder mode (folder)
+    if (is.null(out_dir)) {
+      out_dir <- if (!is.null(vcf_path)) dirname(vcf_path[1L]) else folder
+    }
     if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
     if (is.null(out_prefix)) {
       if (length(vcf_paths) > 1L) {

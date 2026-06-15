@@ -46,10 +46,20 @@
 #'
 #' @param folder Directory to scan in folder mode; every file matching `pattern` is
 #'   converted and row-bound. Default `"."`. Ignored when `vcf_path` is supplied.
-#' @param vcf_path Path to a single `.vep.vcf.gz` to convert (single-file mode).
-#'   `NULL` (default) selects folder mode.
+#'   Also used as the search root for `file=`.
+#' @param vcf_path Character vector of one or more full paths to `.vcf.gz`
+#'   files to convert. Use this to process a specific set of files outside
+#'   the folder pattern. Mutually exclusive with `file=`. `NULL` (default)
+#'   selects folder mode.
+#' @param file Character vector of basenames (e.g.
+#'   `c("S1.vep.vcf.gz", "S2.vep.vcf.gz")`) resolved against `folder=`.
+#'   Use this to pick specific files from a folder that contains files you
+#'   do NOT want to merge. Mutually exclusive with `vcf_path=`. `NULL`
+#'   (default) selects either `vcf_path=` mode or folder-pattern mode.
 #' @param pattern Regular expression identifying per-sample VCFs in folder mode.
-#'   Default `"_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$"` (matches `_01.vep.vcf.gz`, `_01.snpeff.vcf.gz`, `_01.vcf.gz`, etc.).
+#'   Default `"\\.vcf\\.gz$"` (matches any `.vcf.gz` file). The old default
+#'   `"_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$"` (requires `_NN` suffix) is
+#'   still available by passing it explicitly.
 #' @param write_tsv Logical; if `TRUE`, also write the MAF as a TSV to `out_dir`.
 #'   Default `FALSE`.
 #' @param write_rds Logical; if `TRUE`, also write the MAF as an `.rds` to `out_dir`.
@@ -125,6 +135,17 @@
 #'   pass a custom character vector of classifications to keep. Rows with
 #'   missing/blank `Variant_Classification` are always removed when this filter
 #'   is active.
+#' @param canonical_only Logical; when `TRUE` (default), drops MAF rows whose
+#'   chosen VEP CSQ block has `CANONICAL != "YES"`. read.gvr() already prefers
+#'   `CANONICAL=YES` when ranking CSQ blocks; this filter discards the
+#'   fallback rows emitted when no canonical block exists for a given ALT.
+#'   On a typical exome this removes ~10-15% of rows (S1 baseline: 13.65%);
+#'   wall-time savings are modest (under 10%) because the CSQ string still
+#'   has to be read and parsed to know if a row is canonical. Set to `FALSE`
+#'   to retain all rows (the Phase N+3 behaviour). For SnpEff-annotated
+#'   input, the ANN field has no CANONICAL flag — `canonical_only=TRUE` is
+#'   ignored with a warning, and the result is the same as
+#'   `canonical_only=FALSE`.
 #' @param ncores Integer; number of worker processes for converting MULTIPLE input
 #'   files in parallel via [parallel::mclapply()] (fork-based; Unix/macOS only).
 #'   Default `1L` runs sequentially and is byte-identical to previous behaviour.
@@ -152,8 +173,18 @@
 #' maf <- read.gvr("/path/to/folder", write_tsv = TRUE, write_rds = TRUE,
 #'                 out_dir = "/path/to/results")
 #'
-#' ## Single-file mode
+#' ## Single-file mode: full path
 #' maf <- read.gvr(vcf_path = "/path/to/SAMPLE_01.vep.vcf.gz")
+#'
+#' ## Multi-file mode by full path
+#' maf <- read.gvr(vcf_path = c("/p/S1.vep.vcf.gz", "/p/S2.vep.vcf.gz"))
+#'
+#' ## Pick basenames from a folder (merges these two but ignores other .vcf.gz)
+#' maf <- read.gvr(folder = "/p",
+#'                 file   = c("S1.vep.vcf.gz", "S2.vep.vcf.gz"))
+#'
+#' ## Keep non-canonical CSQ rows too (Phase N+3 behaviour)
+#' maf <- read.gvr("/path/to/folder", canonical_only = FALSE)
 #'
 #' ## DP/GQ genotype filter (ON by default; mirrors
 #' ##   bcftools view -e 'FORMAT/DP<=10 | FORMAT/GQ<=30')
@@ -191,7 +222,8 @@
 #' @export
 read.gvr <- function(folder = ".",
                            vcf_path   = NULL,
-                           pattern    = "_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$",   # v2/v9: _01.vep.vcf.gz, _01.snpeff.vcf.gz, _01.vcf.gz, ...
+                           file       = NULL,   # vN+4: basename(s) inside `folder`; mutex with vcf_path
+                           pattern    = "\\.vcf\\.gz$",   # vN+4: any .vcf.gz; old default was "_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$"
                            write_tsv  = FALSE,
                            write_rds  = FALSE,
                            write_xlsx = FALSE,   # v6: also write the MAF as .xlsx (one "MAF" sheet)
@@ -212,6 +244,7 @@ read.gvr <- function(folder = ".",
                            genes             = NULL,   # v4: keep only these Hugo_Symbols
                            panel             = NULL,   # vN: curated disease gene panel(s); union'd with `genes`
                            vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
+                           canonical_only    = TRUE,   # vN+4: drop rows whose chosen CSQ block has CANONICAL != "YES"
                            ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
                            verbose    = TRUE) {
   # ===========================================================================
@@ -451,23 +484,51 @@ read.gvr <- function(folder = ".",
 
   # ==========================================================================
   # 0. Locate the input VCF(s)
-  #    - folder mode  : process EVERY file matching `pattern` (multi-file merge).
-  #    - vcf_path mode : process exactly that one file (backward compatible).
+  #    Three input modes, precedence vcf_path > file > folder:
+  #      - vcf_path : character vector of full paths to process (multi-file OK).
+  #      - file     : character vector of basenames resolved against `folder`.
+  #      - folder   : list.files(folder, pattern) -- the default fan-out mode.
+  #    `vcf_path` and `file` are mutually exclusive.
   # ==========================================================================
-  if (is.null(vcf_path)) {
+  if (!is.null(vcf_path) && !is.null(file))
+    stop("read.gvr: pass either `vcf_path=` (full paths) or `file=` ",
+         "(basenames inside `folder=`), not both.", call. = FALSE)
+
+  if (!is.null(vcf_path)) {
+    vcf_path <- as.character(vcf_path)
+    if (!length(vcf_path) || any(!nzchar(vcf_path)))
+      stop("read.gvr: `vcf_path=` must be a non-empty character vector.",
+           call. = FALSE)
+    miss <- vcf_path[!file.exists(vcf_path)]
+    if (length(miss))
+      stop(sprintf("read.gvr: vcf_path file(s) do not exist:\n%s",
+                   paste0("  - ", miss, collapse = "\n")), call. = FALSE)
+    vcf_paths <- vcf_path
+  } else if (!is.null(file)) {
+    file <- as.character(file)
+    if (!length(file) || any(!nzchar(file)))
+      stop("read.gvr: `file=` must be a non-empty character vector of basenames.",
+           call. = FALSE)
     if (!dir.exists(folder))
-      stop(sprintf("Folder does not exist: %s", folder))
+      stop(sprintf("Folder does not exist: %s", folder), call. = FALSE)
+    candidates <- file.path(folder, file)
+    miss <- file[!file.exists(candidates)]
+    if (length(miss))
+      stop(sprintf("read.gvr: file(s) not found under folder='%s':\n%s",
+                   folder, paste0("  - ", miss, collapse = "\n")),
+           call. = FALSE)
+    vcf_paths <- candidates
+  } else {
+    if (!dir.exists(folder))
+      stop(sprintf("Folder does not exist: %s", folder), call. = FALSE)
     hits <- list.files(folder, pattern = pattern, full.names = TRUE,
                        ignore.case = FALSE)
     if (length(hits) == 0L)
-      stop(sprintf("No file matching '%s' found in: %s", pattern, folder))
+      stop(sprintf("No file matching '%s' found in: %s", pattern, folder),
+           call. = FALSE)
     # deterministic order: by filename ascending so _01 precedes _02 precedes _03 ...
     hits <- hits[order(basename(hits))]
     vcf_paths <- hits
-  } else {
-    if (!file.exists(vcf_path))
-      stop(sprintf("vcf_path does not exist: %s", vcf_path))
-    vcf_paths <- vcf_path
   }
 
   if (verbose) {
@@ -521,6 +582,7 @@ read.gvr <- function(folder = ".",
     return(read.gvr.snpeff(
       folder            = folder,
       vcf_path          = vcf_path,
+      file              = file,                  # vN+4
       pattern           = pattern,
       write_tsv         = write_tsv,
       write_rds         = write_rds,
@@ -545,6 +607,7 @@ read.gvr <- function(folder = ".",
                                   # re-resolves (idempotent: same registry, same
                                   # union math, returns the same effective_genes).
       vc_nonSyn         = vc_nonSyn,
+      canonical_only    = canonical_only,        # vN+4
       ncores            = ncores,
       verbose           = verbose
     ))
@@ -1085,6 +1148,7 @@ read.gvr <- function(folder = ".",
 
     out <- vector("list", nrow_dt); oi <- 0L
     n_dropped <- n_dropped_dpgq + n_dropped_gene_rough + n_dropped_vc_rough
+    n_dropped_canonical <- 0L          # vN+4: rows skipped by canonical_only=TRUE
     for (r in seq_len(nrow_dt)) {
       chrom <- CHROM_v[r]; pos <- POS_v[r]; vid <- ID_v[r]
       ref <- REF_v[r]; altf <- ALT_v[r]; qual <- QUAL_v[r]; filt <- FILTER_v[r]
@@ -1167,6 +1231,18 @@ read.gvr <- function(folder = ".",
           chosen <- rep(NA_character_, n_csq)
         }
 
+        # vN+4: canonical_only filter -- drop rows whose chosen block is not canonical.
+        # Skips the per-ALT row construction entirely (saves Hugo lookup,
+        # HGVSp shortening, AD parsing, list() build). Also skips ALTs with no
+        # CSQ block at all (chosen all-NA), which is desired: no CANONICAL info => drop.
+        if (canonical_only) {
+          canon_chosen <- chosen[P_CANONICAL]
+          if (is.na(canon_chosen) || canon_chosen != "YES") {
+            n_dropped_canonical <- n_dropped_canonical + 1L
+            next
+          }
+        }
+
         cons_str <- chosen[P_Cons]; top_term <- most_severe_term(cons_str)
         var_class <- if (is.na(top_term)) "Targeted_Region" else vep_to_maf_class(top_term, vt)
         symbol <- chosen[P_SYMBOL]
@@ -1233,6 +1309,7 @@ read.gvr <- function(folder = ".",
     }
     res <- data.table::rbindlist(out[seq_len(oi)], use.names = TRUE, fill = TRUE)
     data.table::setattr(res, "n_dropped", n_dropped)   # v4: carry filter drop count to caller
+    data.table::setattr(res, "n_dropped_canonical", n_dropped_canonical)  # vN+4
     res
   }
 
@@ -1256,7 +1333,9 @@ read.gvr <- function(folder = ".",
             add = TRUE)
     repeat { l <- readLines(con, 1L); if (length(l)==0L || startsWith(l, "#CHROM")) break }
 
-    chunks <- list(); ci2 <- 0L; total_in <- 0L; n_drop_file <- 0L; t0 <- Sys.time()
+    chunks <- list(); ci2 <- 0L; total_in <- 0L; n_drop_file <- 0L
+    n_drop_canon_file <- 0L  # vN+4
+    t0 <- Sys.time()
     file_done <- 0L   # per-file running record counter (numerator of progress line)
     repeat {
       lines <- readLines(con, chunk_size)
@@ -1269,6 +1348,8 @@ read.gvr <- function(folder = ".",
       ck <- convert_chunk(dtc, csq_fields, sample_name)
       nd <- attr(ck, "n_dropped"); if (is.null(nd)) nd <- 0L
       n_drop_file <- n_drop_file + nd
+      ndc <- attr(ck, "n_dropped_canonical"); if (is.null(ndc)) ndc <- 0L  # vN+4
+      n_drop_canon_file <- n_drop_canon_file + ndc
       chunks[[ci2]] <- ck
       total_in <- total_in + nrow(dtc)
       file_done <- file_done + nrow(dtc)        # per-file running count (numerator)
@@ -1308,9 +1389,20 @@ read.gvr <- function(folder = ".",
                         format(n_drop_file, big.mark = ","),
                         if (total_in > 0L) 100 * n_drop_file / total_in else 0))
       }
+      if (canonical_only && n_drop_canon_file > 0L) {
+        # vN+4: emitted rows so far = nrow(maf_one); dropped + emitted is the
+        # pre-filter ALT-row count we would have emitted at this file.
+        pre <- nrow(maf_one) + n_drop_canon_file
+        message(sprintf(
+          "    canonical_only: dropped %s of %s ALT-row(s) (%.1f%% non-canonical).",
+          format(n_drop_canon_file, big.mark = ","),
+          format(pre,              big.mark = ","),
+          if (pre > 0L) 100 * n_drop_canon_file / pre else 0))
+      }
     }
-    attr(maf_one, "sample_name") <- sample_name
-    attr(maf_one, "n_dropped")   <- n_drop_file
+    attr(maf_one, "sample_name")          <- sample_name
+    attr(maf_one, "n_dropped")            <- n_drop_file
+    attr(maf_one, "n_dropped_canonical")  <- n_drop_canon_file    # vN+4
     maf_one
   }
 
@@ -1402,6 +1494,21 @@ read.gvr <- function(folder = ".",
   if (verbose) message(sprintf("COMBINED: %d file(s) | %d MAF rows (%d cols) in %.0fs",
                                length(vcf_paths), nrow(maf), ncol(maf),
                                as.numeric(difftime(Sys.time(), t_all, units="secs"))))
+  # vN+4: aggregated canonical_only summary across all files.
+  if (canonical_only) {
+    n_can_drop_total <- sum(vapply(per_file, function(x) {
+      v <- attr(x, "n_dropped_canonical"); if (is.null(v)) 0L else as.integer(v)
+    }, integer(1L)))
+    if (verbose && n_can_drop_total > 0L) {
+      pre_total <- nrow(maf) + n_can_drop_total
+      message(sprintf(
+        "canonical_only: dropped %s of %s ALT-row(s) total (%.2f%% non-canonical). Pass canonical_only=FALSE to disable.",
+        format(n_can_drop_total, big.mark = ","),
+        format(pre_total,        big.mark = ","),
+        if (pre_total > 0L) 100 * n_can_drop_total / pre_total else 0))
+    }
+    data.table::setattr(maf, "n_dropped_canonical", n_can_drop_total)
+  }
 
   # ==========================================================================
   # 3. POST-PROCESSING (v2)
@@ -1710,7 +1817,10 @@ read.gvr <- function(folder = ".",
   # 4. Optional file outputs
   # ==========================================================================
   if (write_tsv || write_rds || write_xlsx) {
-    if (is.null(out_dir)) out_dir <- if (is.null(vcf_path)) folder else dirname(vcf_path)
+    # vN+4: handle vector vcf_path (use first), file= mode (folder), and folder mode (folder)
+    if (is.null(out_dir)) {
+      out_dir <- if (!is.null(vcf_path)) dirname(vcf_path[1L]) else folder
+    }
     if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
     if (is.null(out_prefix)) {
       if (length(vcf_paths) > 1L) {

@@ -7,7 +7,8 @@
 read.gvr(
   folder = ".",
   vcf_path = NULL,
-  pattern = "_\\\\d+(\\\\.(vep|snp[eE]ff))?\\\\.vcf\\\\.gz$",
+  file = NULL,
+  pattern = "\\\\.vcf\\\\.gz$",
   write_tsv = FALSE,
   write_rds = FALSE,
   write_xlsx = FALSE,
@@ -29,19 +30,31 @@ read.gvr(
   genes = NULL,
   panel = NULL,
   vc_nonSyn = FALSE,
+  canonical_only = TRUE,
   ncores = 1L,
   verbose = TRUE
 )
 }
 \arguments{
 \item{folder}{Directory to scan in folder mode; every file matching \code{pattern} is
-converted and row-bound. Default \code{"."}. Ignored when \code{vcf_path} is supplied.}
+converted and row-bound. Default \code{"."}. Ignored when \code{vcf_path} is supplied.
+Also used as the search root for \verb{file=}.}
 
-\item{vcf_path}{Path to a single \code{.vep.vcf.gz} to convert (single-file mode).
-\code{NULL} (default) selects folder mode.}
+\item{vcf_path}{Character vector of one or more full paths to \code{.vcf.gz}
+files to convert. Use this to process a specific set of files outside
+the folder pattern. Mutually exclusive with \verb{file=}. \code{NULL} (default)
+selects folder mode.}
+
+\item{file}{Character vector of basenames (e.g.
+\code{c("S1.vep.vcf.gz", "S2.vep.vcf.gz")}) resolved against \verb{folder=}.
+Use this to pick specific files from a folder that contains files you
+do NOT want to merge. Mutually exclusive with \verb{vcf_path=}. \code{NULL}
+(default) selects either \verb{vcf_path=} mode or folder-pattern mode.}
 
 \item{pattern}{Regular expression identifying per-sample VCFs in folder mode.
-Default \code{"_\\\\d+(\\\\.(vep|snp[eE]ff))?\\\\.vcf\\\\.gz$"} (matches \verb{_01.vep.vcf.gz}, \verb{_01.snpeff.vcf.gz}, \verb{_01.vcf.gz}, etc.).}
+Default \code{"\\\\.vcf\\\\.gz$"} (matches any \code{.vcf.gz} file). The old default
+\code{"_\\\\d+(\\\\.(vep|snp[eE]ff))?\\\\.vcf\\\\.gz$"} (requires \verb{_NN} suffix) is
+still available by passing it explicitly.}
 
 \item{write_tsv}{Logical; if \code{TRUE}, also write the MAF as a TSV to \code{out_dir}.
 Default \code{FALSE}.}
@@ -138,6 +151,18 @@ pass a custom character vector of classifications to keep. Rows with
 missing/blank \code{Variant_Classification} are always removed when this filter
 is active.}
 
+\item{canonical_only}{Logical; when \code{TRUE} (default), drops MAF rows whose
+chosen VEP CSQ block has \code{CANONICAL != "YES"}. read.gvr() already prefers
+\code{CANONICAL=YES} when ranking CSQ blocks; this filter discards the
+fallback rows emitted when no canonical block exists for a given ALT.
+On a typical exome this removes ~10-15\% of rows (S1 baseline: 13.65\%);
+wall-time savings are modest (under 10\%) because the CSQ string still
+has to be read and parsed to know if a row is canonical. Set to \code{FALSE}
+to retain all rows (the Phase N+3 behaviour). For SnpEff-annotated
+input, the ANN field has no CANONICAL flag — \code{canonical_only=TRUE} is
+ignored with a warning, and the result is the same as
+\code{canonical_only=FALSE}.}
+
 \item{ncores}{Integer; number of worker processes for converting MULTIPLE input
 files in parallel via \code{\link[parallel:mcdummies]{parallel::mclapply()}} (fork-based; Unix/macOS only).
 Default \code{1L} runs sequentially and is byte-identical to previous behaviour.
@@ -209,8 +234,18 @@ maf <- read.gvr("/path/to/folder")
 maf <- read.gvr("/path/to/folder", write_tsv = TRUE, write_rds = TRUE,
                 out_dir = "/path/to/results")
 
-## Single-file mode
+## Single-file mode: full path
 maf <- read.gvr(vcf_path = "/path/to/SAMPLE_01.vep.vcf.gz")
+
+## Multi-file mode by full path
+maf <- read.gvr(vcf_path = c("/p/S1.vep.vcf.gz", "/p/S2.vep.vcf.gz"))
+
+## Pick basenames from a folder (merges these two but ignores other .vcf.gz)
+maf <- read.gvr(folder = "/p",
+                file   = c("S1.vep.vcf.gz", "S2.vep.vcf.gz"))
+
+## Keep non-canonical CSQ rows too (Phase N+3 behaviour)
+maf <- read.gvr("/path/to/folder", canonical_only = FALSE)
 
 ## DP/GQ genotype filter (ON by default; mirrors
 ##   bcftools view -e 'FORMAT/DP<=10 | FORMAT/GQ<=30')

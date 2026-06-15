@@ -7,7 +7,8 @@
 read.gvr.snpeff(
   folder = ".",
   vcf_path = NULL,
-  pattern = "_\\\\d+(\\\\.(vep|snp[eE]ff))?\\\\.vcf\\\\.gz$",
+  file = NULL,
+  pattern = "\\\\.vcf\\\\.gz$",
   write_tsv = FALSE,
   write_rds = FALSE,
   write_xlsx = FALSE,
@@ -29,20 +30,30 @@ read.gvr.snpeff(
   genes = NULL,
   panel = NULL,
   vc_nonSyn = FALSE,
+  canonical_only = TRUE,
   ncores = 1L,
   verbose = TRUE
 )
 }
 \arguments{
 \item{folder}{Directory to scan in folder mode; every file matching \code{pattern} is
-converted and row-bound. Default \code{"."}. Ignored when \code{vcf_path} is supplied.}
+converted and row-bound. Default \code{"."}. Ignored when \code{vcf_path} is supplied.
+Also used as the search root for \verb{file=}.}
 
-\item{vcf_path}{Path to a single \code{.snpeff.vcf.gz} to convert (single-file mode).
-\code{NULL} (default) selects folder mode.}
+\item{vcf_path}{Character vector of one or more full paths to \code{.vcf.gz}
+files to convert. Mutually exclusive with \verb{file=}. \code{NULL} (default)
+selects folder mode.}
+
+\item{file}{Character vector of basenames (e.g.
+\code{c("S1.snpeff.vcf.gz", "S2.snpeff.vcf.gz")}) resolved against \verb{folder=}.
+Use this to pick specific files from a folder that contains files you
+do NOT want to merge. Mutually exclusive with \verb{vcf_path=}. \code{NULL}
+(default) selects either \verb{vcf_path=} mode or folder-pattern mode.}
 
 \item{pattern}{Regular expression identifying per-sample VCFs in folder mode.
-Default \code{"_\\\\d+(\\\\.(vep|snp[eE]ff))?\\\\.vcf\\\\.gz$"} (matches
-\verb{_01.vep.vcf.gz}, \verb{_01.snpeff.vcf.gz}, \verb{_01.vcf.gz}, etc.).}
+Default \code{"\\\\.vcf\\\\.gz$"} (matches any \code{.vcf.gz} file). The old default
+\code{"_\\\\d+(\\\\.(vep|snp[eE]ff))?\\\\.vcf\\\\.gz$"} is still available by passing
+it explicitly.}
 
 \item{write_tsv}{Logical; if \code{TRUE}, also write the MAF as a TSV to \code{out_dir}.
 Default \code{FALSE}.}
@@ -138,6 +149,12 @@ filtering; behaviour is then byte-identical to omitting the argument. Use
 pass a custom character vector of classifications to keep. Rows with
 missing/blank \code{Variant_Classification} are always removed when this filter
 is active.}
+
+\item{canonical_only}{Logical; accepted for API symmetry with \code{\link[=read.gvr]{read.gvr()}}.
+SnpEff's ANN field has no \code{CANONICAL} flag, so this filter cannot be
+applied. When \code{TRUE} (the default), \code{read.gvr.snpeff()} emits a one-time
+warning and returns the unfiltered MAF (same result as
+\code{canonical_only = FALSE}).}
 
 \item{ncores}{Integer; number of worker processes for converting MULTIPLE input
 files in parallel via \code{\link[parallel:mcdummies]{parallel::mclapply()}} (fork-based; Unix/macOS only).
@@ -242,8 +259,16 @@ maf <- read.gvr.snpeff("/path/to/folder")
 ## Or use read.gvr() to auto-route (SnpEff inputs are dispatched here):
 maf <- read.gvr("/path/to/folder")
 
-## Single-file mode
+## Single-file mode: full path
 maf <- read.gvr.snpeff(vcf_path = "/path/to/SAMPLE_01.snpeff.vcf.gz")
+
+## Multi-file mode by full path
+maf <- read.gvr.snpeff(
+  vcf_path = c("/p/S1.snpeff.vcf.gz", "/p/S2.snpeff.vcf.gz"))
+
+## Pick basenames from a folder (merges these two but ignores other .vcf.gz)
+maf <- read.gvr.snpeff(folder = "/p",
+                       file   = c("S1.snpeff.vcf.gz", "S2.snpeff.vcf.gz"))
 
 ## Disable the DP/GQ genotype filter entirely
 maf <- read.gvr.snpeff("/path/to/folder", min_DP = NULL, min_GQ = NULL)
