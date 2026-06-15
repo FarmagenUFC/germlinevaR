@@ -80,6 +80,7 @@
 #'   fires when an explicit `ncbi_build` value (canonical or alias) disagrees
 #'   with what auto-detection found at high confidence. Off-table user labels
 #'   (e.g. internal lab codes) pass through silently.
+#'   See also: [enrich.gvr.clinsig()] for opt-in dbNSFP annotation (AlphaMissense / REVEL).
 #' @param add_genotype Logical; if `TRUE` (default) add the `Genotype` column.
 #' @param strip_hgvs_prefix Logical; if `TRUE` (default) strip the Ensembl feature
 #'   prefix from `HGVSc`/`HGVSp`.

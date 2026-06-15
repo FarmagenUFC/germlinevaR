@@ -78,7 +78,8 @@ and is build-stable. The aliases \code{"hg19"} and \code{"hg38"} are mapped to
 \code{"GRCh37"} / \code{"GRCh38"} for the mismatch check; a diagnostic warning
 fires when an explicit \code{ncbi_build} value (canonical or alias) disagrees
 with what auto-detection found at high confidence. Off-table user labels
-(e.g. internal lab codes) pass through silently.}
+(e.g. internal lab codes) pass through silently.
+See also: \code{\link[=enrich.gvr.clinsig]{enrich.gvr.clinsig()}} for opt-in dbNSFP annotation (AlphaMissense / REVEL).}
 
 \item{add_genotype}{Logical; if \code{TRUE} (default) add the \code{Genotype} column.}
 
