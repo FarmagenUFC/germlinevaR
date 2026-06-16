@@ -512,6 +512,87 @@ gvr_summary <- function(maf,
     specs
   }
 
+
+  # ============================================================================
+  # File-local writer helpers (vN+7.2): portable across S3-FUSE / Linux / macOS /
+  # Windows. The S3-staging path (write to tempdir(), then shell-cp) is used ONLY
+  # when the destination directory is on /mnt/ (sandbox S3 mount). On all other
+  # filesystems we write directly to the destination, since the FUSE limitation
+  # that motivated staging does not apply and `cp` is not available on Windows.
+  # ============================================================================
+  .gvr_use_staging <- function(final_path) {
+    # Override hook for tests/Windows simulation.
+    ov <- Sys.getenv("GVR_FORCE_DIRECT_WRITE", unset = "")
+    if (nzchar(ov)) return(FALSE)
+    dirn <- tryCatch(normalizePath(dirname(final_path), mustWork = FALSE),
+                     error = function(e) dirname(final_path))
+    isTRUE(startsWith(dirn, "/mnt/"))
+  }
+  .gvr_finalize_to_dest <- function(tmp_path, final_path, label = "file",
+                                    recursive = FALSE) {
+    # Caller already wrote to tmp_path (when staged) or to final_path (when direct).
+    # When tmp_path == final_path (direct mode), just verify and return.
+    if (identical(tmp_path, final_path)) {
+      if (!file.exists(final_path) || (!recursive && file.info(final_path)$size == 0))
+        warning(sprintf("gvr_summary: %s missing or zero-byte at '%s'.", label, final_path))
+      return(final_path)
+    }
+    # Staged path: try shell cp first (preferred on S3 FUSE), then R fallback.
+    if (recursive) {
+      # Directory copy (used by HTML sidecar _files/). Refresh any stale assets
+      # from a previous run BEFORE either cp -r or file.copy(), otherwise cp -r
+      # would nest the new tree inside the existing one.
+      if (dir.exists(final_path)) unlink(final_path, recursive = TRUE)
+      ok <- FALSE
+      if (.Platform$OS.type == "unix") {
+        rc <- suppressWarnings(system2("cp", c("-r", shQuote(tmp_path), shQuote(final_path))))
+        ok <- isTRUE(rc == 0L) && dir.exists(final_path)
+      }
+      if (!isTRUE(ok)) {
+        ok <- tryCatch({
+          # file.copy(src_dir, dest_parent, recursive=TRUE) creates
+          # <dest_parent>/<basename(src_dir)>; require name match.
+          dest_parent <- dirname(final_path)
+          if (!dir.exists(dest_parent)) dir.create(dest_parent, recursive = TRUE, showWarnings = FALSE)
+          if (basename(tmp_path) == basename(final_path)) {
+            file.copy(tmp_path, dest_parent, recursive = TRUE, overwrite = TRUE) &&
+              dir.exists(final_path)
+          } else {
+            # Name mismatch: stage under dest_parent then rename atomically.
+            staged <- file.path(dest_parent, basename(tmp_path))
+            if (file.exists(staged) || dir.exists(staged)) unlink(staged, recursive = TRUE)
+            file.copy(tmp_path, dest_parent, recursive = TRUE, overwrite = TRUE)
+            file.rename(staged, final_path) && dir.exists(final_path)
+          }
+        }, error = function(e) FALSE)
+      }
+      if (!isTRUE(ok)) {
+        warning(sprintf("gvr_summary: copy of %s to '%s' may have failed; left at '%s'.",
+                        label, final_path, tmp_path))
+        return(tmp_path)
+      }
+      return(final_path)
+    }
+    # File copy (XLSX/PDF/HTML main file).
+    ok <- FALSE
+    if (.Platform$OS.type == "unix") {
+      rc <- suppressWarnings(system2("cp", c("-f", shQuote(tmp_path), shQuote(final_path))))
+      ok <- isTRUE(rc == 0L) && file.exists(final_path) && file.info(final_path)$size > 0
+    }
+    if (!isTRUE(ok)) {
+      ok <- tryCatch({
+        file.copy(tmp_path, final_path, overwrite = TRUE) &&
+          file.exists(final_path) && file.info(final_path)$size > 0
+      }, error = function(e) FALSE)
+    }
+    if (!isTRUE(ok)) {
+      warning(sprintf("gvr_summary: copy of %s to '%s' may have failed; %s left at '%s'.",
+                      label, final_path, label, tmp_path))
+      return(tmp_path)
+    }
+    final_path
+  }
+
   # ============================================================================
   # Optional Excel export  ->  <out_dir>/gvr_summary/<file_prefix>.xlsx
   # Fixed filename (no timestamp): re-running overwrites the previous workbook.
@@ -520,6 +601,7 @@ gvr_summary <- function(maf,
     if (!requireNamespace("openxlsx", quietly = TRUE)) {
       warning("gvr_summary: 'openxlsx' not installed; skipping Excel export.")
     } else {
+      tryCatch({
       xlsx_name  <- sprintf("%s.xlsx", file_prefix)
       final_xlsx <- file.path(out_subdir, xlsx_name)
       if (file.exists(final_xlsx) && isTRUE(verbose))
@@ -533,24 +615,43 @@ gvr_summary <- function(maf,
       hs <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
       for (nm in names(sections)) {
         if (nm == "top_genes_per_sample") {
-          # Per-sample top genes: one sheet per sample
+          # Per-sample top genes: one sheet per sample (per-sheet tryCatch; vN+7.2)
           for (sm in names(sections$top_genes_per_sample)) {
-            sh_nm <- sprintf("TopGenes_%s", sm)
-            # Excel sheet names max 31 chars; truncate sample name if needed
-            if (nchar(sh_nm) > 31L) sh_nm <- paste0(substr(sh_nm, 1L, 28L), "...") 
-            openxlsx::addWorksheet(wb, sh_nm)
-            openxlsx::writeData(wb, sh_nm, sections$top_genes_per_sample[[sm]], headerStyle = hs)
-            openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
-            openxlsx::setColWidths(wb, sh_nm, cols = seq_len(ncol(sections$top_genes_per_sample[[sm]])),
-                                   widths = "auto")
+            tryCatch({
+              sh_nm <- sprintf("TopGenes_%s", sm)
+              # Excel sheet names max 31 chars; truncate sample name if needed
+              if (nchar(sh_nm) > 31L) sh_nm <- paste0(substr(sh_nm, 1L, 28L), "...")
+              openxlsx::addWorksheet(wb, sh_nm)
+              openxlsx::writeData(wb, sh_nm, sections$top_genes_per_sample[[sm]], headerStyle = hs)
+              openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
+              openxlsx::setColWidths(wb, sh_nm, cols = seq_len(ncol(sections$top_genes_per_sample[[sm]])),
+                                     widths = "auto")
+            }, error = function(e) {
+              warning(sprintf("gvr_summary: skipping sheet TopGenes_%s: %s",
+                              sm, conditionMessage(e)))
+              # Remove orphaned worksheet if addWorksheet succeeded before writeData
+              tryCatch(openxlsx::removeWorksheet(wb, sh_nm),
+                       error = function(e2) invisible(NULL))
+            })
           }
           next
         }
-        sh <- if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm
-        openxlsx::addWorksheet(wb, sh)
-        openxlsx::writeData(wb, sh, sections[[nm]], headerStyle = hs)
-        openxlsx::freezePane(wb, sh, firstRow = TRUE)
-        openxlsx::setColWidths(wb, sh, cols = seq_len(ncol(sections[[nm]])), widths = "auto")
+        # Base section sheets (per-sheet tryCatch; vN+7.2)
+        tryCatch({
+          sh <- if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm
+          openxlsx::addWorksheet(wb, sh)
+          openxlsx::writeData(wb, sh, sections[[nm]], headerStyle = hs)
+          openxlsx::freezePane(wb, sh, firstRow = TRUE)
+          openxlsx::setColWidths(wb, sh, cols = seq_len(ncol(sections[[nm]])), widths = "auto")
+        }, error = function(e) {
+          warning(sprintf("gvr_summary: skipping sheet %s: %s",
+                          if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm,
+                          conditionMessage(e)))
+          # Remove orphaned worksheet if addWorksheet succeeded before writeData
+          tryCatch(openxlsx::removeWorksheet(wb,
+                     if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm),
+                   error = function(e2) invisible(NULL))
+        })
       }
       # ==============================================================
       # vN+7: per-clickable XLSX sheets -- one sheet per token of each
@@ -658,27 +759,38 @@ gvr_summary <- function(maf,
           if (nrow(sub) > .XLSX_ROW_CAP) sub <- sub[seq_len(.XLSX_ROW_CAP)]
           out_df <- as.data.frame(sub[, .gvr_xl_cols, with = FALSE], stringsAsFactors = FALSE)
           sh_nm <- .gvr_safe_sheet(sp$pfx, tok, used_names)
-          used_names <- c(used_names, sh_nm)
-          openxlsx::addWorksheet(wb, sh_nm)
-          openxlsx::writeData(wb, sh_nm, out_df, headerStyle = hs)
-          openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
-          openxlsx::setColWidths(wb, sh_nm, cols = seq_len(ncol(out_df)), widths = "auto")
+          # Per-sheet tryCatch (vN+7.2): bad sheet is skipped, others persist
+          ok_sheet <- tryCatch({
+            openxlsx::addWorksheet(wb, sh_nm)
+            openxlsx::writeData(wb, sh_nm, out_df, headerStyle = hs)
+            openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
+            openxlsx::setColWidths(wb, sh_nm, cols = seq_len(ncol(out_df)), widths = "auto")
+            TRUE
+          }, error = function(e) {
+            warning(sprintf("gvr_summary: skipping sheet %s: %s",
+                            sh_nm, conditionMessage(e)))
+            # Remove orphaned worksheet if addWorksheet succeeded before writeData
+            tryCatch(openxlsx::removeWorksheet(wb, sh_nm),
+                     error = function(e2) invisible(NULL))
+            FALSE
+          })
+          if (isTRUE(ok_sheet)) used_names <- c(used_names, sh_nm)
         }
       }
-      # Write to a local temp file first, then shell-cp to out_subdir (FUSE-safe:
-      # openxlsx uses zip random-access writes that can fail / 0-byte on S3-backed mounts).
-      tmp_xlsx <- file.path(tempdir(), xlsx_name)
-      wrote_ok <- tryCatch({ openxlsx::saveWorkbook(wb, tmp_xlsx, overwrite = TRUE); TRUE },
-                           error = function(e) { warning(sprintf("gvr_summary: Excel write failed: %s", conditionMessage(e))); FALSE })
+      # vN+7.2: portable write. Stage in tempdir() only when destination is on
+      # /mnt/ (S3 FUSE); write directly otherwise (Windows/macOS/local Linux).
+      use_stage <- .gvr_use_staging(final_xlsx)
+      write_path <- if (use_stage) file.path(tempdir(), xlsx_name) else final_xlsx
+      wrote_ok <- tryCatch({ openxlsx::saveWorkbook(wb, write_path, overwrite = TRUE); TRUE },
+                           error = function(e) { warning(sprintf("gvr_summary: Excel write failed: %s",
+                                                                  conditionMessage(e))); FALSE })
       if (wrote_ok) {
-        cp <- system2("cp", c(shQuote(tmp_xlsx), shQuote(final_xlsx)))
-        if (!file.exists(final_xlsx) || file.info(final_xlsx)$size == 0) {
-          warning(sprintf("gvr_summary: copy to '%s' may have failed; Excel left at '%s'.",
-                          final_xlsx, tmp_xlsx))
-          final_xlsx <- tmp_xlsx
-        }
+        final_xlsx <- .gvr_finalize_to_dest(write_path, final_xlsx, "Excel")
         if (isTRUE(verbose)) message(sprintf("  Excel written: %s", final_xlsx))
       }
+      }, error = function(e) {
+        warning(sprintf("gvr_summary: Excel export failed: %s", conditionMessage(e)))
+      })
     }
   }
 
@@ -1015,7 +1127,10 @@ gvr_summary <- function(maf,
         }
 
         # ============================ DRIVE THE DEVICE ====================================
-        tmp_pdf <- file.path(tempdir(), basename(final_pdf))
+        # vN+7.2: portable write. Stage under tempdir() only when destination is on
+        # /mnt/ (S3 FUSE); cairo_pdf can write directly to local FS / Windows path.
+        use_stage <- .gvr_use_staging(final_pdf)
+        tmp_pdf <- if (use_stage) file.path(tempdir(), basename(final_pdf)) else final_pdf
         grDevices::cairo_pdf(tmp_pdf, width = W, height = H, onefile = TRUE)
         cairo_dev <- grDevices::dev.cur()
         on.exit(if (cairo_dev %in% grDevices::dev.list()) grDevices::dev.off(cairo_dev), add = TRUE)
@@ -1026,7 +1141,7 @@ gvr_summary <- function(maf,
         on.exit()
         if (!file.exists(tmp_pdf) || file.info(tmp_pdf)$size == 0)
           stop("PDF device produced no/zero-byte file.")
-        system2("cp", c("-f", shQuote(tmp_pdf), shQuote(final_pdf)))
+        final_pdf <- .gvr_finalize_to_dest(tmp_pdf, final_pdf, "PDF")
         invisible(final_pdf)
       }
 
@@ -1807,15 +1922,20 @@ gvr_summary <- function(maf,
 
       ok_html <- tryCatch({
         rendered <- .gvr_summary_html(sections, samples, meta, final_html, file_prefix)
-        # FUSE-safe: copy the finished .html (and, in sidecar mode, its _files/ folder)
-        # from tempdir() to out_subdir via shell cp (R file.copy() can 0-byte on S3).
-        system2("cp", c("-f", shQuote(rendered), shQuote(final_html)))
+        # vN+7.2: Portable copy out of tempdir() to final_html (and, in sidecar
+        # mode, the _files/ folder). The renderer's internal work_dir is always
+        # tempdir() because pandoc + htmlwidgets need real-FS random access, so
+        # the copy here always runs (.gvr_finalize_to_dest handles direct
+        # tempdir() == final_path case if both happen to coincide, which they do
+        # not in practice).
+        copied_html <- .gvr_finalize_to_dest(rendered, final_html, "HTML")
         if (isTRUE(attr(rendered, "sidecar"))) {
           # refresh any stale assets from a previous run, then copy the folder
-          if (dir.exists(files_dest)) unlink(files_dest, recursive = TRUE)
-          system2("cp", c("-r", shQuote(attr(rendered, "files_dir")), shQuote(files_dest)))
+          files_src <- attr(rendered, "files_dir")
+          copied_dir <- .gvr_finalize_to_dest(files_src, files_dest, "HTML assets",
+                                              recursive = TRUE)
           if (isTRUE(verbose))
-            message(sprintf("  HTML report is NOT self-contained; assets in: %s", files_dest))
+            message(sprintf("  HTML report is NOT self-contained; assets in: %s", copied_dir))
         }
         file.exists(final_html) && file.info(final_html)$size > 0
       }, error = function(e) {
