@@ -321,9 +321,11 @@ gvr_summary <- function(maf,
   # expand non-missing CLIN_SIG into (token, sample) pairs
   idx_nm <- which(!miss)
   if (length(idx_nm) > 0) {
-    toks_list <- strsplit(cs[idx_nm], "[&/]")
+    # dedup tokens per row so multi-token CLIN_SIG values
+    # (e.g. "pathogenic&pathogenic/likely_pathogenic") count each token once per variant
+    toks_list <- lapply(strsplit(cs[idx_nm], "[&/]"), function(x) unique(trimws(x)))
     ntok <- lengths(toks_list)
-    tok_vec <- trimws(unlist(toks_list, use.names = FALSE))
+    tok_vec <- unlist(toks_list, use.names = FALSE)
     samp_vec <- rep(dt$.__sample__[idx_nm], ntok)
     # drop any empty tokens produced by stray delimiters
     keep_tok <- tok_vec != ""
