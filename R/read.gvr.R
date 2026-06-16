@@ -146,6 +146,24 @@
 #'   input, the ANN field has no CANONICAL flag — `canonical_only=TRUE` is
 #'   ignored with a warning, and the result is the same as
 #'   `canonical_only=FALSE`.
+#' @param enrich_clinsig Controls automatic CLIN_SIG enrichment via
+#'   [enrich.gvr.clinsig()] (added in vN+5). Accepts:
+#'   \itemize{
+#'     \item `FALSE` -- no enrichment; the returned MAF has no CLIN_SIG_*
+#'       columns added.
+#'     \item `TRUE` -- same as `"missense_splice"`.
+#'     \item `"missense_splice"` (default) -- query MyVariant.info / dbNSFP
+#'       only for missense and splice-region variants.
+#'     \item `"all"` -- query every variant in the MAF (slower; may pick up
+#'       a small number of additional non-missense/splice hits).
+#'     \item `"has_clinsig"` -- query only variants that already have a
+#'       non-empty VEP CLIN_SIG field.
+#'     \item `"panel"` -- query only variants whose gene is in `panel`.
+#'   }
+#'   Failure handling is fail-soft: any error from `enrich.gvr.clinsig()` is
+#'   caught, a warning is emitted, and the MAF is returned without
+#'   `CLIN_SIG_AlphaMissense` / `CLIN_SIG_REVEL` columns. Set `FALSE` to fully
+#'   reproduce the Phase N+4 behaviour.
 #' @param ncores Integer; number of worker processes for converting MULTIPLE input
 #'   files in parallel via [parallel::mclapply()] (fork-based; Unix/macOS only).
 #'   Default `1L` runs sequentially and is byte-identical to previous behaviour.
@@ -245,6 +263,7 @@ read.gvr <- function(folder = ".",
                            panel             = NULL,   # vN: curated disease gene panel(s); union'd with `genes`
                            vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                            canonical_only    = TRUE,   # vN+4: drop rows whose chosen CSQ block has CANONICAL != "YES"
+                           enrich_clinsig    = "missense_splice",  # vN+5: auto-enrich CLIN_SIG_* via enrich.gvr.clinsig()
                            ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
                            verbose    = TRUE) {
   # ===========================================================================
@@ -608,6 +627,7 @@ read.gvr <- function(folder = ".",
                                   # union math, returns the same effective_genes).
       vc_nonSyn         = vc_nonSyn,
       canonical_only    = canonical_only,        # vN+4
+      enrich_clinsig    = enrich_clinsig,        # vN+5
       ncores            = ncores,
       verbose           = verbose
     ))
@@ -1812,6 +1832,43 @@ read.gvr <- function(folder = ".",
   # (R's saveRDS preserves attributes; for TSV/XLSX it's only for in-memory
   #  consumers -- but we still keep it consistent.)
   data.table::setattr(maf, "annotator", "vep")
+
+  # ---- vN+5: optional CLIN_SIG enrichment via enrich.gvr.clinsig() ---------
+  # Wired AFTER the annotator tag is set and BEFORE optional file writes so the
+  # on-disk TSV/RDS/XLSX outputs carry the same enriched columns the in-memory
+  # MAF does. Fail-soft: a warning is emitted on any error; MAF returns intact.
+  if (!isFALSE(enrich_clinsig)) {
+    scope_val    <- if (isTRUE(enrich_clinsig)) "missense_splice"
+                    else as.character(enrich_clinsig)
+    valid_scopes <- c("missense_splice", "all", "has_clinsig", "panel")
+    if (!scope_val %in% valid_scopes) {
+      warning("read.gvr: `enrich_clinsig` must be FALSE/TRUE or one of ",
+              paste(shQuote(valid_scopes), collapse = ", "),
+              "; got ", shQuote(scope_val), " -- skipping enrichment.",
+              call. = FALSE)
+    } else if (!exists("enrich.gvr.clinsig", mode = "function", inherits = TRUE)) {
+      warning("read.gvr: enrich.gvr.clinsig() not found in scope; ",
+              "skipping enrichment. Source enrich.gvr.clinsig.R or load the package.",
+              call. = FALSE)
+    } else {
+      if (isTRUE(verbose))
+        message("read.gvr: running enrich.gvr.clinsig(scope='", scope_val, "') ...")
+      maf <- tryCatch(
+        enrich.gvr.clinsig(maf,
+                           scope   = scope_val,
+                           panel   = panel,        # reuse caller panel for scope="panel"
+                           verbose = verbose),
+        error = function(e) {
+          warning("read.gvr: enrich.gvr.clinsig failed (",
+                  conditionMessage(e),
+                  "); returning MAF without CLIN_SIG_* columns.",
+                  call. = FALSE)
+          maf
+        }
+      )
+    }
+  }
+  # -------------------------------------------------------------------------
 
   # ==========================================================================
   # 4. Optional file outputs

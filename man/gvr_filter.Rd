@@ -18,6 +18,7 @@ gvr_filter(
   biotype_keep = NULL,
   gt_exclude = c("0", "0/0"),
   vc_nonSyn = FALSE,
+  missense_only = FALSE,
   genes = NULL,
   save_excel = FALSE,
   out_dir = NULL,
@@ -80,6 +81,13 @@ Frame_Shift_Ins, Splice_Site, Translation_Start_Site, Nonsense_Mutation,
 Nonstop_Mutation, In_Frame_Del, In_Frame_Ins, Missense_Mutation).
 A custom character vector keeps only those classifications. Rows with
 missing/blank \code{Variant_Classification} are removed when this filter is active.}
+
+\item{missense_only}{Logical; if \code{TRUE}, keep only rows whose
+\code{Variant_Classification} equals \code{"Missense_Mutation"} (added in vN+5).
+Default \code{FALSE} preserves prior behaviour byte-for-byte. Combines
+non-contradictorily with \code{vc_nonSyn}: \code{vc_nonSyn} runs first (keeping
+9 protein-altering classes), then \code{missense_only} narrows to the missense
+subset. Errors with a clear message if \code{Variant_Classification} is missing.}
 
 \item{genes}{Character vector of \code{Hugo_Symbol}s to keep (exact, case-insensitive),
 or \code{NULL} (default) to keep all genes.}

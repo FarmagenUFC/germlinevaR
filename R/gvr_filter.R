@@ -84,6 +84,12 @@
 #'   Nonstop_Mutation, In_Frame_Del, In_Frame_Ins, Missense_Mutation).
 #'   A custom character vector keeps only those classifications. Rows with
 #'   missing/blank `Variant_Classification` are removed when this filter is active.
+#' @param missense_only Logical; if `TRUE`, keep only rows whose
+#'   `Variant_Classification` equals `"Missense_Mutation"` (added in vN+5).
+#'   Default `FALSE` preserves prior behaviour byte-for-byte. Combines
+#'   non-contradictorily with `vc_nonSyn`: `vc_nonSyn` runs first (keeping
+#'   9 protein-altering classes), then `missense_only` narrows to the missense
+#'   subset. Errors with a clear message if `Variant_Classification` is missing.
 #' @param genes Character vector of `Hugo_Symbol`s to keep (exact, case-insensitive),
 #'   or `NULL` (default) to keep all genes.
 #' @param save_excel Logical; if TRUE, also write the FILTERED table to an `.xlsx`
@@ -153,6 +159,7 @@ gvr_filter <- function(maf,
                        biotype_keep = NULL,
                        gt_exclude = c("0", "0/0"),
                        vc_nonSyn = FALSE,
+                       missense_only = FALSE,  # vN+5: strict missense-only filter (Variant_Classification == "Missense_Mutation")
                        genes = NULL,
                        save_excel = FALSE,
                        out_dir = NULL,
@@ -208,6 +215,7 @@ gvr_filter <- function(maf,
   if (!is.null(biotype_keep)   && length(biotype_keep)   > 0) needed <- c(needed, "BIOTYPE")
   if (!is.null(gt_exclude)     && length(gt_exclude)     > 0) needed <- c(needed, "GT")
   if (!identical(vc_nonSyn, FALSE))                            needed <- c(needed, "Variant_Classification")
+  if (isTRUE(missense_only))                                   needed <- c(needed, "Variant_Classification")
   if (!is.null(genes)         && length(genes)          > 0) needed <- c(needed, "Hugo_Symbol")
   needed <- unique(needed)
   missing_cols <- needed[needed %notin% names(dt)]
@@ -316,6 +324,25 @@ gvr_filter <- function(maf,
       dt <- dt[keep]
       .log_step("Variant_Classification keep", before, nrow(dt))
     }
+  }
+
+  # ============================================================================
+  # 8b. vN+5: strict missense-only filter
+  # ============================================================================
+  # Independent of `vc_nonSyn`. When TRUE, keeps ONLY rows whose
+  # Variant_Classification is "Missense_Mutation" (a strict subset of the 9
+  # protein-altering classes that `vc_nonSyn = TRUE` keeps). The two filters
+  # compose: TRUE+TRUE yields the same result as missense_only alone.
+  if (isTRUE(missense_only)) {
+    before <- nrow(dt)
+    vc <- dt[["Variant_Classification"]]
+    if (is.null(vc)) {
+      stop("gvr_filter: missense_only=TRUE but 'Variant_Classification' ",
+           "column is missing.", call. = FALSE)
+    }
+    keep <- !.is_missing(vc) & vc == "Missense_Mutation"
+    dt <- dt[keep]
+    .log_step("missense_only", before, nrow(dt))
   }
 
   # ============================================================================

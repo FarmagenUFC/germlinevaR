@@ -189,6 +189,24 @@
 #'   applied. When `TRUE` (the default), `read.gvr.snpeff()` emits a one-time
 #'   warning and returns the unfiltered MAF (same result as
 #'   `canonical_only = FALSE`).
+#' @param enrich_clinsig Controls automatic CLIN_SIG enrichment via
+#'   [enrich.gvr.clinsig()] (added in vN+5). Accepts:
+#'   \itemize{
+#'     \item `FALSE` -- no enrichment; the returned MAF has no CLIN_SIG_*
+#'       columns added.
+#'     \item `TRUE` -- same as `"missense_splice"`.
+#'     \item `"missense_splice"` (default) -- query MyVariant.info / dbNSFP
+#'       only for missense and splice-region variants.
+#'     \item `"all"` -- query every variant in the MAF (slower; may pick up
+#'       a small number of additional non-missense/splice hits).
+#'     \item `"has_clinsig"` -- query only variants that already have a
+#'       non-empty VEP CLIN_SIG field.
+#'     \item `"panel"` -- query only variants whose gene is in `panel`.
+#'   }
+#'   Failure handling is fail-soft: any error from `enrich.gvr.clinsig()` is
+#'   caught, a warning is emitted, and the MAF is returned without
+#'   `CLIN_SIG_AlphaMissense` / `CLIN_SIG_REVEL` columns. Set `FALSE` to fully
+#'   reproduce the Phase N+4 behaviour.
 #' @param ncores Integer; number of worker processes for converting MULTIPLE input
 #'   files in parallel via [parallel::mclapply()] (fork-based; Unix/macOS only).
 #'   Default `1L` runs sequentially and is byte-identical to previous behaviour.
@@ -277,6 +295,7 @@ read.gvr.snpeff <- function(folder = ".",
                            panel             = NULL,   # vN: curated disease gene panel(s); union'd with `genes`
                            vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                            canonical_only    = TRUE,   # vN+4: API symmetry; SnpEff ANN has no CANONICAL -> warn and ignore
+                           enrich_clinsig    = "missense_splice",  # vN+5: auto-enrich CLIN_SIG_* via enrich.gvr.clinsig()
                            ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
                            verbose    = TRUE) {
   # ===========================================================================
@@ -1819,6 +1838,43 @@ read.gvr.snpeff <- function(folder = ".",
   # (R's saveRDS preserves attributes; CSV/TSV is just columns so the attribute
   #  is for in-memory consumers -- but we still keep it consistent.)
   data.table::setattr(maf, "annotator", "snpeff")
+
+  # ---- vN+5: optional CLIN_SIG enrichment via enrich.gvr.clinsig() ---------
+  # Mirrors read.gvr() wiring. Wired AFTER the annotator tag and BEFORE the
+  # optional file writes so on-disk outputs carry the enriched columns too.
+  # Fail-soft: a warning is emitted on any error; MAF returns intact.
+  if (!isFALSE(enrich_clinsig)) {
+    scope_val    <- if (isTRUE(enrich_clinsig)) "missense_splice"
+                    else as.character(enrich_clinsig)
+    valid_scopes <- c("missense_splice", "all", "has_clinsig", "panel")
+    if (!scope_val %in% valid_scopes) {
+      warning("read.gvr.snpeff: `enrich_clinsig` must be FALSE/TRUE or one of ",
+              paste(shQuote(valid_scopes), collapse = ", "),
+              "; got ", shQuote(scope_val), " -- skipping enrichment.",
+              call. = FALSE)
+    } else if (!exists("enrich.gvr.clinsig", mode = "function", inherits = TRUE)) {
+      warning("read.gvr.snpeff: enrich.gvr.clinsig() not found in scope; ",
+              "skipping enrichment. Source enrich.gvr.clinsig.R or load the package.",
+              call. = FALSE)
+    } else {
+      if (isTRUE(verbose))
+        message("read.gvr.snpeff: running enrich.gvr.clinsig(scope='", scope_val, "') ...")
+      maf <- tryCatch(
+        enrich.gvr.clinsig(maf,
+                           scope   = scope_val,
+                           panel   = panel,        # reuse caller panel for scope="panel"
+                           verbose = verbose),
+        error = function(e) {
+          warning("read.gvr.snpeff: enrich.gvr.clinsig failed (",
+                  conditionMessage(e),
+                  "); returning MAF without CLIN_SIG_* columns.",
+                  call. = FALSE)
+          maf
+        }
+      )
+    }
+  }
+  # -------------------------------------------------------------------------
 
   # ==========================================================================
   # 4. Optional file outputs
