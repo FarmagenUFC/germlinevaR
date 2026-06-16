@@ -31,7 +31,6 @@ read.gvr(
   panel = NULL,
   vc_nonSyn = FALSE,
   canonical_only = TRUE,
-  enrich_clinsig = "missense_splice",
   ncores = 1L,
   verbose = TRUE
 )
@@ -92,8 +91,7 @@ and is build-stable. The aliases \code{"hg19"} and \code{"hg38"} are mapped to
 \code{"GRCh37"} / \code{"GRCh38"} for the mismatch check; a diagnostic warning
 fires when an explicit \code{ncbi_build} value (canonical or alias) disagrees
 with what auto-detection found at high confidence. Off-table user labels
-(e.g. internal lab codes) pass through silently.
-See also: \code{\link[=enrich.gvr.clinsig]{enrich.gvr.clinsig()}} for opt-in dbNSFP annotation (AlphaMissense / REVEL).}
+(e.g. internal lab codes) pass through silently.}
 
 \item{add_genotype}{Logical; if \code{TRUE} (default) add the \code{Genotype} column.}
 
@@ -163,25 +161,6 @@ to retain all rows (the Phase N+3 behaviour). For SnpEff-annotated
 input, the ANN field has no CANONICAL flag — \code{canonical_only=TRUE} is
 ignored with a warning, and the result is the same as
 \code{canonical_only=FALSE}.}
-
-\item{enrich_clinsig}{Controls automatic CLIN_SIG enrichment via
-\code{\link[=enrich.gvr.clinsig]{enrich.gvr.clinsig()}} (added in vN+5). Accepts:
-\itemize{
-\item \code{FALSE} -- no enrichment; the returned MAF has no CLIN_SIG_*
-columns added.
-\item \code{TRUE} -- same as \code{"missense_splice"}.
-\item \code{"missense_splice"} (default) -- query MyVariant.info / dbNSFP
-only for missense and splice-region variants.
-\item \code{"all"} -- query every variant in the MAF (slower; may pick up
-a small number of additional non-missense/splice hits).
-\item \code{"has_clinsig"} -- query only variants that already have a
-non-empty VEP CLIN_SIG field.
-\item \code{"panel"} -- query only variants whose gene is in \code{panel}.
-}
-Failure handling is fail-soft: any error from \code{enrich.gvr.clinsig()} is
-caught, a warning is emitted, and the MAF is returned without
-\code{CLIN_SIG_AlphaMissense} / \code{CLIN_SIG_REVEL} columns. Set \code{FALSE} to fully
-reproduce the Phase N+4 behaviour.}
 
 \item{ncores}{Integer; number of worker processes for converting MULTIPLE input
 files in parallel via \code{\link[parallel:mcdummies]{parallel::mclapply()}} (fork-based; Unix/macOS only).
