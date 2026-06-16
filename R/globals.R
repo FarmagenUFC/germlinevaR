@@ -10,9 +10,9 @@
 #' @keywords internal
 utils::globalVariables(c(
   # --- data.table special symbols (used inside dt[...] across functions) ----
-  ".", ".N", ".SD", ".__sample__", ".sr",
+  ".", ".N", ".SD", ".__sample__", ".sr", ".__nsamp__",
   # --- data.table column-vector prefix (used as `dt[, ..cols]` in gvr_summary)
-  "..cols",
+  "..cols", "..final_cols",
 
   # --- read.gvr(): temp/internal columns created via := ---------------------
   ".rs", ".ref", ".alt",

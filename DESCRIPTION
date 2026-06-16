@@ -22,15 +22,12 @@ BugReports: https://github.com/AKKDataAnalysis/germlinevaR/issues
 Depends: R (>= 4.1.0)
 Imports: 
     data.table,
-    DBI,
     ggplot2,
     grDevices,
     grid,
-    httr2,
     jsonlite,
     openxlsx,
     parallel,
-    RSQLite,
     stats,
     utils
 Suggests: 

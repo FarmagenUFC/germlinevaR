@@ -549,6 +549,7 @@ gvr_summary <- function(maf,
         openxlsx::writeData(wb, sh, sections[[nm]], headerStyle = hs)
         openxlsx::freezePane(wb, sh, firstRow = TRUE)
         openxlsx::setColWidths(wb, sh, cols = seq_len(ncol(sections[[nm]])), widths = "auto")
+      }
       # ==============================================================
       # vN+7: per-clickable XLSX sheets -- one sheet per token of each
       # of the 4 clickable categories (Top genes / CLIN_SIG / IMPACT /
@@ -661,7 +662,6 @@ gvr_summary <- function(maf,
           openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
           openxlsx::setColWidths(wb, sh_nm, cols = seq_len(ncol(out_df)), widths = "auto")
         }
-      }
       }
       # Write to a local temp file first, then shell-cp to out_subdir (FUSE-safe:
       # openxlsx uses zip random-access writes that can fail / 0-byte on S3-backed mounts).
