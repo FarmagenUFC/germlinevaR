@@ -498,6 +498,11 @@ gvr_summary <- function(maf,
       rest[[1]]$special <- "vc"
       rest[[3]]$special <- "clin_sig"
       rest[[4]]$special <- "impact"
+      # vN+7: Top genes becomes a 4th clickable section (drill-down = variants
+      # in the clicked gene, capped at 1,000 by composite IMPACT > nsamp >
+      # gnomADe_AF ranking). The specs$top_genes index is fixed: items 1=overview,
+      # 2=top_genes, then per-sample tables.
+      specs[[2]]$special <- "top_genes"
     }
     specs <- c(specs, rest)
     if (!is.null(sections$top_variants))
@@ -544,6 +549,119 @@ gvr_summary <- function(maf,
         openxlsx::writeData(wb, sh, sections[[nm]], headerStyle = hs)
         openxlsx::freezePane(wb, sh, firstRow = TRUE)
         openxlsx::setColWidths(wb, sh, cols = seq_len(ncol(sections[[nm]])), widths = "auto")
+      # ==============================================================
+      # vN+7: per-clickable XLSX sheets -- one sheet per token of each
+      # of the 4 clickable categories (Top genes / CLIN_SIG / IMPACT /
+      # Variant_Classification). Each sheet holds the FULL uncapped
+      # matching variants for that token, 7-column fixed projection,
+      # sorted by the same composite ranking as the HTML drill-downs.
+      # Excel sheet names are capped at 31 chars; tokens are truncated
+      # with collision-suffix on conflict.
+      # ==============================================================
+      .gvr_impact_rank_xl <- function(v) {
+        ord <- c("HIGH" = 1L, "MODERATE" = 2L, "LOW" = 3L, "MODIFIER" = 4L)
+        r <- ord[as.character(v)]; r[is.na(r)] <- 5L; as.integer(r)
+      }
+      .gvr_rank_xl <- function(d) {
+        ir <- .gvr_impact_rank_xl(d$IMPACT)
+        nsamp <- if (".__nsamp__" %in% names(d)) d$.__nsamp__ else rep(0L, nrow(d))
+        gaf <- if ("gnomADe_AF" %in% names(d)) suppressWarnings(as.numeric(d$gnomADe_AF))
+                else rep(NA_real_, nrow(d))
+        chr <- if ("Chromosome" %in% names(d)) as.character(d$Chromosome) else rep("", nrow(d))
+        pos <- if ("Start_Position" %in% names(d)) suppressWarnings(as.integer(d$Start_Position))
+                else rep(0L, nrow(d))
+        order(ir, -nsamp, gaf, chr, pos, na.last = TRUE)
+      }
+      # Precompute .__nsamp__ on dt if not already present.
+      if (!(".__nsamp__" %in% names(dt))) {
+        key_cols_xl <- intersect(c("Chromosome", "Start_Position",
+                                   "Reference_Allele", "Tumor_Seq_Allele2"),
+                                 names(dt))
+        if (length(key_cols_xl) < 2L) {
+          dt[, .__nsamp__ := 1L]
+        } else {
+          dt[, .__nsamp__ := data.table::uniqueN(.__sample__), by = key_cols_xl]
+        }
+      }
+      .XLSX_ROW_CAP <- 1048575L      # Excel data-row hard limit
+      .gvr_safe_sheet <- function(pfx, tok, used) {
+        # Replace Excel-illegal chars, build "<PFX>_<token>", truncate to 31, dedup.
+        clean <- gsub("[\\\\/?*\\[\\]:]", "_", tok, perl = TRUE)
+        nm <- paste0(pfx, clean)
+        if (nchar(nm) > 31L) nm <- substr(nm, 1L, 31L)
+        base <- nm; k <- 1L
+        while (nm %in% used) {
+          suf <- paste0("_", k)
+          nm <- paste0(substr(base, 1L, 31L - nchar(suf)), suf)
+          k <- k + 1L
+        }
+        nm
+      }
+      .gvr_xl_cols <- c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
+                        "gnomADe_AF", "Variant_Classification",
+                        "Tumor_Sample_Barcode")
+      .gvr_xl_cols <- intersect(.gvr_xl_cols, names(dt))
+      used_names <- names(wb)
+      # Category specs: (prefix, tokens, filter_fn returning logical mask on dt)
+      # token order: same composite ranking applied to a one-row-per-token aggregate
+      # for IMPACT/VC/Hugo_Symbol; CLIN_SIG keeps the summary-table order (already by Total desc).
+      cat_specs <- list()
+      if (!is.null(sections$top_genes) && nrow(sections$top_genes) > 0L) {
+        cat_specs$top_genes <- list(
+          pfx = "GEN_",
+          tokens = as.character(sections$top_genes$Hugo_Symbol),
+          filter_fn = function(tok) dt$Hugo_Symbol == tok)
+      }
+      if (!is.null(sections$clin_sig) && nrow(sections$clin_sig) > 0L) {
+        cs_tokens <- as.character(sections$clin_sig$CLIN_SIG)
+        cs_tokens <- cs_tokens[cs_tokens != "missing/unclassified"]
+        if (length(cs_tokens) > 0L) {
+          cat_specs$clin_sig <- list(
+            pfx = "CS_",
+            tokens = cs_tokens,
+            filter_fn = function(tok) {
+              cs <- dt$CLIN_SIG; m <- !.is_missing(cs)
+              # Multi-token match: split on &/ and check membership.
+              out <- logical(length(cs))
+              if (any(m)) {
+                toks_list <- strsplit(cs[m], "[&/]")
+                hit <- vapply(toks_list, function(x) tok %in% trimws(x), logical(1L))
+                out[m] <- hit
+              }
+              out
+            })
+        }
+      }
+      if (!is.null(sections$impact) && nrow(sections$impact) > 0L) {
+        cat_specs$impact <- list(
+          pfx = "IMP_",
+          tokens = as.character(sections$impact$IMPACT),
+          filter_fn = function(tok) !is.na(dt$IMPACT) & dt$IMPACT == tok)
+      }
+      if (!is.null(sections$variant_classification) && nrow(sections$variant_classification) > 0L) {
+        cat_specs$vc <- list(
+          pfx = "VC_",
+          tokens = as.character(sections$variant_classification$Variant_Classification),
+          filter_fn = function(tok) !is.na(dt$Variant_Classification) & dt$Variant_Classification == tok)
+      }
+      for (cat_nm in names(cat_specs)) {
+        sp <- cat_specs[[cat_nm]]
+        for (tok in sp$tokens) {
+          mask <- sp$filter_fn(tok)
+          if (!any(mask)) next                    # skip empty pools
+          sub <- dt[mask]
+          ord <- .gvr_rank_xl(sub)
+          sub <- sub[ord]
+          if (nrow(sub) > .XLSX_ROW_CAP) sub <- sub[seq_len(.XLSX_ROW_CAP)]
+          out_df <- as.data.frame(sub[, .gvr_xl_cols, with = FALSE], stringsAsFactors = FALSE)
+          sh_nm <- .gvr_safe_sheet(sp$pfx, tok, used_names)
+          used_names <- c(used_names, sh_nm)
+          openxlsx::addWorksheet(wb, sh_nm)
+          openxlsx::writeData(wb, sh_nm, out_df, headerStyle = hs)
+          openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
+          openxlsx::setColWidths(wb, sh_nm, cols = seq_len(ncol(out_df)), widths = "auto")
+        }
+      }
       }
       # Write to a local temp file first, then shell-cp to out_subdir (FUSE-safe:
       # openxlsx uses zip random-access writes that can fail / 0-byte on S3-backed mounts).
@@ -972,13 +1090,11 @@ gvr_summary <- function(maf,
       #
       # Tunable in one place. Boundaries are conservative against the pilot's
       # MODIFIER/Intron fractions and pandoc's observed working set.
-      .HTML_SMALL_MAX  <- 50000L
-      .HTML_MEDIUM_MAX <- 150000L
+      .HTML_SMALL_MAX      <- 50000L
+      .HTML_PAYLOAD_BUDGET <- 100000L   # asymptotic row budget for inline JSON
 
       .gvr_size_band <- function(n_total) {
-        if (n_total < .HTML_SMALL_MAX)  return("small")
-        if (n_total < .HTML_MEDIUM_MAX) return("medium")
-        "large"
+        if (n_total < .HTML_SMALL_MAX) "small" else "medium"
       }
 
 
@@ -1232,7 +1348,7 @@ gvr_summary <- function(maf,
             "      if (!dtApi) return;",
             # Token-bounded regex search (CLIN_SIG composite tokens)
             "      var escaped = val.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');",
-            "      var pattern = '(^|[&/,])' + escaped + '([&/,]|$)';",
+             "      var pattern = '(^|/|,|&amp;|&)' + escaped + '(/|,|&amp;|&|$)';",
             "      container.style.display = 'block';",
             "      dtApi.columns.adjust();",
             sprintf("      dtApi.column(%d).search(pattern, true, false, true).draw();", filter_col_idx),
@@ -1335,7 +1451,17 @@ gvr_summary <- function(maf,
                      "gnomADe_AF", "Variant_Classification",
                      "Tumor_Sample_Barcode"),
             cap_summary  = "Variant classification (click a class to see variants)",
-            header_label = "Variant_Classification"))
+            header_label = "Variant_Classification"),
+          # vN+7: Top genes becomes a 4th clickable. Click handler filters detail
+          # by exact Hugo_Symbol match.
+          top_genes = list(
+            section_key = "top_genes", filter_col = "Hugo_Symbol",
+            container = "gvr_topgenes_detail",
+            cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
+                     "gnomADe_AF", "Variant_Classification",
+                     "Tumor_Sample_Barcode"),
+            cap_summary  = "Top genes (click a symbol to see variants)",
+            header_label = "Hugo_Symbol"))
 
         # ----------------------------------------------------------------
         # Adaptive build: classify cohort size, then build the per-section
@@ -1350,58 +1476,176 @@ gvr_summary <- function(maf,
         #   large  -> no detail tables at all; dd_map stays NULL and the
         #             tables branch falls through to plain summary tables.
         # ----------------------------------------------------------------
-        band <- .gvr_size_band(meta$n_total)
-
-        # IMPACT severity ranking, re-used for the VC top-50k cap. Already
-        # defined as `impact_order` at the top of gvr_summary(); rebuilt
-        # locally so the renderer doesn't depend on outer-scope state.
+        # vN+7: composite ranking helper -- IMPACT > nsamp > gnomADe_AF >
+        # genomic position. Returns integer order over rows of `d`. Sample
+        # count is precomputed per locus (Chromosome+Start_Position+
+        # Reference_Allele+Tumor_Seq_Allele2) so all drill-downs share it.
         .impact_rank <- function(v) {
           ord <- c("HIGH" = 1L, "MODERATE" = 2L, "LOW" = 3L, "MODIFIER" = 4L)
           r <- ord[as.character(v)]
           r[is.na(r)] <- 5L   # unknown impact sorts last
           as.integer(r)
         }
+        .gvr_rank_variants <- function(d) {
+          ir <- .impact_rank(d$IMPACT)
+          nsamp <- if (".__nsamp__" %in% names(d)) d$.__nsamp__ else rep(0L, nrow(d))
+          gaf <- if ("gnomADe_AF" %in% names(d)) suppressWarnings(as.numeric(d$gnomADe_AF))
+                  else rep(NA_real_, nrow(d))
+          chr <- if ("Chromosome" %in% names(d)) as.character(d$Chromosome) else rep("", nrow(d))
+          pos <- if ("Start_Position" %in% names(d)) suppressWarnings(as.integer(d$Start_Position))
+                  else rep(0L, nrow(d))
+          order(ir, -nsamp, gaf, chr, pos, na.last = TRUE)
+        }
 
-        dd_map <- if (band == "large") NULL else lapply(dd_specs, function(sp) {
-          cols <- intersect(sp$cols, names(dt))
-          # Base detail: non-missing filter column (was the only filter in
-          # the small band; medium adds more on top).
-          base <- dt[!.is_missing(get(sp$filter_col))]
-          cap_note <- NULL
+        # vN+7: precompute distinct-sample count per locus on `dt` (once).
+        # Falls back to (Chromosome,Start_Position) if allele cols missing.
+        if (!(".__nsamp__" %in% names(dt))) {
+          key_cols <- intersect(c("Chromosome", "Start_Position",
+                                  "Reference_Allele", "Tumor_Seq_Allele2"),
+                                names(dt))
+          if (length(key_cols) < 2L) {
+            dt[, .__nsamp__ := 1L]   # cannot key variants; tiebreak inert
+          } else {
+            dt[, .__nsamp__ := data.table::uniqueN(.__sample__),
+               by = key_cols]
+          }
+        }
 
-          if (band == "medium") {
-            if (sp$filter_col == "IMPACT") {
-              base <- base[IMPACT != "MODIFIER"]
-            } else if (sp$filter_col == "Variant_Classification") {
-              base <- base[Variant_Classification != "Intron"]
-              if (nrow(base) > .HTML_SMALL_MAX) {
-                n_pre <- nrow(base)
-                if ("IMPACT" %in% names(base)) {
-                  ord <- order(.impact_rank(base$IMPACT))
-                } else {
-                  ord <- seq_len(nrow(base))
-                }
-                base <- base[ord[seq_len(.HTML_SMALL_MAX)]]
-                cap_note <- sprintf(
-                  "Showing top %s of %s rows (filtered by IMPACT severity).",
-                  format(.HTML_SMALL_MAX, big.mark = ","),
-                  format(n_pre,           big.mark = ","))
+        # vN+7 (refined): per-TOKEN cap. Each clickable category emits one
+        # detail JSON formed by concatenating per-token slices, each slice
+        # capped at .HTML_TOPK_CAP rows. The click handler still uses the
+        # existing token-bounded regex search to surface only the clicked
+        # token's rows, so no JS changes are needed.
+        #
+        # Payload budget: total embedded rows across all 4 categories is
+        # bounded by sum_over_tokens(min(pool_size, cap)). If projection
+        # exceeds .HTML_PAYLOAD_BUDGET the drill-downs are dropped and the
+        # tables fall back to plain summary view -- same behaviour as the
+        # legacy 'large' band but driven by actual payload size, not
+        # cohort size. With the standard token vocabularies (CLIN_SIG ~18,
+        # IMPACT 4, VC ~17, top genes 20) the asymptote is ~60k rows,
+        # well under the budget, so the fallback only triggers for unusual
+        # parameter choices (e.g. top_n_genes >> 20).
+        .HTML_TOPK_CAP <- 1000L
+
+        # Per-category token enumeration -- exact same logic as the XLSX
+        # writer above so click and sheet semantics stay aligned.
+        .dd_token_specs <- list(
+          clin_sig = list(
+            tokens = {
+              cs_t <- as.character(sections$clin_sig$CLIN_SIG)
+              cs_t[cs_t != "missing/unclassified"]
+            },
+            filter_fn = function(tok) {
+              cs <- dt$CLIN_SIG; m <- !.is_missing(cs)
+              out <- logical(length(cs))
+              if (any(m)) {
+                toks_list <- strsplit(cs[m], "[&/]")
+                hit <- vapply(toks_list, function(x) tok %in% trimws(x), logical(1L))
+                out[m] <- hit
               }
+              out
+            }),
+          impact = list(
+            tokens = as.character(sections$impact$IMPACT),
+            filter_fn = function(tok) !is.na(dt$IMPACT) & dt$IMPACT == tok),
+          vc = list(
+            tokens = as.character(sections$variant_classification$Variant_Classification),
+            filter_fn = function(tok) !is.na(dt$Variant_Classification) &
+                                       dt$Variant_Classification == tok),
+          top_genes = list(
+            tokens = as.character(sections$top_genes$Hugo_Symbol),
+            filter_fn = function(tok) !is.na(dt$Hugo_Symbol) & dt$Hugo_Symbol == tok))
+
+        # Project the embed payload first to decide on fallback.
+        .dd_project <- function() {
+          tot <- 0L
+          for (cat_nm in names(dd_specs)) {
+            spec <- .dd_token_specs[[cat_nm]]
+            if (is.null(spec) || length(spec$tokens) == 0L) next
+            for (tok in spec$tokens) {
+              n_tok <- sum(spec$filter_fn(tok))
+              tot <- tot + min(n_tok, .HTML_TOPK_CAP)
             }
           }
+          tot
+        }
+        payload_proj <- .dd_project()
+        budget_exceeded <- payload_proj > .HTML_PAYLOAD_BUDGET
 
-          detail_df <- as.data.frame(base[, ..cols], stringsAsFactors = FALSE)
-          .mk_drilldown(sections[[sp$section_key]], detail_df,
+        # Build per-category detail_df: concatenation of per-token top-K slices.
+        .dd_build_cat <- function(cat_nm) {
+          sp <- dd_specs[[cat_nm]]
+          spec <- .dd_token_specs[[cat_nm]]
+          cols <- intersect(sp$cols, names(dt))
+          if (is.null(spec) || length(spec$tokens) == 0L) {
+            return(list(detail_df = data.frame(),
+                        n_pre_total = 0L, any_capped = FALSE, n_tokens = 0L))
+          }
+          slices <- vector("list", length(spec$tokens))
+          n_pre_total <- 0L
+          any_capped <- FALSE
+          for (i in seq_along(spec$tokens)) {
+            tok <- spec$tokens[[i]]
+            mask <- spec$filter_fn(tok)
+            n_tok <- sum(mask)
+            n_pre_total <- n_pre_total + n_tok
+            if (n_tok == 0L) next
+            sub <- dt[mask]
+            ord <- .gvr_rank_variants(sub)
+            if (n_tok > .HTML_TOPK_CAP) {
+              sub <- sub[ord[seq_len(.HTML_TOPK_CAP)]]
+              any_capped <- TRUE
+            } else {
+              sub <- sub[ord]
+            }
+            slices[[i]] <- sub[, intersect(c(cols, c("Chromosome", "Start_Position", "Reference_Allele", "Tumor_Seq_Allele2")), names(sub)), with = FALSE]
+          }
+          slices <- slices[!vapply(slices, is.null, logical(1L))]
+          if (length(slices) == 0L) {
+            detail_df <- data.frame()
+          } else {
+            concat <- data.table::rbindlist(slices)
+            # Dedup multi-token rows: a variant tagged with N CLIN_SIG tokens
+            # appears in N slices, so the concatenation has up to N copies. Dedup
+            # by locus + sample. The retained copy still carries the full CLIN_SIG
+            # string, so the click handler's token-bounded regex still surfaces
+            # this row for every one of its tokens.
+            id_cols <- intersect(c("Chromosome", "Start_Position",
+                                   "Reference_Allele", "Tumor_Seq_Allele2",
+                                   "Tumor_Sample_Barcode"),
+                                 names(concat))
+            if (length(id_cols) >= 2L) {
+              concat <- unique(concat, by = id_cols)
+            } else {
+              concat <- unique(concat)
+            }
+            # Project back to the rendered 7 columns (drop the dedup-only id cols).
+            final_cols <- intersect(cols, names(concat))
+            detail_df <- as.data.frame(concat[, ..final_cols], stringsAsFactors = FALSE)
+          }
+          list(detail_df = detail_df, n_pre_total = n_pre_total,
+               any_capped = any_capped, n_tokens = length(spec$tokens))
+        }
+
+        dd_map <- if (budget_exceeded) NULL else lapply(names(dd_specs), function(cat_nm) {
+          sp <- dd_specs[[cat_nm]]
+          built <- .dd_build_cat(cat_nm)
+          cap_note <- if (built$any_capped) sprintf(
+            "Each row group is capped at %s variants, ranked by IMPACT severity, sample count, then rarity (gnomADe_AF). The Excel workbook has the full uncapped data per group.",
+            format(.HTML_TOPK_CAP, big.mark = ",")) else NULL
+          .mk_drilldown(sections[[sp$section_key]], built$detail_df,
                         sp$container, sp$filter_col,
                         sp$cap_summary, sp$header_label,
                         cap_note = cap_note)
         })
+        if (!is.null(dd_map)) names(dd_map) <- names(dd_specs)
 
         tbl_specs <- .build_tbl_specs(sections, html = TRUE)
 
           .tables_head <- function() {
             head <- list(sec_h("Tables"))
-            if (band == "medium") {
+            if (is.null(dd_map)) {
               banner <- htmltools::tags$div(
                 style = paste0("margin:10px 0 14px 0; padding:10px 14px;",
                                " background:#FAF9F3; border-left:4px solid #FF9400;",
@@ -1409,21 +1653,10 @@ gvr_summary <- function(maf,
                 htmltools::tags$strong(sprintf(
                   "Cohort has %s variants. ",
                   format(meta$n_total, big.mark = ","))),
-                "Drill-down detail tables show a pre-filtered subset ",
-                "(no MODIFIER impact, no Intron classification, no missing CLIN_SIG) ",
-                "for performance. The full per-variant data is available in the ",
-                "Excel workbook.")
-              head <- c(head, list(banner))
-            } else if (band == "large") {
-              banner <- htmltools::tags$div(
-                style = paste0("margin:10px 0 14px 0; padding:10px 14px;",
-                               " background:#FAF9F3; border-left:4px solid #FF9400;",
-                               " border-radius:6px; font-size:12.5px; color:#333;"),
-                htmltools::tags$strong(sprintf(
-                  "Cohort has %s variants. ",
-                  format(meta$n_total, big.mark = ","))),
-                "Drill-down detail tables are disabled (HTML self-contain limit exceeded). ",
-                "The full per-variant data is available in the Excel workbook.")
+                "Drill-down detail tables are disabled because the projected ",
+                "inline payload would exceed the HTML self-contain budget. ",
+                "The full per-variant data is available in the Excel workbook ",
+                "(one sheet per token).")
               head <- c(head, list(banner))
             }
             head
