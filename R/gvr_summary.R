@@ -1259,87 +1259,100 @@ gvr_summary <- function(maf,
 
         # --- Helper: build a drill-down pair (summary DT + detail DT) ---
         # Returns a named list with: summary_dtbl, detail_dtbl, container_id
-        .mk_drilldown <- function(summary_section, detail_df, container_id,
+        .mk_drilldown <- function(summary_section, token_map, container_id,
                                   filter_col, caption_summary, header_col_label,
                                   cap_note = NULL) {
           # ------------------------------------------------------------------
-          # Detail DT: full variant rows, hidden until a summary cell is
-          # clicked. filter="none" (not "top") because: (1) the detail
-          # table is driven by the summary click handler, not manual column
-          # filters; (2) filter="top" on a large table inside a hidden
-          # container can trigger DT TN/2 warnings.
-          #
-          # NOTE (issue B fix): the detail DT no longer carries a caption=.
-          # The old caption rendered below the table header, visually under
-          # the Hugo_Symbol column. The dynamic header is now emitted as a
-          # separate htmltools <div> above the table inside the panel.
+          # vN+7.1 redesign: per-token detail tables via JSON lookup.
+          # The detail DT is now an EMPTY shell initialised with column names
+          # only; clicking a summary cell looks up `token_map[<val>]` in a
+          # hidden <script type="application/json"> block, clears the table,
+          # and adds the per-token ranked rows. This guarantees that the row
+          # order shown after a click is the SAME order written to the XLSX
+          # `<PFX>_<token>` sheet (both built from the same per-token slice),
+          # closing the CS7 acceptance gate that the prior dedup-by-locus
+          # design failed for 11/18 CS_ tokens.
           # ------------------------------------------------------------------
+          # Compose the "empty shell" for the detail DT: a 0-row data frame
+          # carrying just the column names. The actual rows arrive client-side.
+          if (length(token_map) > 0L) {
+            shell_cols <- names(token_map[[1L]])
+          } else {
+            shell_cols <- character(0)
+          }
+          shell_df <- as.data.frame(
+            stats::setNames(rep(list(character(0)), length(shell_cols)),
+                            shell_cols),
+            stringsAsFactors = FALSE)
+
           detail_dtbl <- suppressWarnings(DT::datatable(
-            detail_df, rownames = FALSE,
+            shell_df, rownames = FALSE,
             class = "stripe hover compact", filter = "none",
             options = list(pageLength = 5, lengthMenu = c(5, 10, 25),
                            dom = "ftip", scrollX = TRUE, searchDelay = 300,
                            initComplete = htmlwidgets::JS(
                              "function() {",
                              sprintf("  document.getElementById('%s').style.display = 'none';", container_id),
-                             # Wire the Close button. The button is inside the
-                             # panel and persists across redraws, so attaching
-                             # the listener once in initComplete is sufficient.
+                             # Wire the Close button. Listener attached once;
+                             # button persists across redraws.
                              sprintf("  var btn = document.getElementById('%s_close');", container_id),
                              "  if (btn) {",
                              "    btn.addEventListener('click', function() {",
                              sprintf("      var c = document.getElementById('%s');", container_id),
                              "      if (!c) return;",
                              "      c.style.display = 'none';",
-                             # Clear the column search so the next click opens
-                             # fresh (not stacked with a stale filter).
-                             "      var bodyTable = c.querySelector('.dataTables_scrollBody table');",
-                             "      if (!bodyTable) {",
-                             "        var allTables = c.querySelectorAll('table');",
-                             "        bodyTable = allTables[allTables.length - 1];",
-                             "      }",
-                             "      var api = bodyTable ? new $.fn.dataTable.Api(bodyTable) : null;",
-                             "      if (api && api.context.length) {",
-                             sprintf("        api.column(%d).search('').draw();",
-                                     which(names(detail_df) == filter_col) - 1L),
-                             "      }",
                              "    });",
                              "  }",
                              "}"))))
-          # Defensive: force eager DT initialization. The htmlwidgets DT
-          # binding has a lazy-render gate in renderValue():
-          #   if ((el.offsetWidth===0 || el.offsetHeight===0) && data.lazyRender!==false)
-          # Diagnostics showed the gate did NOT fire here (the detail DT was
-          # registered before the click handler ran), so this is not the
-          # click-handler's root cause. Kept as a low-cost safety net against
-          # future changes in widget sizing / container display that could
-          # put us back behind the gate. NB: `widget$x$lazyRender` is a
-          # private htmlwidgets field, not a documented DT::datatable()
-          # option -- it works on the current DT/htmlwidgets pairing (DT
-          # 0.34, htmlwidgets 1.6.4) but could silently regress on a future
-          # combination.
+          # Defensive eager init (see prior comment block in pre-N+7.1 code
+          # for the htmlwidgets lazyRender gate rationale).
           detail_dtbl$x$lazyRender <- FALSE
 
-          # Summary DT: clickable first-column cells
+          # Encode the per-token map as a hidden JSON <script> block. Each
+          # token maps to an array of row arrays (dataframe="values" -> rows
+          # as nested arrays, matching what dtApi.rows.add() consumes).
+          # NA encoded as JSON null; DT renders null as an empty cell.
+          json_id <- paste0(container_id, "_data")
+          json_str <- if (length(token_map) > 0L) {
+            as.character(jsonlite::toJSON(token_map, dataframe = "values",
+                                          na = "null", auto_unbox = FALSE))
+          } else {
+            "{}"
+          }
+          # JSON-encoded strings cannot contain a literal "</script" sequence
+          # without breaking the closing tag parser; escape the forward slash.
+          json_str <- gsub("</", "<\\\\/", json_str, fixed = TRUE)
+          data_script <- htmltools::tags$script(
+            type = "application/json",
+            id   = json_id,
+            htmltools::HTML(json_str))
+
+          # Summary DT: clickable first-column cells.
           summary_dtbl <- .dt_tbl(summary_section, caption = caption_summary)
-          # Find the column index of filter_col in the detail table for
-          # column-specific search (DT is 0-based).
-          filter_col_idx <- which(names(detail_df) == filter_col) - 1L
           summary_dtbl$x$options$initComplete <- htmlwidgets::JS(
             "function() {",
             "  var tbl = this.api().table().body();",
             "  var cells = tbl.querySelectorAll('td:first-child');",
+            sprintf("  var dataEl = document.getElementById('%s');", json_id),
+            "  var tokenMap = {};",
+            "  if (dataEl) {",
+            "    try { tokenMap = JSON.parse(dataEl.textContent || '{}'); }",
+            "    catch (e) { tokenMap = {}; }",
+            "  }",
             "  cells.forEach(function(c) {",
+            "    var val0 = c.textContent.trim();",
+            "    if (val0 === 'missing/unclassified') return;",
+            # Hide non-clickable behaviour for tokens not present in tokenMap
+            # (defensive; zero-count rows are pre-filtered at section build).
+            "    if (!Object.prototype.hasOwnProperty.call(tokenMap, val0)) return;",
             "    c.style.cursor = 'pointer';",
             "    c.style.textDecoration = 'underline';",
             "    c.style.color = '#0279EE';",
             "    c.addEventListener('click', function() {",
             "      var val = this.textContent.trim();",
-            "      if (val === 'missing/unclassified') return;",
+            "      if (!Object.prototype.hasOwnProperty.call(tokenMap, val)) return;",
             sprintf("      var container = document.getElementById('%s');", container_id),
             "      if (!container) return;",
-            # Body-table lookup: see prior comment block on .dataTables_scrollBody
-            # vs the header clone; same logic kept here.
             "      var bodyTable = container.querySelector('.dataTables_scrollBody table');",
             "      if (!bodyTable) {",
             "        var allTables = container.querySelectorAll('table');",
@@ -1348,17 +1361,16 @@ gvr_summary <- function(maf,
             "      var dtApi = bodyTable ? new $.fn.dataTable.Api(bodyTable) : null;",
             "      if (dtApi && dtApi.context.length === 0) dtApi = null;",
             "      if (!dtApi) return;",
-            # Token-bounded regex search (CLIN_SIG composite tokens)
-            "      var escaped = val.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');",
-             "      var pattern = '(^|/|,|&amp;|&)' + escaped + '(/|,|&amp;|&|$)';",
+            "      var rows = tokenMap[val] || [];",
+            "      dtApi.clear();",
+            "      if (rows.length) dtApi.rows.add(rows);",
+            # Reset to page 0 (top) on every new token click -- predictable
+            # behaviour matching user expectation that a new token starts
+            # at the top of its ranking.
+            "      dtApi.page(0).draw();",
             "      container.style.display = 'block';",
             "      dtApi.columns.adjust();",
-            sprintf("      dtApi.column(%d).search(pattern, true, false, true).draw();", filter_col_idx),
-            # Update the dynamic header (issue B + C fix):
-            # write the clicked value and the resulting row count into the
-            # header spans. Count via rows({search:'applied'}) which respects
-            # the column search we just applied.
-            "      var n = dtApi.rows({search: 'applied'}).count();",
+            "      var n = rows.length;",
             "      var nFmt = n.toLocaleString();",
             sprintf("      var v = document.getElementById('%s_value');", container_id),
             sprintf("      var ct = document.getElementById('%s_count');", container_id),
@@ -1369,11 +1381,11 @@ gvr_summary <- function(maf,
             "}")
 
           # ------------------------------------------------------------------
-          # Panel wrapper (issue C fix): cream background + 4px yellow left
-          # edge accent + Close button. The panel is hidden at build time
-          # via the detail DT's initComplete; clicking a summary token shows
-          # it (display='block'). The dynamic header text is set client-side
-          # by the same click handler (value + variant count).
+          # Panel wrapper: cream background + 4px yellow left edge accent +
+          # Close button. The panel is hidden at build time via the detail
+          # DT's initComplete; clicking a summary token shows it. The
+          # per-token JSON <script> block lives INSIDE the panel so it's
+          # carried along with the panel in the final HTML.
           # ------------------------------------------------------------------
           panel_tag <- htmltools::tags$div(
             id    = container_id,
@@ -1390,8 +1402,6 @@ gvr_summary <- function(maf,
                              " margin-bottom:10px;"),
               htmltools::tags$div(
                 style = sprintf("font-size:15px; font-weight:bold; color:%s;", "#0279EE"),
-                # Format: "<COLUMN> = <value>   |   <N> variants"
-                # The label uses the human-readable column name passed by the caller.
                 sprintf("%s = ", header_col_label),
                 htmltools::tags$span(id = paste0(container_id, "_value"),
                                      htmltools::HTML("&hellip;")),
@@ -1407,12 +1417,12 @@ gvr_summary <- function(maf,
                                " border-radius:4px; padding:4px 10px;",
                                " cursor:pointer; font-size:12px; color:#555;"),
                 htmltools::HTML("&times; Close"))),
-            # Optional note (used by the medium-band VC top-50k cap; NULL otherwise).
             if (!is.null(cap_note))
               htmltools::tags$div(
                 style = paste0("font-size:11.5px; color:#666;",
                                " font-style:italic; margin-bottom:8px;"),
                 cap_note),
+            data_script,
             detail_dtbl)
 
           list(summary_dtbl = summary_dtbl,
@@ -1577,16 +1587,24 @@ gvr_summary <- function(maf,
 
         # Build per-category detail_df: concatenation of per-token top-K slices.
         .dd_build_cat <- function(cat_nm) {
+          # vN+7.1: return a per-TOKEN map (named list, token -> data.frame
+          # of top-K ranked rows). The XLSX writer above produces the
+          # equivalent slice with `cap = Inf`; the per-token order is
+          # identical because both call sites apply .gvr_rank_variants() to
+          # the same per-token mask. This guarantees CS7: XLSX `<PFX>_<tok>`
+          # row 1 == HTML token_map[tok] row 1.
           sp <- dd_specs[[cat_nm]]
           spec <- .dd_token_specs[[cat_nm]]
           cols <- intersect(sp$cols, names(dt))
           if (is.null(spec) || length(spec$tokens) == 0L) {
-            return(list(detail_df = data.frame(),
-                        n_pre_total = 0L, any_capped = FALSE, n_tokens = 0L))
+            return(list(token_map = list(), n_pre_total = 0L,
+                        any_capped = FALSE, n_tokens = 0L,
+                        n_nonempty = 0L))
           }
-          slices <- vector("list", length(spec$tokens))
+          token_map <- list()
           n_pre_total <- 0L
-          any_capped <- FALSE
+          any_capped  <- FALSE
+          n_nonempty  <- 0L
           for (i in seq_along(spec$tokens)) {
             tok <- spec$tokens[[i]]
             mask <- spec$filter_fn(tok)
@@ -1601,42 +1619,29 @@ gvr_summary <- function(maf,
             } else {
               sub <- sub[ord]
             }
-            slices[[i]] <- sub[, intersect(c(cols, c("Chromosome", "Start_Position", "Reference_Allele", "Tumor_Seq_Allele2")), names(sub)), with = FALSE]
+            # Project to the rendered 7 columns. No dedup, no concat: each
+            # token's slice is independent and carries its own canonical
+            # ranking.
+            slice_df <- as.data.frame(sub[, ..cols], stringsAsFactors = FALSE)
+            token_map[[as.character(tok)]] <- slice_df
+            n_nonempty <- n_nonempty + 1L
           }
-          slices <- slices[!vapply(slices, is.null, logical(1L))]
-          if (length(slices) == 0L) {
-            detail_df <- data.frame()
-          } else {
-            concat <- data.table::rbindlist(slices)
-            # Dedup multi-token rows: a variant tagged with N CLIN_SIG tokens
-            # appears in N slices, so the concatenation has up to N copies. Dedup
-            # by locus + sample. The retained copy still carries the full CLIN_SIG
-            # string, so the click handler's token-bounded regex still surfaces
-            # this row for every one of its tokens.
-            id_cols <- intersect(c("Chromosome", "Start_Position",
-                                   "Reference_Allele", "Tumor_Seq_Allele2",
-                                   "Tumor_Sample_Barcode"),
-                                 names(concat))
-            if (length(id_cols) >= 2L) {
-              concat <- unique(concat, by = id_cols)
-            } else {
-              concat <- unique(concat)
-            }
-            # Project back to the rendered 7 columns (drop the dedup-only id cols).
-            final_cols <- intersect(cols, names(concat))
-            detail_df <- as.data.frame(concat[, ..final_cols], stringsAsFactors = FALSE)
-          }
-          list(detail_df = detail_df, n_pre_total = n_pre_total,
-               any_capped = any_capped, n_tokens = length(spec$tokens))
+          list(token_map = token_map, n_pre_total = n_pre_total,
+               any_capped = any_capped, n_tokens = length(spec$tokens),
+               n_nonempty = n_nonempty)
         }
 
         dd_map <- if (budget_exceeded) NULL else lapply(names(dd_specs), function(cat_nm) {
           sp <- dd_specs[[cat_nm]]
           built <- .dd_build_cat(cat_nm)
+          # If no token has any matching variants (e.g. degenerate cohort),
+          # skip the drill-down entirely -- the section falls back to its
+          # plain summary table via the dd_map[[special]] is.null branch.
+          if (built$n_nonempty == 0L) return(NULL)
           cap_note <- if (built$any_capped) sprintf(
             "Each row group is capped at %s variants, ranked by IMPACT severity, sample count, then rarity (gnomADe_AF). The Excel workbook has the full uncapped data per group.",
             format(.HTML_TOPK_CAP, big.mark = ",")) else NULL
-          .mk_drilldown(sections[[sp$section_key]], built$detail_df,
+          .mk_drilldown(sections[[sp$section_key]], built$token_map,
                         sp$container, sp$filter_col,
                         sp$cap_summary, sp$header_label,
                         cap_note = cap_note)
