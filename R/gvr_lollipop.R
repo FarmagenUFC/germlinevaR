@@ -1280,10 +1280,10 @@ gvr_lollipop <- function(maf, gene,
         }
       }
 
-      # vN+8: fixed domain height -- always y in [-0.80, +0.80]. Top edge sits
-      # 0.20 below the minimum dot position (y = 1), so even a single-sample
+      # vN+9: fixed domain height -- always y in [-0.60, +0.60]. Top edge sits
+      # 0.40 below the minimum dot position (y = 1), so even a single-sample
       # variant remains clearly visible above the domain rectangle.
-      dom_half <- 0.80
+      dom_half <- 0.60
       domains_df <- data.frame(xmin = dom$start, xmax = dom$end,
                                ymin = -dom_half, ymax = dom_half,
                                fill = dom$color,
@@ -1512,7 +1512,7 @@ gvr_lollipop <- function(maf, gene,
   }
 
   # Decide y_lower based on whether any label needs the below-band
-  .dom_floor <- 0.80   # vN+8: fixed (was bar_half * 2.4)
+  .dom_floor <- 0.60   # vN+9: shrunk from 0.80 to match new dom_half
   .need_below_space <-
     (domain_label_position == "below"  && .dlm_resolved %in% c("name", "id")) ||
     (domain_label_position == "inside" && .n_overflow_preview > 0L)
@@ -1616,7 +1616,7 @@ gvr_lollipop <- function(maf, gene,
     p <- p + ggplot2::geom_rect(
       data        = hotspot_df,
       ggplot2::aes(xmin = xmin, xmax = xmax,
-                   ymin = -0.80,   # vN+8: fixed dom-floor (matches .dom_floor / dom_half)
+                   ymin = -0.60,   # vN+9: matches new .dom_floor / dom_half
                    ymax =  y_upper),
       fill        = "#FD9BED",  # phylo magenta
       color       = NA,

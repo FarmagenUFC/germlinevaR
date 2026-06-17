@@ -593,6 +593,66 @@ gvr_summary <- function(maf,
     final_path
   }
 
+  # vN+9: shared per-token row-index builder used by the XLSX detail-sheet
+  # writer (below) and the HTML drill-down builder (further below). Returns a
+  # list keyed by category, with each value a named list mapping token -> integer
+  # row indices into `dt`. One single pass per category replaces three separate
+  # O(N x n_tokens) sweeps (XLSX writer, HTML .dd_build_cat, HTML .dd_project).
+  #
+  # Set semantics is identical to the original filter_fn closures:
+  #   * impact / vc / top_genes: which(col == tok) matches !is.na(col) & col == tok
+  #     because NA values are excluded from `which()`.
+  #   * clin_sig: strsplit("[&/]") + trimws + token-equality on each flattened
+  #     piece, same as the prior per-token vapply membership check.
+  .gvr_build_token_index <- function(dt, cat_specs) {
+    out <- list()
+    for (cat_nm in names(cat_specs)) {
+      sp <- cat_specs[[cat_nm]]
+      idx_map <- vector("list", length(sp$tokens))
+      names(idx_map) <- as.character(sp$tokens)
+      if (cat_nm == "clin_sig") {
+        cs <- dt$CLIN_SIG
+        m  <- !.is_missing(cs)
+        if (any(m)) {
+          row_idx_m <- which(m)
+          toks_list <- strsplit(cs[m], "[&/]")
+          toks_list <- lapply(toks_list, function(x) trimws(x))
+          rep_idx   <- rep.int(row_idx_m, lengths(toks_list))
+          flat_toks <- unlist(toks_list, use.names = FALSE)
+          sp_map    <- split(rep_idx, flat_toks)
+          for (tok in names(idx_map)) {
+            # dedupe: a token can appear >1x per row (e.g. "benign&benign/likely_benign"); equivalence with grepl requires one row index per row
+            idx_map[[tok]] <- if (!is.null(sp_map[[tok]])) unique(sp_map[[tok]]) else integer(0)
+          }
+        } else {
+          for (tok in names(idx_map)) idx_map[[tok]] <- integer(0)
+        }
+      } else {
+        col_lookup <- switch(cat_nm,
+          top_genes = dt$Hugo_Symbol,
+          impact    = dt$IMPACT,
+          vc        = dt$Variant_Classification)
+        if (is.null(col_lookup)) {
+          for (tok in names(idx_map)) idx_map[[tok]] <- integer(0)
+        } else {
+          keep <- !is.na(col_lookup)
+          if (any(keep)) {
+            row_idx <- which(keep)
+            keys    <- as.character(col_lookup[keep])
+            sp_map  <- split(row_idx, keys)
+            for (tok in names(idx_map)) {
+              idx_map[[tok]] <- if (!is.null(sp_map[[tok]])) sp_map[[tok]] else integer(0)
+            }
+          } else {
+            for (tok in names(idx_map)) idx_map[[tok]] <- integer(0)
+          }
+        }
+      }
+      out[[cat_nm]] <- idx_map
+    }
+    out
+  }
+
   # ============================================================================
   # Optional Excel export  ->  <out_dir>/gvr_summary/<file_prefix>.xlsx
   # Fixed filename (no timestamp): re-running overwrites the previous workbook.
@@ -611,6 +671,32 @@ gvr_summary <- function(maf,
                      variant_classification = "Variant_classification",
                      variant_type = "Variant_type", clin_sig = "Clinical",
                      top_variants = "Top_variants", impact = "Impact")
+      # vN+9: fixed per-column widths for known fields.
+      # Auto-width (widths = "auto") forces openxlsx to walk every cell --
+      # the dominant runtime cost at 200k+ rows. Fixed widths give identical
+      # Excel UX (users can drag to adjust if needed) at constant time.
+      .gvr_xl_width_for <- function(col_name) {
+        switch(as.character(col_name),
+          "Hugo_Symbol"            = 14,
+          "dbSNP_RS"               = 18,
+          "CLIN_SIG"               = 24,
+          "IMPACT"                 = 10,
+          "gnomADe_AF"             = 12,
+          "Variant_Classification" = 22,
+          "Variant_Type"           = 12,
+          "Tumor_Sample_Barcode"   = 18,
+          "Chromosome"             = 10,
+          "Start_Position"         = 14,
+          "End_Position"           = 14,
+          "Reference_Allele"       = 14,
+          "Tumor_Seq_Allele2"      = 14,
+          "HGVSp_Short"            = 18,
+          16  # default for unknown / base-section columns
+        )
+      }
+      .gvr_xl_widths <- function(col_names) {
+        vapply(col_names, .gvr_xl_width_for, numeric(1))
+      }
       wb <- openxlsx::createWorkbook()
       hs <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
       for (nm in names(sections)) {
@@ -624,8 +710,9 @@ gvr_summary <- function(maf,
               openxlsx::addWorksheet(wb, sh_nm)
               openxlsx::writeData(wb, sh_nm, sections$top_genes_per_sample[[sm]], headerStyle = hs)
               openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
-              openxlsx::setColWidths(wb, sh_nm, cols = seq_len(ncol(sections$top_genes_per_sample[[sm]])),
-                                     widths = "auto")
+              openxlsx::setColWidths(wb, sh_nm,
+                                     cols = seq_len(ncol(sections$top_genes_per_sample[[sm]])),
+                                     widths = .gvr_xl_widths(names(sections$top_genes_per_sample[[sm]])))
             }, error = function(e) {
               warning(sprintf("gvr_summary: skipping sheet TopGenes_%s: %s",
                               sm, conditionMessage(e)))
@@ -642,7 +729,8 @@ gvr_summary <- function(maf,
           openxlsx::addWorksheet(wb, sh)
           openxlsx::writeData(wb, sh, sections[[nm]], headerStyle = hs)
           openxlsx::freezePane(wb, sh, firstRow = TRUE)
-          openxlsx::setColWidths(wb, sh, cols = seq_len(ncol(sections[[nm]])), widths = "auto")
+          openxlsx::setColWidths(wb, sh, cols = seq_len(ncol(sections[[nm]])),
+                                 widths = .gvr_xl_widths(names(sections[[nm]])))
         }, error = function(e) {
           warning(sprintf("gvr_summary: skipping sheet %s: %s",
                           if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm,
@@ -705,6 +793,20 @@ gvr_summary <- function(maf,
                         "gnomADe_AF", "Variant_Classification",
                         "Tumor_Sample_Barcode")
       .gvr_xl_cols <- intersect(.gvr_xl_cols, names(dt))
+      # vN+9 Stage D: precompute the XLSX detail projection AND the 5 rank-key vectors
+      # once. Each per-token loop then subsets only these ~12 columns instead of
+      # all 116, and ranking does not recompute as.numeric/as.character per token.
+      .xl_proj <- dt[, intersect(c(.gvr_xl_cols,
+                                   "Chromosome", "Start_Position",
+                                   ".__sample__", ".__nsamp__"),
+                                 names(dt)), with = FALSE]
+      .xl_proj[, .__ir__  := {
+        ord <- c("HIGH"=1L,"MODERATE"=2L,"LOW"=3L,"MODIFIER"=4L)
+        r <- ord[as.character(IMPACT)]; r[is.na(r)] <- 5L; as.integer(r)
+      }]
+      .xl_proj[, .__gaf__ := if ("gnomADe_AF" %in% names(.xl_proj)) suppressWarnings(as.numeric(gnomADe_AF)) else NA_real_]
+      .xl_proj[, .__chr__ := if ("Chromosome" %in% names(.xl_proj)) as.character(Chromosome) else ""]
+      .xl_proj[, .__pos__ := if ("Start_Position" %in% names(.xl_proj)) suppressWarnings(as.integer(Start_Position)) else 0L]
       used_names <- names(wb)
       # Category specs: (prefix, tokens, filter_fn returning logical mask on dt)
       # token order: same composite ranking applied to a one-row-per-token aggregate
@@ -748,13 +850,18 @@ gvr_summary <- function(maf,
           tokens = as.character(sections$variant_classification$Variant_Classification),
           filter_fn = function(tok) !is.na(dt$Variant_Classification) & dt$Variant_Classification == tok)
       }
+      # vN+9: build per-token row-index map ONCE for the XLSX detail writer.
+      # The same builder is reused by the HTML drill-down builder below.
+      .gvr_token_idx <- .gvr_build_token_index(dt, cat_specs)
+
       for (cat_nm in names(cat_specs)) {
         sp <- cat_specs[[cat_nm]]
         for (tok in sp$tokens) {
-          mask <- sp$filter_fn(tok)
-          if (!any(mask)) next                    # skip empty pools
-          sub <- dt[mask]
-          ord <- .gvr_rank_xl(sub)
+          row_idx <- .gvr_token_idx[[cat_nm]][[as.character(tok)]]
+          if (length(row_idx) == 0L) next         # skip empty pools (vN+9)
+          # vN+9 Stage D: project + rank in one pass using precomputed columns
+          sub <- .xl_proj[row_idx]
+          ord <- order(sub$.__ir__, -sub$.__nsamp__, sub$.__gaf__, sub$.__chr__, sub$.__pos__, na.last = TRUE)
           sub <- sub[ord]
           if (nrow(sub) > .XLSX_ROW_CAP) sub <- sub[seq_len(.XLSX_ROW_CAP)]
           out_df <- as.data.frame(sub[, .gvr_xl_cols, with = FALSE], stringsAsFactors = FALSE)
@@ -764,7 +871,8 @@ gvr_summary <- function(maf,
             openxlsx::addWorksheet(wb, sh_nm)
             openxlsx::writeData(wb, sh_nm, out_df, headerStyle = hs)
             openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
-            openxlsx::setColWidths(wb, sh_nm, cols = seq_len(ncol(out_df)), widths = "auto")
+            openxlsx::setColWidths(wb, sh_nm, cols = seq_len(ncol(out_df)),
+                                   widths = .gvr_xl_widths(names(out_df)))
             TRUE
           }, error = function(e) {
             warning(sprintf("gvr_summary: skipping sheet %s: %s",
@@ -1684,14 +1792,21 @@ gvr_summary <- function(maf,
             tokens = as.character(sections$top_genes$Hugo_Symbol),
             filter_fn = function(tok) !is.na(dt$Hugo_Symbol) & dt$Hugo_Symbol == tok))
 
+        # vN+9: build per-token row-index cache ONCE -- shared by .dd_project
+        # (payload size estimate) and .dd_build_cat (slice construction).
+        # Replaces two full-table passes per token with a single split() per
+        # category.
+        .gvr_token_idx_html <- .gvr_build_token_index(dt, .dd_token_specs)
+
         # Project the embed payload first to decide on fallback.
         .dd_project <- function() {
           tot <- 0L
           for (cat_nm in names(dd_specs)) {
             spec <- .dd_token_specs[[cat_nm]]
             if (is.null(spec) || length(spec$tokens) == 0L) next
+            idx_for_cat <- .gvr_token_idx_html[[cat_nm]]
             for (tok in spec$tokens) {
-              n_tok <- sum(spec$filter_fn(tok))
+              n_tok <- length(idx_for_cat[[as.character(tok)]])
               tot <- tot + min(n_tok, .HTML_TOPK_CAP)
             }
           }
@@ -1720,13 +1835,14 @@ gvr_summary <- function(maf,
           n_pre_total <- 0L
           any_capped  <- FALSE
           n_nonempty  <- 0L
+          idx_for_cat <- .gvr_token_idx_html[[cat_nm]]
           for (i in seq_along(spec$tokens)) {
             tok <- spec$tokens[[i]]
-            mask <- spec$filter_fn(tok)
-            n_tok <- sum(mask)
+            row_idx <- idx_for_cat[[as.character(tok)]]
+            n_tok <- length(row_idx)
             n_pre_total <- n_pre_total + n_tok
             if (n_tok == 0L) next
-            sub <- dt[mask]
+            sub <- dt[row_idx]
             ord <- .gvr_rank_variants(sub)
             if (n_tok > .HTML_TOPK_CAP) {
               sub <- sub[ord[seq_len(.HTML_TOPK_CAP)]]
