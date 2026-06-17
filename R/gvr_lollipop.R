@@ -1208,8 +1208,12 @@ gvr_lollipop <- function(maf, gene,
 
   # ---- Protein-body bar geometry (overlapping y=0) ----
   y_max_stack <- max(pos_height$.__top__)
-  # bar half-thickness = ~4% of stack height, clamped to [0.15, 0.5]
-  bar_half <- max(0.22, min(0.5, y_max_stack * 0.05))
+  # vN+8: fixed protein-body geometry for visual consistency across genes.
+  # Both bar and domain rectangles use the same height on every plot,
+  # regardless of how tall the variant stack is. The constants are chosen so
+  # that the domain rectangle top sits at y = 0.80, leaving 20% headroom
+  # below the lowest possible dot at y = 1 (single-sample variant).
+  bar_half <- 0.30
   # Top y-bound (does not depend on label fit; we compute y_lower later).
   # Resolve user-requested mode + position here; .dlm_resolved comes later.
   .dlm_requested <- match.arg(domain_label_mode)
@@ -1276,8 +1280,10 @@ gvr_lollipop <- function(maf, gene,
         }
       }
 
-      # build geom_rect-friendly frame; domains slightly taller than bar
-      dom_half <- bar_half * 2.4  # clearly taller than bar (maftools-style highlight)
+      # vN+8: fixed domain height -- always y in [-0.80, +0.80]. Top edge sits
+      # 0.20 below the minimum dot position (y = 1), so even a single-sample
+      # variant remains clearly visible above the domain rectangle.
+      dom_half <- 0.80
       domains_df <- data.frame(xmin = dom$start, xmax = dom$end,
                                ymin = -dom_half, ymax = dom_half,
                                fill = dom$color,
@@ -1506,7 +1512,7 @@ gvr_lollipop <- function(maf, gene,
   }
 
   # Decide y_lower based on whether any label needs the below-band
-  .dom_floor <- bar_half * 2.4
+  .dom_floor <- 0.80   # vN+8: fixed (was bar_half * 2.4)
   .need_below_space <-
     (domain_label_position == "below"  && .dlm_resolved %in% c("name", "id")) ||
     (domain_label_position == "inside" && .n_overflow_preview > 0L)
@@ -1610,7 +1616,7 @@ gvr_lollipop <- function(maf, gene,
     p <- p + ggplot2::geom_rect(
       data        = hotspot_df,
       ggplot2::aes(xmin = xmin, xmax = xmax,
-                   ymin = -bar_half * 2.4,
+                   ymin = -0.80,   # vN+8: fixed dom-floor (matches .dom_floor / dom_half)
                    ymax =  y_upper),
       fill        = "#FD9BED",  # phylo magenta
       color       = NA,
@@ -1618,7 +1624,18 @@ gvr_lollipop <- function(maf, gene,
       inherit.aes = FALSE)
   }
 
-  # optional domain rectangles (on top of bar, but below stems)
+  # vN+8: stems drawn BEFORE domain rectangles so domains paint over them.
+  # This keeps the stem line from visibly crossing the colored domain rect.
+  p <- p + ggplot2::geom_segment(
+    data        = stem_df,
+    ggplot2::aes(x = aa_pos, xend = aa_pos,
+                 y = bar_half, yend = top),
+    color       = stem_color,
+    alpha       = as.numeric(stem_alpha),
+    linewidth   = 0.5,
+    inherit.aes = FALSE)
+
+  # optional domain rectangles (drawn on top of bar + stems, below dots)
   if (!is.null(domains_df) && nrow(domains_df) > 0L) {
     # Use a single thin dark outline so adjacent same-coloured domains stay
     # visually separable. (Per-domain outlines would collide with the variant
@@ -1820,13 +1837,6 @@ gvr_lollipop <- function(maf, gene,
   }
 
   p <- p +
-    # stems (from top of bar up to stack top)
-    ggplot2::geom_segment(data = stem_df,
-                          ggplot2::aes(x = aa_pos, xend = aa_pos,
-                                       y = bar_half, yend = top),
-                          color = stem_color,
-                          alpha = as.numeric(stem_alpha),
-                          linewidth = 0.5) +
     # dots
     ggplot2::geom_point(data = dot_df,
                         ggplot2::aes(x = aa_pos, y = y, color = vc),
