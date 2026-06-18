@@ -186,17 +186,20 @@ gvr_plot <- function(maf,
   gb <- gene_burden$N[match(rownames(mat), gene_burden$Hugo_Symbol)]; gb[is.na(gb)] <- 0
   samp_burden <- vapply(samples, function(s) sum(m$.__sample__ == s), integer(1))
 
-  # IMPACT palette and per-sample counts matrix (rows = levels, cols = samples)
+  # IMPACT palette and per-sample counts matrix (rows = levels, cols = samples).
+  # anno_barplot stacks rows bottom-to-top, so to render HIGH on top the matrix
+  # row order must be MODIFIER (bottom) -> LOW -> MODERATE -> HIGH (top).
   IMPACT_LEVELS  <- c("HIGH", "MODERATE", "LOW", "MODIFIER")
+  IMPACT_STACK   <- rev(IMPACT_LEVELS)   # bottom-to-top stacking order
   IMPACT_COLORS  <- c(HIGH = "#D55E00", MODERATE = "#E69F00",
                        LOW  = "#009E73", MODIFIER  = "#BBBBBB")
   if (has_impact) {
-    imp_mat <- do.call(rbind, lapply(IMPACT_LEVELS, function(lv) {
+    imp_mat <- do.call(rbind, lapply(IMPACT_STACK, function(lv) {
       vapply(samples, function(s)
         sum(m$.__sample__ == s & !is.na(m$IMPACT) & m$IMPACT == lv),
         integer(1))
     }))
-    rownames(imp_mat) <- IMPACT_LEVELS
+    rownames(imp_mat) <- IMPACT_STACK
   }
 
   # Right annotation: per-gene total variant burden bar
@@ -213,7 +216,7 @@ gvr_plot <- function(maf,
     ComplexHeatmap::HeatmapAnnotation(
       `Variant impact` = ComplexHeatmap::anno_barplot(
         t(imp_mat), border = FALSE, beside = FALSE,
-        gp = grid::gpar(fill = IMPACT_COLORS[IMPACT_LEVELS], col = NA),
+        gp = grid::gpar(fill = IMPACT_COLORS[IMPACT_STACK], col = NA),
         axis_param = list(
           at     = pretty(c(0, colSums(imp_mat)), n = 3),
           labels = paste0(round(pretty(c(0, colSums(imp_mat)), n = 3) / 1000), "k"),
