@@ -854,37 +854,97 @@ gvr_summary <- function(maf,
       # The same builder is reused by the HTML drill-down builder below.
       .gvr_token_idx <- .gvr_build_token_index(dt, cat_specs)
 
-      for (cat_nm in names(cat_specs)) {
-        sp <- cat_specs[[cat_nm]]
-        for (tok in sp$tokens) {
-          row_idx <- .gvr_token_idx[[cat_nm]][[as.character(tok)]]
-          if (length(row_idx) == 0L) next         # skip empty pools (vN+9)
-          # vN+9 Stage D: project + rank in one pass using precomputed columns
-          sub <- .xl_proj[row_idx]
-          ord <- order(sub$.__ir__, -sub$.__nsamp__, sub$.__gaf__, sub$.__chr__, sub$.__pos__, na.last = TRUE)
-          sub <- sub[ord]
-          if (nrow(sub) > .XLSX_ROW_CAP) sub <- sub[seq_len(.XLSX_ROW_CAP)]
-          out_df <- as.data.frame(sub[, .gvr_xl_cols, with = FALSE], stringsAsFactors = FALSE)
-          sh_nm <- .gvr_safe_sheet(sp$pfx, tok, used_names)
-          # Per-sheet tryCatch (vN+7.2): bad sheet is skipped, others persist
-          ok_sheet <- tryCatch({
-            openxlsx::addWorksheet(wb, sh_nm)
-            openxlsx::writeData(wb, sh_nm, out_df, headerStyle = hs)
-            openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
-            openxlsx::setColWidths(wb, sh_nm, cols = seq_len(ncol(out_df)),
-                                   widths = .gvr_xl_widths(names(out_df)))
-            TRUE
-          }, error = function(e) {
-            warning(sprintf("gvr_summary: skipping sheet %s: %s",
-                            sh_nm, conditionMessage(e)))
-            # Remove orphaned worksheet if addWorksheet succeeded before writeData
-            tryCatch(openxlsx::removeWorksheet(wb, sh_nm),
-                     error = function(e2) invisible(NULL))
-            FALSE
-          })
-          if (isTRUE(ok_sheet)) used_names <- c(used_names, sh_nm)
-        }
+      # vN+10: combined detail sheets -- one sheet per category, all tokens stacked
+      # vertically.  Replaces the previous per-token sheet approach (GEN_*, VC_*,
+      # CS_*, IMP_*).  Layout per sheet:
+      #   Row 1          : column headers (bold, frozen) -- written once
+      #   For each token : blank row | bold merged label row | data rows (no header)
+      # Empty tokens (0 rows) still get a label row so the user sees the token.
+      combined_sheet_map <- list(
+        top_genes = "Genes_detail",
+        vc        = "VC_detail",
+        clin_sig  = "Clinical_detail",
+        impact    = "Impact_detail"
+      )
+      token_hs <- openxlsx::createStyle(textDecoration = "bold")
+      blank_row <- as.data.frame(
+        matrix(NA_character_, nrow = 1L, ncol = length(.gvr_xl_cols),
+               dimnames = list(NULL, .gvr_xl_cols)),
+        stringsAsFactors = FALSE)
+
+      .gvr_write_combined_sheet <- function(wb, sheet_name, cat_nm, sp) {
+        # Guard: skip if category absent from cat_specs
+        if (is.null(sp)) return(invisible(NULL))
+        tryCatch({
+          openxlsx::addWorksheet(wb, sheet_name)
+          used_names <<- c(used_names, sheet_name)
+
+          # Row 1: column headers only (zero data rows so writeData emits header only)
+          header_df <- as.data.frame(
+            matrix(NA_character_, nrow = 0L, ncol = length(.gvr_xl_cols),
+                   dimnames = list(NULL, .gvr_xl_cols)),
+            stringsAsFactors = FALSE)
+          openxlsx::writeData(wb, sheet_name, header_df, headerStyle = hs, startRow = 1L)
+          openxlsx::freezePane(wb, sheet_name, firstRow = TRUE)
+
+          cur_row <- 2L   # next writable row (row 1 = header)
+
+          for (tok in sp$tokens) {
+            row_idx <- .gvr_token_idx[[cat_nm]][[as.character(tok)]]
+
+            # blank separator row
+            openxlsx::writeData(wb, sheet_name, blank_row,
+                                colNames = FALSE, startRow = cur_row)
+            cur_row <- cur_row + 1L
+
+            # bold merged label row
+            label_df <- blank_row
+            label_df[[1L]] <- as.character(tok)
+            openxlsx::writeData(wb, sheet_name, label_df,
+                                colNames = FALSE, startRow = cur_row)
+            openxlsx::addStyle(wb, sheet_name, token_hs,
+                               rows = cur_row,
+                               cols = seq_along(.gvr_xl_cols),
+                               stack = TRUE)
+            openxlsx::mergeCells(wb, sheet_name,
+                                 cols = seq_along(.gvr_xl_cols),
+                                 rows = cur_row)
+            cur_row <- cur_row + 1L
+
+            # data rows (skip if empty pool)
+            if (length(row_idx) == 0L) next
+            sub <- .xl_proj[row_idx]
+            ord <- order(sub$.__ir__, -sub$.__nsamp__, sub$.__gaf__,
+                         sub$.__chr__, sub$.__pos__, na.last = TRUE)
+            sub <- sub[ord]
+            if (nrow(sub) > .XLSX_ROW_CAP) sub <- sub[seq_len(.XLSX_ROW_CAP)]
+            out_df <- as.data.frame(sub[, .gvr_xl_cols, with = FALSE],
+                                    stringsAsFactors = FALSE)
+            openxlsx::writeData(wb, sheet_name, out_df,
+                                colNames = FALSE, startRow = cur_row)
+            cur_row <- cur_row + nrow(out_df)
+          }
+
+          # column widths set once after all blocks
+          openxlsx::setColWidths(wb, sheet_name,
+                                 cols = seq_along(.gvr_xl_cols),
+                                 widths = .gvr_xl_widths(.gvr_xl_cols))
+        }, error = function(e) {
+          warning(sprintf("gvr_summary: skipping combined sheet '%s': %s",
+                          sheet_name, conditionMessage(e)))
+          tryCatch(openxlsx::removeWorksheet(wb, sheet_name),
+                   error = function(e2) invisible(NULL))
+        })
       }
+
+      .gvr_write_combined_sheet(wb, combined_sheet_map$top_genes,
+                                "top_genes", cat_specs$top_genes)
+      .gvr_write_combined_sheet(wb, combined_sheet_map$vc,
+                                "vc",        cat_specs$vc)
+      .gvr_write_combined_sheet(wb, combined_sheet_map$clin_sig,
+                                "clin_sig",  cat_specs$clin_sig)
+      .gvr_write_combined_sheet(wb, combined_sheet_map$impact,
+                                "impact",    cat_specs$impact)
       # vN+7.2: portable write. Stage in tempdir() only when destination is on
       # /mnt/ (S3 FUSE); write directly otherwise (Windows/macOS/local Linux).
       use_stage <- .gvr_use_staging(final_xlsx)

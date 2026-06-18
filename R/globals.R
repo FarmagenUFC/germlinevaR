@@ -42,5 +42,9 @@ utils::globalVariables(c(
   ".lbl", ".legend", "fill", ".lbl_resolved", ".font_mult",
   # --- gvr_lollipop() Phase I: hotspot_df aes() / column symbols -----------
   # n_in_window: hotspot row count (optional label/tooltip in future versions)
-  "n_in_window"
+  "n_in_window",
+  # --- gvr_summary() Phase N+9 Stage D: per-token rank-key precompute -------
+  # .__ir__/.__gaf__/.__chr__/.__pos__ are columns built on .xl_proj via := ;
+  # gnomADe_AF is referenced bare inside the := RHS for as.numeric(gnomADe_AF).
+  ".__ir__", ".__gaf__", ".__chr__", ".__pos__", "gnomADe_AF"
 ))
