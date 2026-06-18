@@ -26,7 +26,7 @@ utils::globalVariables(c(
   "Hugo_Symbol", "Total", "Variant_Classification", "CLIN_SIG",
   "Category", "Sample", "n",
   # --- gvr_summary(): top-rsID aggregation + drill-down detail columns ------
-  ".__rs__", "Chromosome", "Start_Position", "IMPACT",
+  ".__rs__", ".__n__", "Chromosome", "Start_Position", "IMPACT",
 
   # --- gvr_plot(): matrix/summary columns ------------------------------
   "n_var", "n_samp", "N",

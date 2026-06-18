@@ -363,11 +363,17 @@ gvr_summary <- function(maf,
       }, Variant_Classification = {
         v <- Variant_Classification[!.is_missing(Variant_Classification)]; if (length(v)) v[1L] else ""
       }, Total = .N), by = .__rs__]
-      # Per-sample counts
-      for (sm in samples) {
-        rs_tab[, (sm) := dt_rs[.__sample__ == sm, .N, by = .__rs__][match(rs_tab$.__rs__, .__rs__), N]]
-        rs_tab[is.na(get(sm)), (sm) := 0L]
-      }
+      # Per-sample counts: one dcast pass instead of O(N x n_samples) per-sample scans.
+      # Add a sentinel column of 1L so dcast can aggregate by count (length) without
+      # using the grouping column itself as value.var, which would give wrong results.
+      dt_rs_cast <- dt_rs[, .(.__rs__, .__sample__, .__n__ = 1L)]
+      samp_counts <- data.table::dcast(
+        dt_rs_cast, .__rs__ ~ .__sample__,
+        fun.aggregate = sum, value.var = ".__n__", fill = 0L)
+      # Ensure all sample columns exist (dcast drops samples absent from dt_rs)
+      for (sm in samples) if (!sm %in% names(samp_counts)) samp_counts[, (sm) := 0L]
+      # Right join: keep all rsIDs from rs_tab (the metadata table); attach sample counts
+      rs_tab <- samp_counts[rs_tab, on = ".__rs__"]
       data.table::setcolorder(rs_tab, c(".__rs__", "Hugo_Symbol", "Chromosome",
                                          "Start_Position", "Variant_Classification",
                                          samples, "Total"))

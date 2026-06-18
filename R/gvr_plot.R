@@ -199,6 +199,15 @@ gvr_plot <- function(maf,
     rownames(imp_mat) <- IMPACT_LEVELS
   }
 
+  # Right annotation: per-gene total variant burden bar
+  ra <- ComplexHeatmap::rowAnnotation(
+    `Variants` = ComplexHeatmap::anno_barplot(
+      gb, border = FALSE,
+      gp = grid::gpar(fill = "#0279EE", col = NA),
+      axis_param = list(gp = grid::gpar(fontsize = 7))),
+    width = grid::unit(1.8, "cm"),
+    annotation_name_gp = grid::gpar(fontsize = 9))
+
   # Top annotation: stacked IMPACT bar (or fallback total-burden bar)
   ta <- if (has_impact) {
     ComplexHeatmap::HeatmapAnnotation(
