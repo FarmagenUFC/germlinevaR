@@ -963,19 +963,27 @@ gvr_genepos.plot <- function(maf,
     for (i in seq_along(top_x)) {
       xv <- top_x[i]
       sub_dt <- dt[.__x__ == xv]
-      # Prefer HGVSp_Short when present (more informative); otherwise show "c.<pos>".
-      pretty <- if ("HGVSp_Short" %in% names(sub_dt) &&
-                    any(!is.na(sub_dt$HGVSp_Short) & nzchar(sub_dt$HGVSp_Short))) {
-        tab <- table(sub_dt$HGVSp_Short[!is.na(sub_dt$HGVSp_Short) & nzchar(sub_dt$HGVSp_Short)])
+      # Always label with HGVSc. Pick the most-frequent HGVSc string at this
+      # position; fall back to reconstructed c.<pos> notation only if HGVSc
+      # is absent or blank for every row at this position.
+      pretty <- if ("HGVSc" %in% names(sub_dt) &&
+                    any(!is.na(sub_dt$HGVSc) & nzchar(sub_dt$HGVSc))) {
+        # Strip transcript prefix e.g. "ENST00000269305.9:c.215C>G" -> "c.215C>G"
+        raw <- sub_dt$HGVSc[!is.na(sub_dt$HGVSc) & nzchar(sub_dt$HGVSc)]
+        raw <- sub("^[^:]+:", "", raw)
+        tab <- table(raw)
         names(sort(tab, decreasing = TRUE))[1]
       } else {
         k <- sub_dt$.__kind__[1]; p <- sub_dt$.__pos__[1]
-        switch(k, cds = sprintf("c.%d", p),
-                  utr5 = sprintf("c.-%d", abs(p)),
-                  utr3 = sprintf("c.*%d", p),
+        switch(k, cds  = sprintf("c.%d",   p),
+                  utr5 = sprintf("c.-%d",  abs(p)),
+                  utr3 = sprintf("c.*%d",  p),
                   NA_character_)
       }
-      n_distinct <- length(unique(sub_dt$HGVSp_Short[!is.na(sub_dt$HGVSp_Short) & nzchar(sub_dt$HGVSp_Short)]))
+      raw_all <- if ("HGVSc" %in% names(sub_dt))
+        sub("^[^:]+:", "", sub_dt$HGVSc[!is.na(sub_dt$HGVSc) & nzchar(sub_dt$HGVSc)])
+      else character(0)
+      n_distinct <- length(unique(raw_all))
       lbl <- if (n_distinct > 1L) sprintf("%s (+%d more)", pretty, n_distinct - 1L) else pretty
       label_rows[[i]] <- data.frame(
         x     = xv,
@@ -995,6 +1003,7 @@ gvr_genepos.plot <- function(maf,
   # ---- Geometry constants (match gvr_lollipop) -----------------------------
   bar_half <- 0.30
   dom_half <- 0.60          # exon/UTR box half-height
+  utr_half <- 0.30          # UTR box half-height (half of CDS exon height)
   intron_y <- 0
   hot_ymin <- -dom_half
   y_max_stack <- if (nrow(pos_height) > 0L) max(pos_height$.__top__) else 1
@@ -1064,8 +1073,14 @@ gvr_genepos.plot <- function(maf,
 
   # ---- Track rectangles + intron lines + per-region fills ------------------
   rect_df <- regions[region_kind %in% c("cds", "utr5", "utr3")]
-  rect_df[, ymin := -dom_half]
-  rect_df[, ymax :=  dom_half]
+  rect_df[, ymin := data.table::fcase(
+    region_kind == "cds",                    -dom_half,
+    region_kind %in% c("utr5", "utr3"),  -utr_half
+  )]
+  rect_df[, ymax := data.table::fcase(
+    region_kind == "cds",                     dom_half,
+    region_kind %in% c("utr5", "utr3"),   utr_half
+  )]
   rect_df[, fill := data.table::fcase(
     region_kind == "cds",  exon_color,
     region_kind == "utr5", utr_color,
@@ -1074,21 +1089,6 @@ gvr_genepos.plot <- function(maf,
 
   intron_df <- regions[region_kind == "intron"]
   intron_df[, y := intron_y]
-
-  # Coding-region bar overlay (sits inside CDS rectangles, drawn semi-transparent
-  # so it reads as "protein body" on top of the exon track -- this is the
-  # visual continuity with gvr_lollipop).
-  cds_df_rect <- regions[region_kind == "cds"]
-  if (nrow(cds_df_rect) > 0L) {
-    bar_df <- data.frame(
-      xmin = cds_df_rect$x_start, xmax = cds_df_rect$x_end,
-      ymin = -bar_half, ymax = bar_half,
-      stringsAsFactors = FALSE
-    )
-  } else {
-    bar_df <- data.frame(xmin = numeric(), xmax = numeric(),
-                         ymin = numeric(), ymax = numeric())
-  }
 
   # ---- ggplot composition (drawing order matches gvr_lollipop) -------------
   p <- ggplot2::ggplot() +
@@ -1102,13 +1102,18 @@ gvr_genepos.plot <- function(maf,
                            fill = "#ffeeba", alpha = 0.35)
       } else NULL
     } +
-    # 2. exon / UTR rectangles
-    ggplot2::geom_rect(data = rect_df,
-                       ggplot2::aes(xmin = x_start, xmax = x_end,
-                                    ymin = ymin, ymax = ymax,
-                                    fill = fill),
-                       color = NA) +
-    ggplot2::scale_fill_identity() +
+    # 2a. CDS exon rectangles (with border)
+    ggplot2::geom_rect(
+      data = rect_df[rect_df$region_kind == "cds", ],
+      ggplot2::aes(xmin = x_start, xmax = x_end, ymin = ymin, ymax = ymax),
+      fill = exon_color, color = bar_border, linewidth = 0.3,
+      inherit.aes = FALSE) +
+    # 2b. UTR rectangles (no border)
+    ggplot2::geom_rect(
+      data = rect_df[rect_df$region_kind %in% c("utr5", "utr3"), ],
+      ggplot2::aes(xmin = x_start, xmax = x_end, ymin = ymin, ymax = ymax),
+      fill = utr_color, color = NA,
+      inherit.aes = FALSE) +
     # 3. intron lines connecting consecutive exons
     {
       if (nrow(intron_df) > 0L) {
@@ -1119,12 +1124,6 @@ gvr_genepos.plot <- function(maf,
                               inherit.aes = FALSE)
       } else NULL
     } +
-    # 4. translucent protein-body bar on top of CDS exons
-    ggplot2::geom_rect(data = bar_df,
-                       ggplot2::aes(xmin = xmin, xmax = xmax,
-                                    ymin = ymin, ymax = ymax),
-                       fill = bar_color, color = bar_border, linewidth = 0.3,
-                       inherit.aes = FALSE, alpha = 0.6) +
     # 5. lollipop stems
     {
       if (nrow(pos_height) > 0L) {
