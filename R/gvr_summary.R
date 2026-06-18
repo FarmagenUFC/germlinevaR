@@ -812,6 +812,15 @@ gvr_summary <- function(maf,
       .xl_proj[, .__gaf__ := if ("gnomADe_AF" %in% names(.xl_proj)) suppressWarnings(as.numeric(gnomADe_AF)) else NA_real_]
       .xl_proj[, .__chr__ := if ("Chromosome" %in% names(.xl_proj)) as.character(Chromosome) else ""]
       .xl_proj[, .__pos__ := if ("Start_Position" %in% names(.xl_proj)) suppressWarnings(as.integer(Start_Position)) else 0L]
+      # vN+10: global rank-of-row precomputed ONCE so the per-token write loop
+      # in .gvr_write_combined_sheet can sort each pool with a single integer-key
+      # vector lookup instead of re-running a 5-key composite order(). The keys
+      # don't depend on which token's pool we're in, so this is mathematically
+      # equivalent to the per-token order() it replaces (verified empirically).
+      .xl_rank_of_row <- integer(nrow(.xl_proj))
+      .xl_rank_of_row[order(.xl_proj$.__ir__, -.xl_proj$.__nsamp__,
+                            .xl_proj$.__gaf__, .xl_proj$.__chr__,
+                            .xl_proj$.__pos__, na.last = TRUE)] <- seq_len(nrow(.xl_proj))
       used_names <- names(wb)
       # Category specs: (prefix, tokens, filter_fn returning logical mask on dt)
       # token order: same composite ranking applied to a one-row-per-token aggregate
@@ -872,10 +881,16 @@ gvr_summary <- function(maf,
         impact    = "Impact_detail"
       )
       token_hs <- openxlsx::createStyle(textDecoration = "bold")
-      blank_row <- as.data.frame(
-        matrix(NA_character_, nrow = 1L, ncol = length(.gvr_xl_cols),
-               dimnames = list(NULL, .gvr_xl_cols)),
-        stringsAsFactors = FALSE)
+      # vN+10 hotfix: blank/label rows must match .xl_proj column types so that
+      # rbindlist preserves numeric/integer types. Without this, blank_row would
+      # carry all-character NAs, force rbindlist to upcast numerics, and writeData
+      # then stores them as shared strings instead of inline numerics (e.g.
+      # gnomADe_AF renders as '7.206e-07' instead of openxlsx's '0.0000007206').
+      blank_row <- (function() {
+        proto <- .xl_proj[0L, .gvr_xl_cols, with = FALSE]
+        typed_na <- lapply(proto, function(col) col[NA_integer_])
+        as.data.frame(typed_na, stringsAsFactors = FALSE)
+      })()
 
       .gvr_write_combined_sheet <- function(wb, sheet_name, cat_nm, sp) {
         # Guard: skip if category absent from cat_specs
@@ -892,42 +907,63 @@ gvr_summary <- function(maf,
           openxlsx::writeData(wb, sheet_name, header_df, headerStyle = hs, startRow = 1L)
           openxlsx::freezePane(wb, sheet_name, firstRow = TRUE)
 
-          cur_row <- 2L   # next writable row (row 1 = header)
-
+          # vN+10 Stage E: build the entire sheet body (blank + label + data per token)
+          # as a SINGLE data.frame and emit ONE writeData call. Previously each token
+          # caused 2-3 separate writeData calls; openxlsx serializes each call
+          # through R<->C per cell so writeData overhead is the dominant XLSX cost
+          # at large cohorts. Visual output is identical: row 1 header, then per
+          # token: blank row, bold-merged label row, data rows (capped at .XLSX_ROW_CAP).
+          body_parts <- vector("list", 0L)
+          label_rows <- integer(0L)   # absolute row numbers of bold-merged label rows
+          cur_row    <- 2L            # next row after the header
           for (tok in sp$tokens) {
             row_idx <- .gvr_token_idx[[cat_nm]][[as.character(tok)]]
-
             # blank separator row
-            openxlsx::writeData(wb, sheet_name, blank_row,
-                                colNames = FALSE, startRow = cur_row)
+            body_parts[[length(body_parts) + 1L]] <- blank_row
             cur_row <- cur_row + 1L
-
-            # bold merged label row
-            label_df <- blank_row
+            # bold-merged label row
+            label_df       <- blank_row
             label_df[[1L]] <- as.character(tok)
-            openxlsx::writeData(wb, sheet_name, label_df,
-                                colNames = FALSE, startRow = cur_row)
-            openxlsx::addStyle(wb, sheet_name, token_hs,
-                               rows = cur_row,
-                               cols = seq_along(.gvr_xl_cols),
-                               stack = TRUE)
-            openxlsx::mergeCells(wb, sheet_name,
-                                 cols = seq_along(.gvr_xl_cols),
-                                 rows = cur_row)
+            body_parts[[length(body_parts) + 1L]] <- label_df
+            label_rows <- c(label_rows, cur_row)
             cur_row <- cur_row + 1L
-
-            # data rows (skip if empty pool)
-            if (length(row_idx) == 0L) next
-            sub <- .xl_proj[row_idx]
-            ord <- order(sub$.__ir__, -sub$.__nsamp__, sub$.__gaf__,
-                         sub$.__chr__, sub$.__pos__, na.last = TRUE)
-            sub <- sub[ord]
-            if (nrow(sub) > .XLSX_ROW_CAP) sub <- sub[seq_len(.XLSX_ROW_CAP)]
-            out_df <- as.data.frame(sub[, .gvr_xl_cols, with = FALSE],
-                                    stringsAsFactors = FALSE)
-            openxlsx::writeData(wb, sheet_name, out_df,
-                                colNames = FALSE, startRow = cur_row)
-            cur_row <- cur_row + nrow(out_df)
+            # data rows (if any) -- rank each pool by precomputed global key, cap
+            if (length(row_idx) > 0L) {
+              ord_idx <- row_idx[order(.xl_rank_of_row[row_idx])]
+              if (length(ord_idx) > .XLSX_ROW_CAP) ord_idx <- ord_idx[seq_len(.XLSX_ROW_CAP)]
+              sub <- .xl_proj[ord_idx]
+              out_df <- as.data.frame(sub[, .gvr_xl_cols, with = FALSE],
+                                      stringsAsFactors = FALSE)
+              body_parts[[length(body_parts) + 1L]] <- out_df
+              cur_row <- cur_row + nrow(out_df)
+            }
+          }
+          if (length(body_parts) > 0L) {
+            # vN+10 hotfix: blank/label rows now share .xl_proj column types, so
+            # rbindlist preserves native numeric/integer types. NO character
+            # coercion -- that previously caused numerics to be written as shared
+            # strings (e.g. 7.206e-07 instead of openxlsx's 0.0000007206 rendering).
+            # Label-row column 1 is character (token name); it lives in a column
+            # that is already character (Hugo_Symbol / dbSNP_RS / CLIN_SIG / IMPACT)
+            # so no type clash.
+            big_body <- data.table::rbindlist(body_parts, use.names = TRUE, fill = TRUE)
+            data.table::setcolorder(big_body, .gvr_xl_cols)
+            big_body_df <- as.data.frame(big_body, stringsAsFactors = FALSE)
+            openxlsx::writeData(wb, sheet_name, big_body_df,
+                                colNames = FALSE, startRow = 2L)
+          }
+          # vN+10 Stage E: apply bold style + merge to label rows AFTER bulk write.
+          # mergeCells is per-row but cheap (no cell data work).
+          if (length(label_rows) > 0L) {
+            n_cols <- length(.gvr_xl_cols)
+            openxlsx::addStyle(wb, sheet_name, token_hs,
+                               rows = rep(label_rows, each = n_cols),
+                               cols = rep(seq_len(n_cols), times = length(label_rows)),
+                               stack = TRUE, gridExpand = FALSE)
+            for (lr in label_rows) {
+              openxlsx::mergeCells(wb, sheet_name,
+                                   cols = seq_len(n_cols), rows = lr)
+            }
           }
 
           # column widths set once after all blocks
@@ -1830,37 +1866,37 @@ gvr_summary <- function(maf,
 
         # Per-category token enumeration -- exact same logic as the XLSX
         # writer above so click and sheet semantics stay aligned.
+        # vN+10 Stage F: filter_fn callbacks dropped -- never called after
+        # .gvr_build_token_index replaced per-token .filter_fn() invocations.
         .dd_token_specs <- list(
           clin_sig = list(
             tokens = {
               cs_t <- as.character(sections$clin_sig$CLIN_SIG)
               cs_t[cs_t != "missing/unclassified"]
-            },
-            filter_fn = function(tok) {
-              cs <- dt$CLIN_SIG; m <- !.is_missing(cs)
-              out <- logical(length(cs))
-              if (any(m)) {
-                toks_list <- strsplit(cs[m], "[&/]")
-                hit <- vapply(toks_list, function(x) tok %in% trimws(x), logical(1L))
-                out[m] <- hit
-              }
-              out
             }),
           impact = list(
-            tokens = as.character(sections$impact$IMPACT),
-            filter_fn = function(tok) !is.na(dt$IMPACT) & dt$IMPACT == tok),
+            tokens = as.character(sections$impact$IMPACT)),
           vc = list(
-            tokens = as.character(sections$variant_classification$Variant_Classification),
-            filter_fn = function(tok) !is.na(dt$Variant_Classification) &
-                                       dt$Variant_Classification == tok),
+            tokens = as.character(sections$variant_classification$Variant_Classification)),
           top_genes = list(
-            tokens = as.character(sections$top_genes$Hugo_Symbol),
-            filter_fn = function(tok) !is.na(dt$Hugo_Symbol) & dt$Hugo_Symbol == tok))
+            tokens = as.character(sections$top_genes$Hugo_Symbol)))
 
         # vN+9: build per-token row-index cache ONCE -- shared by .dd_project
         # (payload size estimate) and .dd_build_cat (slice construction).
         # Replaces two full-table passes per token with a single split() per
         # category.
+        # vN+10: precompute global rank-of-row ONCE so .dd_build_cat's per-token
+        # loop sorts each pool with a single integer-key lookup instead of
+        # re-running .gvr_rank_variants() per token (was 23.6% of HTML writer
+        # cost in Rprof). The rank keys depend only on row content, not on which
+        # token's pool we're in, so this is mathematically equivalent.
+        .html_rank_of_row <- {
+          .__rk_o <- .gvr_rank_variants(dt)
+          .__rk_r <- integer(nrow(dt))
+          .__rk_r[.__rk_o] <- seq_len(nrow(dt))
+          .__rk_r
+        }
+
         .gvr_token_idx_html <- .gvr_build_token_index(dt, .dd_token_specs)
 
         # Project the embed payload first to decide on fallback.
@@ -1907,14 +1943,13 @@ gvr_summary <- function(maf,
             n_tok <- length(row_idx)
             n_pre_total <- n_pre_total + n_tok
             if (n_tok == 0L) next
-            sub <- dt[row_idx]
-            ord <- .gvr_rank_variants(sub)
+            # vN+10: rank each pool by precomputed global key, then cap.
+            ord_idx <- row_idx[order(.html_rank_of_row[row_idx])]
             if (n_tok > .HTML_TOPK_CAP) {
-              sub <- sub[ord[seq_len(.HTML_TOPK_CAP)]]
+              ord_idx <- ord_idx[seq_len(.HTML_TOPK_CAP)]
               any_capped <- TRUE
-            } else {
-              sub <- sub[ord]
             }
+            sub <- dt[ord_idx]
             # Project to the rendered 7 columns. No dedup, no concat: each
             # token's slice is independent and carries its own canonical
             # ranking.
