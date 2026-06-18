@@ -63,5 +63,16 @@ utils::globalVariables(c(
   # GVR_CLASS_COLORS is a package-level named-vector constant defined in
   # gvr_lollipop.R; declaring it here keeps R CMD check quiet when other
   # files reference it via the same-file scoping rule.
-  "GVR_CLASS_COLORS"
+  "GVR_CLASS_COLORS",
+
+  # --- read.gvr.dual(): VEP CSQ extension + SnpEff-derived columns ---------
+  # FREQS is the 81st canonical CSQ field (added by VEP --everything in v113+):
+  # names the gnomAD population where MAX_AF was observed (e.g. "gnomADg_ASJ").
+  # The four LOF_*/NMD_* columns come from SnpEff's INFO LOF= and NMD= keys
+  # (loss-of-function and nonsense-mediated-decay predictions). The four
+  # snpeff_* columns hold SnpEff's parallel pick (consequence/impact/gene/hgvsc)
+  # for side-by-side comparison with VEP's pick in the same row.
+  "FREQS",
+  "LOF_Gene", "LOF_Pct_Transcripts", "NMD_Gene", "NMD_Pct_Transcripts",
+  "snpeff_consequence", "snpeff_impact", "snpeff_gene", "snpeff_hgvsc"
 ))

@@ -153,6 +153,11 @@
 #'   non-fork platforms it falls back to sequential. A single file is unaffected.
 #' @param verbose Logical; if `TRUE` (default) print per-file and per-chunk progress
 #'   (file i/N, cumulative records, elapsed seconds).
+#' @param .force_annotator Internal use only; do not set. Used by
+#'   [read.gvr.dual()] to bypass the auto-detector and force the VEP code path
+#'   when delegating from the dual reader. Accepts `"vep"` or `"snpeff"`; any
+#'   other value raises an error. `NULL` (the default) keeps the standard
+#'   header-based auto-routing.
 #'
 #' @return A `data.table` MAF: one row per variant allele, with MAF core columns, all
 #'   VEP CSQ fields, key GATK QC fields, `Tumor_Sample_Barcode`, and (when enabled) the
@@ -213,8 +218,7 @@
 #' maf[FILTER == "PASS" & Variant_Classification == "Missense_Mutation"]
 #' }
 #'
-#' @importFrom data.table data.table as.data.table rbindlist fread fwrite setnames
-#'   setcolorder setDT set setattr tstrsplit setkey :=
+#' @importFrom data.table data.table as.data.table rbindlist fread fwrite setnames setcolorder setDT set setattr tstrsplit setkey :=
 #' @importFrom stats setNames
 #' @importFrom utils download.file
 #' @importFrom openxlsx createWorkbook
@@ -245,16 +249,18 @@ read.gvr <- function(folder = ".",
                            vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                            canonical_only    = TRUE,   # vN+4: drop rows whose chosen CSQ block has CANONICAL != "YES"
                            ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
-                           verbose    = TRUE) {
+                           verbose    = TRUE,
+                           .force_annotator = NULL) {  # INTERNAL: read.gvr.dual() calls back with "vep" to bypass dispatch loop
   # ===========================================================================
-  # Nested helper: .read_gvr_locate_sibling() + auto-source sibling
+  # Nested helper: .read_gvr_locate_sibling() + auto-source siblings
   # ---------------------------------------------------------------------------
   # In standalone mode (source()'d from a directory), read.gvr() tries to
-  # auto-source its sibling file read.gvr.snpeff.R so that SnpEff dispatch
-  # works without manual setup. In a package, all R/*.R files are loaded
-  # into the namespace automatically, so the auto-source is skipped.
+  # auto-source its sibling files (read.gvr.snpeff.R for SnpEff-only dispatch,
+  # read.gvr.dual.R for dual-annotated dispatch) so that auto-routing works
+  # without manual setup. In a package, all R/*.R files are loaded into the
+  # namespace automatically, so the auto-source is skipped.
   # ===========================================================================
-  .read_gvr_locate_sibling <- function() {
+  .read_gvr_locate_sibling <- function(basename_) {
     # 1) Use the active source file's directory if R can tell us where THIS
     #    script lives (works for source() and Rscript). Recent R: getSrcFilename
     #    on a function defined HERE returns this file's path.
@@ -265,15 +271,25 @@ read.gvr <- function(folder = ".",
     }, error = function(e) NULL)
     # 2) Fallback: look in current working directory.
     if (is.null(this_dir) || !nzchar(this_dir)) this_dir <- getwd()
-    candidate <- file.path(this_dir, "read.gvr.snpeff.R")
+    candidate <- file.path(this_dir, basename_)
     if (file.exists(candidate)) return(candidate)
     NULL
   }
 
-  # Auto-source sibling if read.gvr.snpeff is not already available
-  # (in a package, it always is; in standalone mode, this provides it)
+  # Auto-source siblings if not already available
+  # (in a package, they always are; in standalone mode, this provides them)
   if (!exists("read.gvr.snpeff", mode = "function", inherits = TRUE)) {
-    sib <- .read_gvr_locate_sibling()
+    sib <- .read_gvr_locate_sibling("read.gvr.snpeff.R")
+    if (!is.null(sib)) {
+      tryCatch(
+        source(sib, local = FALSE, chdir = FALSE),
+        error = function(e) warning(sprintf(
+          "read.gvr: failed to source sibling '%s': %s", sib, conditionMessage(e)))
+      )
+    }
+  }
+  if (!exists("read.gvr.dual", mode = "function", inherits = TRUE)) {
+    sib <- .read_gvr_locate_sibling("read.gvr.dual.R")
     if (!is.null(sib)) {
       tryCatch(
         source(sib, local = FALSE, chdir = FALSE),
@@ -310,11 +326,10 @@ read.gvr <- function(folder = ".",
       }
     }
     if (csq_found && ann_found) {
-      warning(sprintf(
-        "read.gvr: '%s' has both VEP CSQ and SnpEff ANN INFO tags. Using VEP (CSQ takes priority).",
-        basename(path)),
-        call. = FALSE)
-      res <- "vep"
+      # Both annotators present -> route to read.gvr.dual() (sibling). This
+      # preserves both VEP CSQ (authoritative for shared fields) and SnpEff
+      # ANN (used for LOF/NMD and side-by-side comparison columns).
+      res <- "dual"
     } else if (csq_found) {
       res <- "vep"
     } else if (ann_found) {
@@ -541,6 +556,14 @@ read.gvr <- function(folder = ".",
   #     is always available; in standalone mode, the auto-source above loads it.
   # ==========================================================================
   detected <- vapply(vcf_paths, .detect_annotator, character(1L))
+  # Internal override: read.gvr.dual() calls read.gvr() with .force_annotator="vep"
+  # to use the VEP parser body on dual-annotated files without re-triggering
+  # the auto-route back into read.gvr.dual() (infinite recursion guard).
+  if (!is.null(.force_annotator)) {
+    if (!.force_annotator %in% c("vep", "snpeff"))
+      stop("read.gvr: .force_annotator must be 'vep' or 'snpeff'", call. = FALSE)
+    detected <- rep(.force_annotator, length(detected))
+  }
   na_mask  <- is.na(detected)
   if (any(na_mask)) {
     ## Surface up to 7 INFO tags from the first un-annotated file so the user
@@ -607,6 +630,43 @@ read.gvr <- function(folder = ".",
                                   # union math, returns the same effective_genes).
       vc_nonSyn         = vc_nonSyn,
       canonical_only    = canonical_only,        # vN+4
+      ncores            = ncores,
+      verbose           = verbose
+    ))
+  }
+  if (uniq_ann == "dual") {
+    if (!exists("read.gvr.dual", mode = "function", inherits = TRUE)) {
+      stop("read.gvr: detected dual-annotated VCF(s) (VEP CSQ + SnpEff ANN) ",
+           "but 'read.gvr.dual' is not defined. Source 'read.gvr.dual.R' ",
+           "(placed next to this file) first.", call. = FALSE)
+    }
+    if (verbose) message("read.gvr: dual-annotated input detected (VEP CSQ + SnpEff ANN); delegating to read.gvr.dual().")
+    return(read.gvr.dual(
+      folder            = folder,
+      vcf_path          = vcf_path,
+      file              = file,
+      pattern           = pattern,
+      write_tsv         = write_tsv,
+      write_rds         = write_rds,
+      write_xlsx        = write_xlsx,
+      out_dir           = out_dir,
+      out_prefix        = out_prefix,
+      chunk_size        = chunk_size,
+      ncbi_build        = ncbi_build,
+      add_genotype      = add_genotype,
+      strip_hgvs_prefix = strip_hgvs_prefix,
+      dedup_columns     = dedup_columns,
+      drop_empty_cols   = drop_empty_cols,
+      add_abraom        = add_abraom,
+      abraom_path       = abraom_path,
+      abraom_url        = abraom_url,
+      cache_dir         = cache_dir,
+      min_DP            = min_DP,
+      min_GQ            = min_GQ,
+      genes             = genes,
+      panel             = panel,
+      vc_nonSyn         = vc_nonSyn,
+      canonical_only    = canonical_only,
       ncores            = ncores,
       verbose           = verbose
     ))

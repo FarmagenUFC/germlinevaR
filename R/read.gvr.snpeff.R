@@ -245,8 +245,7 @@
 #'                        panel = c("breast cancer", "hereditary prostate cancer"))
 #' }
 #'
-#' @importFrom data.table data.table as.data.table rbindlist fread fwrite setnames
-#'   setcolorder setDT set setattr tstrsplit setkey :=
+#' @importFrom data.table data.table as.data.table rbindlist fread fwrite setnames setcolorder setDT set setattr tstrsplit setkey :=
 #' @importFrom stats setNames
 #' @importFrom utils download.file
 #' @importFrom openxlsx createWorkbook

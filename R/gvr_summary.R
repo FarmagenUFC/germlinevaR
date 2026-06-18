@@ -185,8 +185,7 @@
 #' gvr_summary(maf, top_n_genes = 30, verbose = FALSE)
 #' }
 #'
-#' @importFrom data.table as.data.table data.table setnames setcolorder setorder
-#'   uniqueN copy melt :=
+#' @importFrom data.table as.data.table data.table setnames setcolorder setorder uniqueN copy melt :=
 #' @importFrom utils head
 #' @importFrom openxlsx createWorkbook
 #' @importFrom grDevices pdf dev.off
