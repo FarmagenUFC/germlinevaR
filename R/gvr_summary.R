@@ -1504,8 +1504,8 @@ gvr_summary <- function(maf,
           lev <- d[[cat_col]][order(d[[val_col]])]   # ascending so biggest on top
           d[[cat_col]] <- factor(d[[cat_col]], levels = lev)
           h_px <- max(280, 90 + 26 * length(lev))
-          p <- plotly::plot_ly(d, x = stats::as.formula(paste0("~", val_col)),
-                               y = stats::as.formula(paste0("~", cat_col)),
+          p <- plotly::plot_ly(d, x = stats::as.formula(paste0("~`", val_col, "`")),
+                               y = stats::as.formula(paste0("~`", cat_col, "`")),
                                type = "bar", orientation = "h", height = h_px,
                                hovertemplate = "%{y}: %{x:,}<extra></extra>",
                                marker = list(color = PHYLO_BLUE))
