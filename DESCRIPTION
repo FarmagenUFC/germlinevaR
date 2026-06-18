@@ -39,6 +39,7 @@ Suggests:
     htmltools,
     htmlwidgets,
     httr,
+    patchwork,
     plotly,
     RColorBrewer,
     rmarkdown,
