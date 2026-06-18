@@ -91,6 +91,11 @@ gvr_plot <- function(maf,
   }
   dt <- data.table::as.data.table(maf)
 
+  # --- Soft guard for IMPACT column (used by top annotation) ----------------
+  has_impact <- "IMPACT" %in% names(dt)
+  if (!has_impact)
+    warning("gvr_plot: 'IMPACT' column not found; falling back to total-burden bar.")
+
   .is_missing <- function(v) is.na(v) | v == ""
   UNKNOWN_GENE <- c(".", "", "Unknown")
 
@@ -180,19 +185,45 @@ gvr_plot <- function(maf,
   gene_burden <- m[Hugo_Symbol %in% top_g, .N, by = Hugo_Symbol]
   gb <- gene_burden$N[match(rownames(mat), gene_burden$Hugo_Symbol)]; gb[is.na(gb)] <- 0
   samp_burden <- vapply(samples, function(s) sum(m$.__sample__ == s), integer(1))
-  ra <- ComplexHeatmap::rowAnnotation(
-    `Variants` = ComplexHeatmap::anno_barplot(gb, border = FALSE,
-                     gp = grid::gpar(fill = "#75A025", col = NA)), width = grid::unit(2.2, "cm"),
-    annotation_name_gp = grid::gpar(fontsize = 9))
-  # Top per-sample burden; axis labels in 'k' units to avoid 1e+05/150000 crowding.
-  ta <- ComplexHeatmap::HeatmapAnnotation(
-    `Burden` = ComplexHeatmap::anno_barplot(
-                     samp_burden, border = FALSE,
-                     gp = grid::gpar(fill = "#0279EE", col = NA),
-                     axis_param = list(at = pretty(c(0, samp_burden), n = 3),
-                                       labels = paste0(round(pretty(c(0, samp_burden), n = 3) / 1000), "k"),
-                                       gp = grid::gpar(fontsize = 7))),
-    height = grid::unit(1.6, "cm"), annotation_name_gp = grid::gpar(fontsize = 9))
+
+  # IMPACT palette and per-sample counts matrix (rows = levels, cols = samples)
+  IMPACT_LEVELS  <- c("HIGH", "MODERATE", "LOW", "MODIFIER")
+  IMPACT_COLORS  <- c(HIGH = "#D55E00", MODERATE = "#E69F00",
+                       LOW  = "#009E73", MODIFIER  = "#BBBBBB")
+  if (has_impact) {
+    imp_mat <- do.call(rbind, lapply(IMPACT_LEVELS, function(lv) {
+      vapply(samples, function(s)
+        sum(m$.__sample__ == s & !is.na(m$IMPACT) & m$IMPACT == lv),
+        integer(1))
+    }))
+    rownames(imp_mat) <- IMPACT_LEVELS
+  }
+
+  # Top annotation: stacked IMPACT bar (or fallback total-burden bar)
+  ta <- if (has_impact) {
+    ComplexHeatmap::HeatmapAnnotation(
+      `Variant impact` = ComplexHeatmap::anno_barplot(
+        t(imp_mat), border = FALSE, beside = FALSE,
+        gp = grid::gpar(fill = IMPACT_COLORS[IMPACT_LEVELS], col = NA),
+        axis_param = list(
+          at     = pretty(c(0, colSums(imp_mat)), n = 3),
+          labels = paste0(round(pretty(c(0, colSums(imp_mat)), n = 3) / 1000), "k"),
+          gp     = grid::gpar(fontsize = 7))),
+      height = grid::unit(1.6, "cm"),
+      annotation_name_gp = grid::gpar(fontsize = 9))
+  } else {
+    # fallback: original total-burden bar
+    ComplexHeatmap::HeatmapAnnotation(
+      `Burden` = ComplexHeatmap::anno_barplot(
+        samp_burden, border = FALSE,
+        gp = grid::gpar(fill = "#0279EE", col = NA),
+        axis_param = list(
+          at     = pretty(c(0, samp_burden), n = 3),
+          labels = paste0(round(pretty(c(0, samp_burden), n = 3) / 1000), "k"),
+          gp     = grid::gpar(fontsize = 7))),
+      height = grid::unit(1.6, "cm"),
+      annotation_name_gp = grid::gpar(fontsize = 9))
+  }
   cell_fun <- function(j, i, x, y, width, height, fill) {
     v <- mat[i, j]
     grid::grid.rect(x, y, width = width * 0.95, height = height * 0.95,
@@ -214,10 +245,19 @@ gvr_plot <- function(maf,
   final_path <- file.path(out_dir, sprintf("%s.png", file_prefix))
   if (file.exists(final_path) && isTRUE(verbose))
     message(sprintf("gvr_plot: overwriting existing %s", final_path))
+  # IMPACT legend (anno_barplot does not auto-generate one)
+  impact_lgd <- if (has_impact)
+    ComplexHeatmap::Legend(
+      labels    = IMPACT_LEVELS,
+      title     = "IMPACT",
+      legend_gp = grid::gpar(fill = IMPACT_COLORS[IMPACT_LEVELS]))
+  else NULL
+
   path <- .fuse_save_png(final_path, function(tmp) {
     grDevices::png(tmp, width = max(1100, 360 + 150 * length(samples)),
                    height = max(720, 110 + 34 * length(top_g)), res = 150)
     ComplexHeatmap::draw(ht, heatmap_legend_side = "right", merge_legend = TRUE,
+                         annotation_legend_list = if (!is.null(impact_lgd)) list(impact_lgd) else list(),
                          padding = grid::unit(c(2, 6, 2, 2), "mm"))
     grDevices::dev.off()
   })
