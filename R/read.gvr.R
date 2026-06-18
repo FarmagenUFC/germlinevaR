@@ -545,7 +545,10 @@ read.gvr <- function(folder = ".",
     vcf_paths <- hits
   }
 
-  if (verbose) {
+  # When called internally from read.gvr.dual() via .force_annotator, suppress
+  # the file-listing message: the outer read.gvr() already printed it before
+  # routing here, so re-printing would just duplicate.
+  if (verbose && is.null(.force_annotator)) {
     message(sprintf("Found %d file(s):", length(vcf_paths)))
     for (p in vcf_paths) message("  - ", basename(p))
   }
