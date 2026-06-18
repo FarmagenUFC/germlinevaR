@@ -3,6 +3,7 @@
 export(gvr_color_palette)
 export(gvr_domain_cache_clear)
 export(gvr_filter)
+export(gvr_genepos.plot)
 export(gvr_list_palettes)
 export(gvr_list_panels)
 export(gvr_lollipop)

@@ -46,5 +46,22 @@ utils::globalVariables(c(
   # --- gvr_summary() Phase N+9 Stage D: per-token rank-key precompute -------
   # .__ir__/.__gaf__/.__chr__/.__pos__ are columns built on .xl_proj via := ;
   # gnomADe_AF is referenced bare inside the := RHS for as.numeric(gnomADe_AF).
-  ".__ir__", ".__gaf__", ".__chr__", ".__pos__", "gnomADe_AF"
+  ".__ir__", ".__gaf__", ".__chr__", ".__pos__", "gnomADe_AF",
+  # --- gvr_genepos.plot(): exon/intron/UTR + parser column names ---------
+  # Layout (.gvr_genepos_layout): exon_idx, region_kind, g_start, g_end,
+  # length_bp, x_start, x_end. Parser (.gvr_parse_hgvsc): kind, pos, valid.
+  # MAF subset internal cols added via := during plot pipeline.
+  "exon_idx", "region_kind", "g_start", "g_end", "length_bp",
+  "x_start", "x_end", "kind", "pos", "valid",
+  ".__enst__", ".__kind__", ".__valid__", ".__x__", ".__top__",
+  # --- gvr_genepos.plot(): VEP-annotated MAF cols used in transcript pick
+  # MANE_SELECT/CANONICAL/Transcript_ID are MAF columns from read.gvr(),
+  # referenced bare in dt[...] filters during transcript auto-resolution.
+  "MANE_SELECT", "CANONICAL", "Transcript_ID",
+  # ggplot aes() reuses 'x' as a column name in dot_df/label_df/stem_df.
+  "x",
+  # GVR_CLASS_COLORS is a package-level named-vector constant defined in
+  # gvr_lollipop.R; declaring it here keeps R CMD check quiet when other
+  # files reference it via the same-file scoping rule.
+  "GVR_CLASS_COLORS"
 ))

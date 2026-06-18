@@ -42,6 +42,7 @@ Suggests:
     plotly,
     RColorBrewer,
     rmarkdown,
+    rtracklayer,
     scales,
     testthat (>= 3.0.0),
     viridisLite
