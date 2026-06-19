@@ -877,14 +877,6 @@ read.gvr <- function(folder = ".",
     s
   }
 
-  ## 1c-v2. Strip the leading "feature_id:" prefix from an HGVSc/HGVSp string.
-  ##        "ENST00000831140.1:n.1889G>A" -> "n.1889G>A". Empty/NA pass through.
-  ##        (URL-decoding is applied upstream; this only removes up to first ':'.)
-  strip_feature_prefix <- function(x) {
-    if (is.na(x) || x == "") return(x)
-    sub("^[^:]*:", "", x)
-  }
-
   ## 1d. Candidate VEP CSQ-allele encodings (priority order: anchor, LCP, bidir, raw)
   vep_allele_candidates <- function(ref, alt) {
     if (alt == "*") return("*")
@@ -1280,13 +1272,19 @@ read.gvr <- function(folder = ".",
         coords <- maf_coords(pos, ref, alt); vt <- coords$var_type
 
         if (length(sel) > 0L) {
-          ranks <- vapply(sel, function(k) consequence_rank(block_fields[[k]][P_Cons]), integer(1))
-          canon <- vapply(sel, function(k) { v <- block_fields[[k]][P_CANONICAL]
-            if (!is.na(v) && v=="YES") 0L else 1L }, integer(1))
-          mane  <- vapply(sel, function(k) { v <- block_fields[[k]][P_MANESEL]
-            if (!is.na(v) && v!="") 0L else 1L }, integer(1))
-          feat  <- vapply(sel, function(k) { v <- block_fields[[k]][P_Feature]
-            if (is.na(v)) "zzz" else v }, character(1))
+          # vN+11 (P1): coalesce the four per-block vapply()s into a single pre-allocated
+          # walk over `sel`, indexing each block_fields[[k]] exactly once. Replaces 4x
+          # closure-per-call vapply overhead with one direct loop. Output is byte-identical
+          # to the original (same scalar logic, same inputs, same order(...)).
+          ns <- length(sel)
+          ranks <- integer(ns); canon <- integer(ns); mane <- integer(ns); feat <- character(ns)
+          for (i in seq_len(ns)) {
+            bf <- block_fields[[ sel[i] ]]
+            ranks[i] <- consequence_rank(bf[P_Cons])
+            v <- bf[P_CANONICAL]; canon[i] <- if (!is.na(v) && v == "YES") 0L else 1L
+            v <- bf[P_MANESEL];   mane[i]  <- if (!is.na(v) && v != "")    0L else 1L
+            v <- bf[P_Feature];   feat[i]  <- if (is.na(v)) "zzz" else v
+          }
           ord <- order(ranks, canon, mane, feat)
           chosen <- block_fields[[ sel[ord[1]] ]]
         } else {
@@ -1311,14 +1309,20 @@ read.gvr <- function(folder = ".",
         hugo <- if (is.na(symbol) || symbol == "") "Unknown" else symbol
 
         gc <- gt_codes_for_alt(gt, ai)
-        map_code <- function(code) {
-          if (is.na(code)) return(".")
-          if (code == 0L)  return(coords$ref_allele)
-          if (code == ai)  return(coords$tum_allele2)
-          if (code >= 1L && code <= length(alts)) return(maf_coords(pos, ref, alts[code])$tum_allele2)
-          "."
-        }
-        t_allele1 <- map_code(gc$c1); t_allele2 <- map_code(gc$c2)
+        # vN+11 (P2): inline what was `map_code` to avoid creating a closure per
+        # (record x alt). Identical scalar branches; output byte-identical.
+        .c1 <- gc$c1
+        t_allele1 <- if (is.na(.c1)) "."
+          else if (.c1 == 0L) coords$ref_allele
+          else if (.c1 == ai) coords$tum_allele2
+          else if (.c1 >= 1L && .c1 <= length(alts)) maf_coords(pos, ref, alts[.c1])$tum_allele2
+          else "."
+        .c2 <- gc$c2
+        t_allele2 <- if (is.na(.c2)) "."
+          else if (.c2 == 0L) coords$ref_allele
+          else if (.c2 == ai) coords$tum_allele2
+          else if (.c2 >= 1L && .c2 <= length(alts)) maf_coords(pos, ref, alts[.c2])$tum_allele2
+          else "."
 
         t_ref_count <- if (length(ad_vec) >= 1 && !any(is.na(ad_vec))) ad_vec[1] else NA_character_
         t_alt_count <- if (length(ad_vec) >= (ai+1) && !any(is.na(ad_vec))) ad_vec[ai+1] else NA_character_
