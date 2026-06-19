@@ -1506,8 +1506,11 @@ read.gvr <- function(folder = ".",
   # >1 file and a fork-capable OS; otherwise we run the original sequential loop.
   # Default ncores=1L => exactly the previous behaviour. The shared global_done<<-
   # progress counter is fork-local (per child), so per-chunk % lines are suppressed
-  # in workers to avoid garbled interleaved output; a clean per-file summary prints
-  # on collection. parallel is base R (no new dependency).
+  # in workers to avoid garbled interleaved output. In addition (vN+12), a small
+  # side-fork prints a heartbeat line every `heartbeat_secs` while mclapply runs;
+  # this gives visible liveness feedback ("workers still running"). The side fork
+  # is killed unconditionally on mclapply return, and the per-file `done:` summary
+  # is emitted in deterministic index order. parallel is base R (no new dependency).
   n_files  <- length(vcf_paths)
   want_par <- is.numeric(ncores) && length(ncores) == 1L && !is.na(ncores) &&
               ncores > 1L && n_files > 1L &&
@@ -1518,14 +1521,57 @@ read.gvr <- function(folder = ".",
                else 1L
 
   if (want_par && use_cores > 1L) {
+    # vN+12 (parallel heartbeat): keep the original parallel::mclapply() call
+    # for the actual work — it's correct, ordered, and reaps its children
+    # cleanly — and add a side-fork "heartbeat" process that prints a single
+    # liveness line every `heartbeat_secs` while mclapply runs. The side fork
+    # is detached via parallel::mcparallel() and unconditionally killed via
+    # tools::pskill() once mclapply returns; it has no dependence on the
+    # work results, only on wall-clock. This gives the user visible feedback
+    # ("R is alive, parallel conversion still running") without changing the
+    # data path: the per-file `done:` summary lines still print AFTER mclapply
+    # returns, in the original index order.
+    heartbeat_secs <- 15L
     if (verbose)
-      message(sprintf("Parallel conversion: %d worker(s) over %d file(s) (mclapply).",
+      message(sprintf("Parallel conversion: %d worker(s) over %d file(s) (mclapply + heartbeat).",
                       use_cores, n_files))
-    per_file <- parallel::mclapply(
-      seq_along(vcf_paths),
-      function(i) suppressMessages(
-        convert_one_vcf(vcf_paths[i], i, n_files, per_file_total[i])),
-      mc.cores = use_cores, mc.preschedule = FALSE)
+
+    hb_job <- NULL
+    if (verbose) {
+      t_hb_start <- Sys.time()
+      n_hb       <- n_files
+      cores_hb   <- use_cores
+      hb_job <- parallel::mcparallel({
+        # heartbeat fork: independent of work; prints lines, exits on kill.
+        # Note: messages from this fork go to the same stderr as the parent;
+        # we accept a small interleave risk for liveness signal only.
+        repeat {
+          Sys.sleep(heartbeat_secs)
+          el <- as.numeric(difftime(Sys.time(), t_hb_start, units = "secs"))
+          message(sprintf(
+            "  ... parallel conversion still running: %d worker(s), %.0fs elapsed",
+            cores_hb, el))
+        }
+      }, name = "read_gvr_heartbeat", silent = FALSE)
+    }
+
+    # actual work: same call as the previous version of read.gvr
+    per_file <- tryCatch(
+      parallel::mclapply(
+        seq_along(vcf_paths),
+        function(i) suppressMessages(
+          convert_one_vcf(vcf_paths[i], i, n_files, per_file_total[i])),
+        mc.cores = use_cores, mc.preschedule = FALSE),
+      finally = {
+        # always reap the heartbeat fork; suppress expected warnings
+        # ("1 parallel job did not deliver a result") since we just killed it.
+        if (!is.null(hb_job)) {
+          try(tools::pskill(hb_job$pid), silent = TRUE)
+          suppressWarnings(try(
+            parallel::mccollect(hb_job, wait = FALSE, timeout = 1), silent = TRUE))
+        }
+      })
+
     # surface any worker error as a hard error (mclapply returns try-error objects)
     errs <- vapply(per_file, function(x) inherits(x, "try-error"), logical(1))
     if (any(errs)) {
