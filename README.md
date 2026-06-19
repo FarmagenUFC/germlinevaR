@@ -25,7 +25,8 @@ vcf_dir <- system.file("extdata", package = "germlinevaR")
 maf     <- read.gvr(vcf_dir)             # 62 rows x 116 cols
 filt    <- gvr_filter(maf)               # 7 rows (default thresholds)
 novel   <- gvr_novel(maf)                # 3 candidates with no rsID / no AF
-gvr_plot(filt, top_n = 20, out_dir = tempdir())   # oncoplot PNG
+summ    <- gvr_summary(filt, out_dir = tempdir())  # XLSX + PDF + HTML dashboard + 8 tables
+gvr_plot(filt, top_n = 20, out_dir = tempdir())    # top-genes variant matrix (PNG)
 ```
 
 ## Installation
