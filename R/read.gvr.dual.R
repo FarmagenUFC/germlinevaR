@@ -16,7 +16,7 @@
 # Output is tagged with attr(., 'annotator') = 'dual'.
 #
 # Implementation approach: delegates the VEP CSQ parse + MAF construction to
-# read.gvr() via a private .force_annotator='vep' override (so no infinite
+# read.gvr() via the private force-annotator flag in .gvr_internal_env
 # routing loop). Then runs a second, lightweight pass over the same VCF files
 # to extract ANN/LOF/NMD INFO fields and joins them onto the MAF on
 # (Tumor_Sample_Barcode, Chromosome, Start_Position, Reference_Allele,
@@ -135,12 +135,18 @@ read.gvr.dual <- function(folder = ".",
   # ---------------------------------------------------------------------------
   # Phase 1: VEP-driven MAF construction.
   # ---------------------------------------------------------------------------
-  # Delegate to read.gvr() with the private .force_annotator="vep" flag so the
+  # Delegate to read.gvr() with the force-annotator flag set to "vep" so the
   # VEP body runs even though .detect_annotator() would return "dual" for
   # these files. This gives us the canonical MAF with one row per ALT allele,
   # the canonical 80 (or 81 with FREQS) CSQ columns auto-detected from the
   # actual CSQ header, ABraOM join, build detection, DP/GQ filter, etc.
   # ---------------------------------------------------------------------------
+  # Set the force-annotator flag in the package's private env, with on.exit
+  # cleanup as a belt-and-braces guarantee that the flag is cleared even if
+  # read.gvr() errors (it would normally be consumed-and-cleared inside read.gvr()).
+  .gvr_set_force_annotator("vep")
+  on.exit(.gvr_set_force_annotator(NULL), add = TRUE)
+
   maf <- read.gvr(
     folder            = folder,
     vcf_path          = vcf_path,
@@ -168,8 +174,7 @@ read.gvr.dual <- function(folder = ".",
     vc_nonSyn         = vc_nonSyn,
     canonical_only    = canonical_only,
     ncores            = ncores,
-    verbose           = verbose,
-    .force_annotator  = "vep"
+    verbose           = verbose
   )
 
   if (!data.table::is.data.table(maf) || nrow(maf) == 0L) {

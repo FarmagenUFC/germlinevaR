@@ -17,7 +17,7 @@ knitr::opts_chunk$set(
 
 <!-- badges: start -->
 [![Lifecycle: stable](https://img.shields.io/badge/lifecycle-stable-brightgreen.svg)](https://lifecycle.r-lib.org/articles/stages.html#stable)
-[![CRAN status](https://www.r-pkg.org/badges/version/germlinevaR)](https://CRAN.R-project.org/package=germlinevaR)
+[![CRAN status](https://img.shields.io/badge/CRAN-not%20yet-orange.svg)](https://CRAN.R-project.org/package=germlinevaR)
 <!-- badges: end -->
 
 A self-contained toolchain for single-sample germline VCFs annotated with

@@ -157,12 +157,6 @@
 #'   non-fork platforms it falls back to sequential. A single file is unaffected.
 #' @param verbose Logical; if `TRUE` (default) print per-file and per-chunk progress
 #'   (file i/N, cumulative records, elapsed seconds).
-#' @param .force_annotator Internal use only; do not set. Used by
-#'   [read.gvr.dual()] to bypass the auto-detector and force the VEP code path
-#'   when delegating from the dual reader. Accepts `"vep"` or `"snpeff"`; any
-#'   other value raises an error. `NULL` (the default) keeps the standard
-#'   header-based auto-routing.
-#'
 #' @return A `data.table` MAF: one row per variant allele, with MAF core columns, all
 #'   VEP CSQ fields, key GATK QC fields, `Tumor_Sample_Barcode`, and (when enabled) the
 #'   `Genotype` and `ABraOM_AF` columns. TSV/RDS files are written as a side
@@ -257,8 +251,7 @@ read.gvr <- function(folder = ".",
                            vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                            canonical_only    = TRUE,   # vN+4: drop rows whose chosen CSQ block has CANONICAL != "YES"
                            ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
-                           verbose    = TRUE,
-                           .force_annotator = NULL) {  # INTERNAL: read.gvr.dual() calls back with "vep" to bypass dispatch loop
+                           verbose    = TRUE) {
   # ===========================================================================
   # Nested helper: .read_gvr_locate_sibling() + auto-source siblings
   # ---------------------------------------------------------------------------
@@ -553,10 +546,10 @@ read.gvr <- function(folder = ".",
     vcf_paths <- hits
   }
 
-  # When called internally from read.gvr.dual() via .force_annotator, suppress
-  # the file-listing message: the outer read.gvr() already printed it before
-  # routing here, so re-printing would just duplicate.
-  if (verbose && is.null(.force_annotator)) {
+  # When called internally from read.gvr.dual() (via the package's force-annotator
+  # flag consumed below), suppress the file-listing message: the outer read.gvr()
+  # already printed it before routing here, so re-printing would just duplicate.
+  if (verbose && !.gvr_force_active()) {
     message(sprintf("Found %d file(s):", length(vcf_paths)))
     for (p in vcf_paths) message("  - ", basename(p))
   }
@@ -567,13 +560,16 @@ read.gvr <- function(folder = ".",
   #     is always available; in standalone mode, the auto-source above loads it.
   # ==========================================================================
   detected <- vapply(vcf_paths, .detect_annotator, character(1L))
-  # Internal override: read.gvr.dual() calls read.gvr() with .force_annotator="vep"
-  # to use the VEP parser body on dual-annotated files without re-triggering
-  # the auto-route back into read.gvr.dual() (infinite recursion guard).
-  if (!is.null(.force_annotator)) {
-    if (!.force_annotator %in% c("vep", "snpeff"))
-      stop("read.gvr: .force_annotator must be 'vep' or 'snpeff'", call. = FALSE)
-    detected <- rep(.force_annotator, length(detected))
+  # Internal override: read.gvr.dual() sets a flag in the package's private
+  # env via .gvr_set_force_annotator() before calling read.gvr(), then this
+  # block consumes-and-clears the flag. The clear-on-read guarantees the
+  # override cannot leak into a subsequent user-level read.gvr() call even
+  # if read.gvr.dual() errors before returning. Accepts "vep" or "snpeff".
+  .fa <- .gvr_consume_force_annotator()
+  if (!is.null(.fa)) {
+    if (!.fa %in% c("vep", "snpeff"))
+      stop("read.gvr: internal force-annotator flag must be 'vep' or 'snpeff'", call. = FALSE)
+    detected <- rep(.fa, length(detected))
   }
   na_mask  <- is.na(detected)
   if (any(na_mask)) {

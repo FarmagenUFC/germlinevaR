@@ -32,8 +32,7 @@ read.gvr(
   vc_nonSyn = FALSE,
   canonical_only = TRUE,
   ncores = 1L,
-  verbose = TRUE,
-  .force_annotator = NULL
+  verbose = TRUE
 )
 }
 \arguments{
@@ -176,12 +175,6 @@ non-fork platforms it falls back to sequential. A single file is unaffected.}
 
 \item{verbose}{Logical; if \code{TRUE} (default) print per-file and per-chunk progress
 (file i/N, cumulative records, elapsed seconds).}
-
-\item{.force_annotator}{Internal use only; do not set. Used by
-\code{\link[=read.gvr.dual]{read.gvr.dual()}} to bypass the auto-detector and force the VEP code path
-when delegating from the dual reader. Accepts \code{"vep"} or \code{"snpeff"}; any
-other value raises an error. \code{NULL} (the default) keeps the standard
-header-based auto-routing.}
 }
 \value{
 A \code{data.table} MAF: one row per variant allele, with MAF core columns, all

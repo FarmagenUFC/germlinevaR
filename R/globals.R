@@ -76,3 +76,42 @@ utils::globalVariables(c(
   "LOF_Gene", "LOF_Pct_Transcripts", "NMD_Gene", "NMD_Pct_Transcripts",
   "snpeff_consequence", "snpeff_impact", "snpeff_gene", "snpeff_hgvsc"
 ))
+
+# ============================================================================
+# Private package env for internal cross-function flags.
+# ----------------------------------------------------------------------------
+# Sole flag used today: .force_annotator -- set by read.gvr.dual() before it
+# calls back into read.gvr() to force the VEP parser body (bypassing the
+# header-based auto-router that would otherwise re-dispatch into
+# read.gvr.dual() and recurse forever). The flag is consumed-and-cleared on
+# read so it cannot leak into the next read.gvr() call even if
+# read.gvr.dual() errors. Replaces the historical .force_annotator formal
+# argument (which was exposed in ?read.gvr help and tripped R CMD check).
+# ============================================================================
+.gvr_internal_env <- new.env(parent = emptyenv())
+
+.gvr_set_force_annotator <- function(value) {
+  if (!is.null(value) && !value %in% c("vep", "snpeff"))
+    stop("internal: .gvr_set_force_annotator() value must be 'vep', 'snpeff', or NULL",
+         call. = FALSE)
+  if (is.null(value)) {
+    if (exists(".force_annotator", envir = .gvr_internal_env, inherits = FALSE))
+      rm(list = ".force_annotator", envir = .gvr_internal_env)
+  } else {
+    assign(".force_annotator", value, envir = .gvr_internal_env)
+  }
+  invisible(value)
+}
+
+.gvr_consume_force_annotator <- function() {
+  if (!exists(".force_annotator", envir = .gvr_internal_env, inherits = FALSE))
+    return(NULL)
+  val <- get(".force_annotator", envir = .gvr_internal_env, inherits = FALSE)
+  rm(list = ".force_annotator", envir = .gvr_internal_env)
+  val
+}
+
+.gvr_force_active <- function() {
+  exists(".force_annotator", envir = .gvr_internal_env, inherits = FALSE)
+}
+
