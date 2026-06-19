@@ -6,7 +6,7 @@
 #' functional classes, clinical significance and predicted impact. Every section is
 #' returned as a tidy `data.table` with one column per sample plus a `Total` column.
 #' Optionally writes a multi-sheet Excel workbook and/or a multi-page PDF report
-#' (both into a `gvr_summary/` subfolder of `out_dir`). For a cohort oncoplot, see
+#' (both into a `gvr_summary/` subfolder of `out_dir`). For a cohort top-genes variant matrix, see
 #' [gvr_plot()].
 #'
 #' @details
@@ -37,7 +37,7 @@
 #'
 #' The section tables are the core return value. By default the function also writes
 #' an Excel workbook (`save_excel = TRUE`) and a PDF report (`save_pdf = TRUE`) into
-#' `out_dir/gvr_summary/`; set either to `FALSE` to skip it. The cohort oncoplot lives
+#' `out_dir/gvr_summary/`; set either to `FALSE` to skip it. The cohort top-genes variant matrix lives
 #' in [gvr_plot()].
 #'
 #' Data conventions:
@@ -120,7 +120,7 @@
 #' skipped with a warning and the section tables are still returned.
 #'
 #' @seealso [read.gvr()] to build the MAF, [gvr_filter()] to filter it before
-#'   summarising, [gvr_plot()] for a cohort oncoplot.
+#'   summarising, [gvr_plot()] for a cohort top-genes variant matrix.
 #' @family germlinevaR
 #' @author germlinevaR authors
 #'

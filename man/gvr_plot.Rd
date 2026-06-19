@@ -2,7 +2,7 @@
 % Please edit documentation in R/gvr_plot.R
 \name{gvr_plot}
 \alias{gvr_plot}
-\title{Cohort oncoplot from a germline MAF (read.gvr / gvr_filter output)}
+\title{Cohort top-genes variant matrix from a germline MAF (read.gvr / gvr_filter output)}
 \usage{
 gvr_plot(
   maf,
@@ -39,7 +39,7 @@ the plot was skipped (\pkg{ComplexHeatmap} not installed, or no known-gene
 variants present).
 }
 \description{
-Draws a maftools-style oncoplot from a MAF-style table - the output of
+Draws a maftools-style top-genes variant matrix from a MAF-style table - the output of
 \code{\link[=read.gvr]{read.gvr()}}, or of \code{\link[=gvr_filter]{gvr_filter()}} - and writes it to a PNG file. Rows are the
 top-\code{top_n} genes (ranked by number of distinct samples mutated, then by variant
 count); columns are samples. Each gene x sample cell shows the single MOST-SEVERE
@@ -47,7 +47,7 @@ count); columns are samples. Each gene x sample cell shows the single MOST-SEVER
 with \pkg{ComplexHeatmap}.
 }
 \details{
-This is the standalone oncoplot previously produced inside \code{\link[=gvr_summary]{gvr_summary()}}. It
+This is the standalone top-genes variant matrix previously produced inside \code{\link[=gvr_summary]{gvr_summary()}}. It
 needs only the \code{Hugo_Symbol} and \code{Variant_Classification} columns (plus the
 per-sample column).
 
@@ -67,7 +67,7 @@ Data conventions:
 \itemize{
 \item "Missing" means \code{NA} OR empty string \code{""}.
 \item Unknown/blank gene symbols are \code{Hugo_Symbol} in \code{c(".", "", "Unknown")};
-these are excluded from the oncoplot.
+these are excluded from the top-genes variant matrix.
 \item Works on ANY MAF-shaped table; it makes no assumption about prior
 filtering. It is commonly run on \code{\link[=gvr_filter]{gvr_filter()}} output.
 }
@@ -75,7 +75,7 @@ filtering. It is commonly run on \code{\link[=gvr_filter]{gvr_filter()}} output.
 \section{Dependencies}{
 
 Requires \pkg{ComplexHeatmap} (a \pkg{Bioconductor} package, listed in \code{Suggests}).
-If it is not installed the oncoplot is skipped with a warning and \code{NA_character_}
+If it is not installed the top-genes variant matrix is skipped with a warning and \code{NA_character_}
 is returned.
 }
 
@@ -83,11 +83,11 @@ is returned.
 \dontrun{
 maf <- read.gvr("/path/to/vcf_folder")
 
-## write a top-20 oncoplot to the current directory
+## write a top-20 variant matrix to the current directory
 p <- gvr_plot(maf)
 p                                  # path to the PNG
 
-## smaller oncoplot of filtered hits, into a results folder
+## smaller top-genes variant matrix of filtered hits, into a results folder
 gvr_plot(gvr_filter(maf), top_n = 15, out_dir = "results/plots")
 }
 

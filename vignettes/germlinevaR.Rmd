@@ -44,8 +44,13 @@ library(data.table)
 `read.gvr()` is the auto-routing entry point: it inspects the VCF header,
 detects whether annotations come from VEP, SnpEff, or both, and dispatches
 to the correct sibling reader (`read.gvr`, `read.gvr.snpeff`, or
-`read.gvr.dual`). For this vignette we stage the shipped example into a
-temporary directory and read it:
+`read.gvr.dual`). When you read your own data, point `read.gvr()` at the
+folder containing your VCF file(s) -- the function discovers every
+`*.vcf.gz` in that directory, auto-detects the annotator on each file,
+and returns one MAF row per ALT allele. All files in a batch must share
+the same annotator; mixed VEP/SnpEff folders are rejected. For this
+vignette we stage the shipped example into a temporary directory and
+read it from there:
 
 ```{r read-gvr}
 vcf_dir <- tempfile("gvr_vig_")
@@ -139,12 +144,12 @@ out_dir = ".")`.
 germlinevaR produces several families of plots: per-gene
 **protein-domain lollipops** (`gvr_lollipop`), per-gene
 **gene-structure lollipops** (`gvr_genepos.plot`), a
-`ComplexHeatmap`-based **oncoplot** (`gvr_plot`), and the
+`ComplexHeatmap`-based **top-genes variant matrix** (`gvr_plot`), and the
 **HTML-dashboard panels** that `gvr_summary(save_html = TRUE)` embeds
 in its interactive output (also writable as standalone PNGs via
 `gvr_sum_plots()`). The figures below were rendered from a real cohort
 — the tiny example MAF shipped with the package is too sparse for a
-meaningful oncoplot or dashboard, so those two families are described
+meaningful top-genes variant matrix or dashboard, so those two families are described
 in the text only; call the functions yourself against your own MAF to
 reproduce the layouts.
 
@@ -164,8 +169,8 @@ resolved via Ensembl REST or a local GTF:
 knitr::include_graphics("figures/genepos_BRCA1.png")
 ```
 
-**Oncoplot and dashboard** — `gvr_plot(maf, top_n = 20, out_dir = ".")`
-writes a `ComplexHeatmap` oncoplot PNG of the top mutated genes across
+**Top-genes variant matrix and dashboard** — `gvr_plot(maf, top_n = 20, out_dir = ".")`
+writes a `ComplexHeatmap` top-genes variant matrix PNG of the top mutated genes across
 samples, coloured by variant classification.
 `gvr_sum_plots()` writes the same panels that
 `gvr_summary(save_html = TRUE)` embeds in its interactive dashboard

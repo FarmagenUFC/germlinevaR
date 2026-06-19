@@ -21,8 +21,8 @@ Description:
     AF in any catalogue). Generates a multi-section cohort summary with
     optional 'Excel' workbook, multi-page 'PDF', and self-contained
     interactive 'HTML' dashboard featuring 'plotly' drill-downs and 'DT'
-    tables; a 'ComplexHeatmap'-based oncoplot; per-section standalone
-    plot exports plus multi-panel composites; per-gene protein-domain
+    tables; a 'ComplexHeatmap'-based top-genes variant matrix; per-section
+    standalone plot exports plus multi-panel composites; per-gene protein-domain
     lollipop plots with on-the-fly InterPro domain fetching (cached);
     per-gene gene-structure (cDNA) lollipop plots with Ensembl REST or
     local GTF sources (cached); and a unified 52-palette colour system

@@ -9,8 +9,9 @@ gvr_panel_genes(panel)
 \arguments{
 \item{panel}{Single character string naming a disease panel
 (case-insensitive; underscores are treated as spaces, e.g.
-\code{"breast_cancer"} is equivalent to \code{"breast cancer"}). Must resolve
-to exactly one entry in the registry.}
+\code{"breast_cancer"} is equivalent to \code{"breast cancer"}; selected
+aliases like \code{"gastrointestinal stromal tumor"} -> \code{"gist"} are
+recognised). Must resolve to exactly one entry in the registry.}
 }
 \value{
 Character vector of Hugo_Symbols (uppercase, sorted, unique).
@@ -28,6 +29,7 @@ sees the catalog at the point of failure.
 \examples{
 gvr_panel_genes("breast cancer")
 gvr_panel_genes("Breast_Cancer")            # case + underscore alias
+gvr_panel_genes("gastrointestinal stromal tumor")  # alias of "gist"
 gvr_panel_genes("hereditary prostate cancer")
 
 \dontrun{

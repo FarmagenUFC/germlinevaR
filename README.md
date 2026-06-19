@@ -13,8 +13,8 @@ status](https://www.r-pkg.org/badges/version/germlinevaR)](https://CRAN.R-projec
 
 A self-contained toolchain for single-sample germline VCFs annotated
 with Ensembl VEP, SnpEff, or both — from on-disk VCF to filtered MAF,
-candidate novel variants, cohort summary, oncoplot, and per-gene
-protein-domain lollipops, all in one R session.
+candidate novel variants, cohort summary, a top-genes variant matrix,
+and per-gene protein-domain lollipops, all in one R session.
 
 ## Hero example
 
@@ -57,8 +57,8 @@ header. From there you get:
 - an 8-section cohort summary (`gvr_summary`) that optionally writes an
   Excel workbook, a multi-page PDF, and a self-contained interactive
   HTML dashboard with plotly drill-downs and DT tables;
-- a ComplexHeatmap-based oncoplot (`gvr_plot`) and per-section
-  standalone PNG/SVG/PDF exports (`gvr_sum_plots`);
+- a ComplexHeatmap-based top-genes variant matrix (`gvr_plot`) and
+  per-section standalone PNG/SVG/PDF exports (`gvr_sum_plots`);
 - per-gene protein-domain lollipops (`gvr_lollipop`) with on-the-fly
   cached InterPro domain fetching;
 - per-gene gene-structure (cDNA) lollipops (`gvr_genepos.plot`) with
@@ -82,7 +82,7 @@ around the **germline single-sample** case.
 | Filtering | `gvr_filter` `gvr_novel` |
 | Panels | `gvr_panel_genes` `gvr_list_panels` |
 | Summary | `gvr_summary` `gvr_sum_plots` |
-| Per-gene plots | `gvr_plot` (oncoplot) `gvr_lollipop` `gvr_genepos.plot` |
+| Per-gene plots | `gvr_plot` (top-genes variant matrix) `gvr_lollipop` `gvr_genepos.plot` |
 | Palette / cache | `gvr_color_palette` `gvr_list_palettes` `gvr_domain_cache_clear` |
 
 ## Per-gene plots

@@ -131,14 +131,18 @@ disables the genotype-quality filter. Default \code{30}.}
 or \code{NULL} (default) to keep all genes.}
 
 \item{panel}{Character vector of curated disease panel name(s) (e.g.
-\code{"breast cancer"}). Each name is resolved to a gene vector via
-\code{\link[=gvr_panel_genes]{gvr_panel_genes()}} and the union of all resolved genes is taken with
-\code{genes} (deduplicated, uppercased). Names are matched case-insensitively,
-trimmed, and \verb{_} is treated as a space, so \code{"Breast_Cancer"}, \code{"breast cancer"},
-and \code{" BREAST CANCER "} all resolve identically. An unknown name raises an
-error listing the available panels. \code{NULL} (default) disables panel
-filtering; behaviour is then byte-identical to omitting the argument. Use
-\code{\link[=gvr_list_panels]{gvr_list_panels()}} to see what's available.}
+\code{"breast cancer"}, \code{"hereditary prostate cancer"}, \code{"gist"}).
+Each name is resolved to a gene vector via \code{\link[=gvr_panel_genes]{gvr_panel_genes()}} and the
+union of all resolved genes is taken with \code{genes} (deduplicated,
+uppercased). Names are matched case-insensitively, trimmed, and \verb{_} is
+treated as a space, so \code{"Breast_Cancer"}, \code{"breast cancer"}, and
+\code{" BREAST CANCER "} all resolve identically. A small alias table is
+also recognised (e.g. \code{"gastrointestinal stromal tumor"} -> \code{"gist"},
+the typo \code{"pheocromocytoma"} -> \code{"pheochromocytoma"}). The registry
+currently ships 15 panels; see \code{\link[=gvr_list_panels]{gvr_list_panels()}} for the full list.
+An unknown name raises an error listing the available panels. \code{NULL}
+(default) disables panel filtering; behaviour is then byte-identical to
+omitting the argument.}
 
 \item{vc_nonSyn}{Logical or character vector. Controls which
 \code{Variant_Classification} values are retained (mirroring maftools'
@@ -272,10 +276,14 @@ maf <- read.gvr("/path/to/folder", panel = "breast cancer")
 maf <- read.gvr("/path/to/folder",
                 panel = c("breast cancer", "hereditary prostate cancer"))
 
+## Panel-name aliases are accepted:
+maf <- read.gvr("/path/to/folder",
+                panel = "gastrointestinal stromal tumor")  # same as "gist"
+
 ## `panel` and `genes` can be combined:
 maf <- read.gvr("/path/to/folder",
                 panel = "breast cancer",
-                genes = c("CDKN2A", "KRAS"))   # adds 2 to the 6-gene panel
+                genes = c("CDKN2A", "KRAS"))   # adds 2 to the 24-gene panel
 
 ## Then filter freely, e.g.:
 maf[FILTER == "PASS" & Variant_Classification == "Missense_Mutation"]

@@ -16,17 +16,29 @@ Returns the sorted character vector of every disease name accepted by
 \details{
 Each canonical name corresponds to a curated Hugo_Symbol gene list.
 Panel names are matched case-insensitively and underscores are treated
-as spaces, so \code{"breast cancer"}, \code{"Breast Cancer"}, and
-\code{"breast_cancer"} all resolve to the same entry.
+as spaces. A small alias table is also recognised: e.g.
+\code{"gastrointestinal stromal tumor"} is accepted as a synonym for
+\code{"gist"}, and the common typo \code{"pheocromocytoma"} resolves to
+\code{"pheochromocytoma"}.
 
 Panels currently shipped:
 
 \describe{
-\item{\code{"breast cancer"}}{6 genes — \code{AKT1}, \code{BRCA1}, \code{BRCA2}, \code{ERBB2},
-\code{ESR1}, \code{PIK3CA}.}
-\item{\code{"hereditary prostate cancer"}}{19 genes — \code{ATM}, \code{ATR}, \code{BRCA1},
-\code{BRCA2}, \code{BRIP1}, \code{CHEK2}, \code{EPCAM}, \code{HOXB13}, \code{MLH1}, \code{MRE11}, \code{MSH2},
-\code{MSH6}, \code{NBN}, \code{PALB2}, \code{PMS2}, \code{PTEN}, \code{RAD51C}, \code{RAD51D}, \code{TP53}.}
+\item{\code{"men1"}}{13 genes.}
+\item{\code{"acromegaly"}}{23 genes.}
+\item{\code{"pheochromocytoma"}}{24 genes. (alias: \code{"pheocromocytoma"})}
+\item{\code{"hereditary cancer"}}{87 genes.}
+\item{\code{"gist"}}{11 genes. (alias: \code{"gastrointestinal stromal tumor"})}
+\item{\code{"lynch syndrome"}}{5 genes.}
+\item{\code{"li-fraumeni syndrome"}}{4 genes.}
+\item{\code{"hereditary gastric cancer"}}{28 genes.}
+\item{\code{"hereditary colorectal cancer"}}{23 genes.}
+\item{\code{"familial adenomatous polyposis"}}{19 genes.}
+\item{\code{"hereditary melanoma cancer"}}{20 genes.}
+\item{\code{"hereditary prostate cancer"}}{19 genes.}
+\item{\code{"hereditary breast and ovarian cancer"}}{25 genes.}
+\item{\code{"breast cancer"}}{24 genes.}
+\item{\code{"breast cancer somatic"}}{6 genes. (alias: \code{"breast cancer somatic panel"})}
 }
 
 Use \code{\link[=gvr_panel_genes]{gvr_panel_genes()}} to retrieve the gene vector for a specific

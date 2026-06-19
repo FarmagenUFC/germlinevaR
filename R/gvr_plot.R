@@ -1,7 +1,7 @@
-#' Cohort oncoplot from a germline MAF (read.gvr / gvr_filter output)
+#' Cohort top-genes variant matrix from a germline MAF (read.gvr / gvr_filter output)
 #'
 #' @description
-#' Draws a maftools-style oncoplot from a MAF-style table - the output of
+#' Draws a maftools-style top-genes variant matrix from a MAF-style table - the output of
 #' [read.gvr()], or of [gvr_filter()] - and writes it to a PNG file. Rows are the
 #' top-`top_n` genes (ranked by number of distinct samples mutated, then by variant
 #' count); columns are samples. Each gene x sample cell shows the single MOST-SEVERE
@@ -9,7 +9,7 @@
 #' with \pkg{ComplexHeatmap}.
 #'
 #' @details
-#' This is the standalone oncoplot previously produced inside [gvr_summary()]. It
+#' This is the standalone top-genes variant matrix previously produced inside [gvr_summary()]. It
 #' needs only the `Hugo_Symbol` and `Variant_Classification` columns (plus the
 #' per-sample column).
 #'
@@ -29,7 +29,7 @@
 #' \itemize{
 #'   \item "Missing" means `NA` OR empty string `""`.
 #'   \item Unknown/blank gene symbols are `Hugo_Symbol` in `c(".", "", "Unknown")`;
-#'     these are excluded from the oncoplot.
+#'     these are excluded from the top-genes variant matrix.
 #'   \item Works on ANY MAF-shaped table; it makes no assumption about prior
 #'     filtering. It is commonly run on [gvr_filter()] output.
 #' }
@@ -54,7 +54,7 @@
 #'
 #' @section Dependencies:
 #' Requires \pkg{ComplexHeatmap} (a \pkg{Bioconductor} package, listed in `Suggests`).
-#' If it is not installed the oncoplot is skipped with a warning and `NA_character_`
+#' If it is not installed the top-genes variant matrix is skipped with a warning and `NA_character_`
 #' is returned.
 #'
 #' @seealso [gvr_summary()] for the tabular summary, [read.gvr()] to build the MAF,
@@ -66,11 +66,11 @@
 #' \dontrun{
 #' maf <- read.gvr("/path/to/vcf_folder")
 #'
-#' ## write a top-20 oncoplot to the current directory
+#' ## write a top-20 variant matrix to the current directory
 #' p <- gvr_plot(maf)
 #' p                                  # path to the PNG
 #'
-#' ## smaller oncoplot of filtered hits, into a results folder
+#' ## smaller top-genes variant matrix of filtered hits, into a results folder
 #' gvr_plot(gvr_filter(maf), top_n = 15, out_dir = "results/plots")
 #' }
 #'
@@ -158,13 +158,13 @@ gvr_plot <- function(maf,
     final_path
   }
 
-  # --- Oncoplot builder (ComplexHeatmap): top-N genes x samples, each cell the ---
+  # --- Top-genes variant matrix builder (ComplexHeatmap): top-N genes x samples, each cell the ---
   #     single MOST-SEVERE Variant_Classification. Returns final path or NA.
   if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
-    warning("gvr_plot: 'ComplexHeatmap' not installed; skipping oncoplot."); return(invisible(NA_character_))
+    warning("gvr_plot: 'ComplexHeatmap' not installed; skipping plot."); return(invisible(NA_character_))
   }
   m <- dt[!(Hugo_Symbol %in% UNKNOWN_GENE)]
-  if (nrow(m) == 0L) { warning("gvr_plot: no known-gene variants; skipping oncoplot."); return(invisible(NA_character_)) }
+  if (nrow(m) == 0L) { warning("gvr_plot: no known-gene variants; skipping plot."); return(invisible(NA_character_)) }
   gstat <- m[, .(n_var = .N, n_samp = data.table::uniqueN(.__sample__)), by = Hugo_Symbol]
   data.table::setorder(gstat, -n_samp, -n_var)
   top_g <- utils::head(gstat$Hugo_Symbol, top_n)
