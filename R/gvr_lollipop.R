@@ -464,10 +464,7 @@
 #' }
 #'
 #' @importFrom data.table as.data.table copy is.data.table setDT :=
-#' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_rect geom_text
-#'   annotate scale_color_manual scale_fill_identity scale_x_continuous
-#'   scale_y_continuous labs theme_classic theme element_text element_blank
-#'   ggsave
+#' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_rect geom_text annotate scale_color_manual scale_fill_identity scale_x_continuous scale_y_continuous labs theme_classic theme element_text element_blank ggsave
 #' @importFrom grDevices svg dev.off
 #' @export
 gvr_lollipop <- function(maf, gene,

@@ -1,0 +1,190 @@
+---
+title: "germlinevaR walkthrough"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{germlinevaR walkthrough}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment  = "#>",
+  fig.align = "center"
+)
+```
+
+## Introduction
+
+**germlinevaR** is a self-contained R toolchain for single-sample
+germline VCFs annotated with Ensembl VEP, SnpEff, or both. It turns
+on-disk VCFs into a maftools-style MAF `data.table`, filters them with
+a modular set of toggles, isolates candidate novel variants, summarises
+a cohort, and renders publication-ready per-gene plots — all inside one
+R session, without an external pipeline.
+
+This vignette walks through the package on the **tiny example VCF
+shipped with the package**: a single anonymised sample with 62 variants
+covering all 17 VEP `Variant_Classification` levels, drawn from a real
+exome to keep the example faithful. The whole walkthrough runs in a few
+seconds.
+
+What this vignette does **not** cover: variant calling, VCF annotation
+(do it upstream with VEP or SnpEff), and somatic tumour/normal pipelines.
+germlinevaR is built for germline single-sample analyses.
+
+```{r setup}
+library(germlinevaR)
+library(data.table)
+```
+
+## 1. Reading a VCF into a MAF
+
+`read.gvr()` is the auto-routing entry point: it inspects the VCF header,
+detects whether annotations come from VEP, SnpEff, or both, and dispatches
+to the correct sibling reader (`read.gvr`, `read.gvr.snpeff`, or
+`read.gvr.dual`). For this vignette we stage the shipped example into a
+temporary directory and read it:
+
+```{r read-gvr}
+vcf_dir <- tempfile("gvr_vig_")
+dir.create(vcf_dir)
+file.copy(
+  system.file("extdata", "example.vep.vcf.gz", package = "germlinevaR"),
+  file.path(vcf_dir, "example.vep.vcf.gz")
+)
+
+maf <- read.gvr(vcf_dir, verbose = FALSE)
+dim(maf)
+```
+
+The returned `data.table` carries one row per ALT allele on the
+most-severe transcript, with a canonical 116-column schema:
+
+```{r show-maf}
+head(maf[, .(Hugo_Symbol, Variant_Classification, IMPACT,
+             Tumor_Sample_Barcode)])
+```
+
+## 2. Filtering: `gvr_filter()`
+
+`gvr_filter()` exposes population-frequency, clinical-significance,
+biotype, variant-classification, genotype, and panel filters as
+independent toggles. Defaults drop variants common in gnomAD exomes,
+1000 Genomes, or ABraOM (above 1 %), and require either a pathogenic
+ClinVar annotation or no annotation at all:
+
+```{r filter-default}
+filt <- gvr_filter(maf, verbose = FALSE)
+dim(filt)
+table(filt$Variant_Classification)
+```
+
+Defaults take the 62-row example down to 7 rows, one per surviving
+variant classification. To restrict to a curated gene panel, pass
+`genes =`:
+
+```{r filter-panel}
+gvr_list_panels()                    # registered panels
+panel <- gvr_panel_genes("breast cancer")
+panel
+
+filt_bc <- gvr_filter(maf, genes = panel, verbose = FALSE)
+filt_bc[, .(Hugo_Symbol, HGVSp_Short, Variant_Classification, IMPACT)]
+```
+
+The one BC-panel survivor — BRCA2 p.G1376A — is a missense with no rsID
+and no allele frequency in any catalogue, which is exactly the profile
+that motivates the next section.
+
+## 3. Candidate novel variants: `gvr_novel()`
+
+`gvr_novel()` is a dedicated subsetter that returns rows with no
+dbSNP rsID **and** no allele frequency in gnomAD, 1000 Genomes, or
+ABraOM. These are the variants most worth following up:
+
+```{r novel}
+novel <- gvr_novel(maf, verbose = FALSE)
+dim(novel)
+novel[, .(Hugo_Symbol, HGVSp_Short, Variant_Classification, IMPACT)]
+```
+
+Note that the BRCA2 p.G1376A row from the panel filter above also
+appears here — a single variant can satisfy several criteria at once.
+
+## 4. Cohort summary: `gvr_summary()`
+
+`gvr_summary()` returns an 8-section list-of-`data.table`s ready for
+direct inspection or downstream tabulation. It can also write the same
+content as an Excel workbook, a multi-page PDF, and a self-contained
+interactive HTML dashboard with plotly drill-downs and DT tables; we
+disable those side effects here to keep the vignette fast:
+
+```{r summary}
+summ <- gvr_summary(
+  maf,
+  save_excel = FALSE, save_pdf = FALSE, save_html = FALSE,
+  verbose    = FALSE
+)
+names(summ)
+summ$top_genes
+```
+
+For the full HTML dashboard call `gvr_summary(..., save_html = TRUE,
+out_dir = ".")`.
+
+## 5. Static plots
+
+germlinevaR produces several families of plots: per-gene
+**protein-domain lollipops** (`gvr_lollipop`), per-gene
+**gene-structure lollipops** (`gvr_genepos.plot`), a
+`ComplexHeatmap`-based **oncoplot** (`gvr_plot`), and the
+**HTML-dashboard panels** that `gvr_summary(save_html = TRUE)` embeds
+in its interactive output (also writable as standalone PNGs via
+`gvr_sum_plots()`). The figures below were rendered from a real cohort
+— the tiny example MAF shipped with the package is too sparse for a
+meaningful oncoplot or dashboard, so those two families are described
+in the text only; call the functions yourself against your own MAF to
+reproduce the layouts.
+
+**Protein-domain lollipop** — `gvr_lollipop(maf, gene = "TP53")`
+draws variants along the protein, with InterPro domains fetched and
+cached on the fly:
+
+```{r lollipop, echo=FALSE, out.width="80%", fig.cap="Lollipop for TP53 from gvr_lollipop() — InterPro domains shaded"}
+knitr::include_graphics("figures/lollipop_TP53.png")
+```
+
+**Gene-structure lollipop** — `gvr_genepos.plot(maf, gene = "BRCA1")`
+draws variants along the gene's cDNA, with exon/intron/UTR regions
+resolved via Ensembl REST or a local GTF:
+
+```{r genepos, echo=FALSE, out.width="100%", fig.cap="Gene-structure track for BRCA1 from gvr_genepos.plot() — exons/UTRs from Ensembl REST"}
+knitr::include_graphics("figures/genepos_BRCA1.png")
+```
+
+**Oncoplot and dashboard** — `gvr_plot(maf, top_n = 20, out_dir = ".")`
+writes a `ComplexHeatmap` oncoplot PNG of the top mutated genes across
+samples, coloured by variant classification.
+`gvr_sum_plots()` writes the same panels that
+`gvr_summary(save_html = TRUE)` embeds in its interactive dashboard
+(top genes, variant classification, IMPACT, top variants) as
+standalone PNGs. Both call sites need a real cohort with several
+samples to render usefully, so they are not shown in this vignette.
+
+## 6. Where to next
+
+- `?read.gvr` — every reader option (parallel cohort folders, ABraOM
+  joining, custom output paths)
+- `?gvr_filter` — full toggle reference for each filter axis
+- `?gvr_summary` — multi-section cohort summary with optional Excel,
+  PDF, and HTML outputs
+- `?gvr_lollipop` and `?gvr_genepos.plot` — per-gene plotting
+- GitHub: <https://github.com/FarmagenUFC/germlinevaR>
+
+## Session info
+
+```{r session-info, echo=FALSE}
+sessionInfo()
+```

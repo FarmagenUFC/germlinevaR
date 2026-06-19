@@ -1,24 +1,35 @@
 Package: germlinevaR
-Title: Convert, Filter and Summarise VEP-Annotated Germline Variant Calls
+Title: End-to-End Germline VCF Analysis, Filtering and Visualisation
 Version: 0.1.0
 Authors@R: 
     person("Thiago", "Loreto Matos", 
-           email = "thiago-loreto@hotmail.com", 
+           email = "farmagenufc@gmail.com", 
            role = c("aut", "cre"))
-Maintainer: Thiago Loreto Matos <thiago-loreto@hotmail.com>
+Maintainer: Thiago Loreto Matos <farmagenufc@gmail.com>
 Description: 
-    Tools for working with VEP-annotated, single-sample germline variant calls
-    (GATK HaplotypeCaller -> CNN tranches -> Ensembl VEP, hg38). Converts one or
-    many per-sample VCFs into a maftools-style MAF data.table (one row per ALT
-    allele, a single most-severe transcript per allele) without depending on
-    maftools, optionally applying a depth/genotype-quality filter and a Brazilian
-    ABraOM SABE-609 allele-frequency annotation. Provides population-frequency,
-    clinical-significance and biotype filtering, a multi-section cohort summary
-    with optional Excel, multi-page PDF and interactive HTML report export, and a
-    maftools-style oncoplot of the most-mutated genes.
+    A self-contained toolchain for single-sample germline variant calls
+    annotated with Ensembl VEP, SnpEff, or both. Converts per-sample VCFs
+    into a maftools-style MAF 'data.table' (one row per ALT allele, one
+    most-severe transcript per allele) via three sibling readers that
+    share a canonical 80-field schema and are auto-routed from the VCF
+    header. Cohort folders are processed in parallel with a live
+    heartbeat. Adds optional Brazilian ABraOM SABE-609 allele-frequency
+    annotation, a curated disease gene-panel registry, and modular
+    toggleable filtering by population-frequency, clinical significance,
+    biotype, variant classification, genotype, and panel. A dedicated
+    subsetter isolates candidate novel variants (no rsID, no population
+    AF in any catalogue). Generates a multi-section cohort summary with
+    optional 'Excel' workbook, multi-page 'PDF', and self-contained
+    interactive 'HTML' dashboard featuring 'plotly' drill-downs and 'DT'
+    tables; a 'ComplexHeatmap'-based oncoplot; per-section standalone
+    plot exports plus multi-panel composites; per-gene protein-domain
+    lollipop plots with on-the-fly InterPro domain fetching (cached);
+    per-gene gene-structure (cDNA) lollipop plots with Ensembl REST or
+    local GTF sources (cached); and a unified 52-palette colour system
+    with colourblind-safe defaults shared across every figure.
 License: MIT + file LICENSE
-URL: https://github.com/AKKDataAnalysis/germlinevaR
-BugReports: https://github.com/AKKDataAnalysis/germlinevaR/issues
+URL: https://github.com/FarmagenUFC/germlinevaR
+BugReports: https://github.com/FarmagenUFC/germlinevaR/issues
 Depends: R (>= 4.1.0)
 Imports: 
     data.table,
@@ -39,6 +50,7 @@ Suggests:
     htmltools,
     htmlwidgets,
     httr,
+    knitr,
     patchwork,
     plotly,
     RColorBrewer,
@@ -48,6 +60,8 @@ Suggests:
     svglite,
     testthat (>= 3.0.0),
     viridisLite
+VignetteBuilder: knitr
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
+Config/roxygen2/version: 8.0.0
 RoxygenNote: 7.3.3

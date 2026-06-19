@@ -1,0 +1,23 @@
+## Standard CRAN-style CITATION using modern bibentry().
+## Metadata is read from the installed package's DESCRIPTION so that
+## the citation auto-updates with version bumps.
+
+year    <- format(Sys.Date(), "%Y")
+version <- meta$Version
+
+bibentry(
+  bibtype  = "Manual",
+  title    = paste0("{germlinevaR}: End-to-End Germline VCF Analysis, ",
+                    "Filtering and Visualisation"),
+  author   = person("Thiago", "Loreto Matos",
+                    email = "farmagenufc@gmail.com",
+                    role  = c("aut", "cre")),
+  year     = year,
+  note     = paste0("R package version ", version),
+  url      = "https://github.com/FarmagenUFC/germlinevaR",
+  textVersion = paste0(
+    "Loreto Matos T (", year, "). germlinevaR: End-to-End Germline VCF ",
+    "Analysis, Filtering and Visualisation. R package version ", version,
+    ". https://github.com/FarmagenUFC/germlinevaR"
+  )
+)
