@@ -10,6 +10,8 @@ gvr_plot(
   sample_col = "Tumor_Sample_Barcode",
   out_dir = ".",
   file_prefix = "gvr_plot",
+  sample_name_rot = 45,
+  impact_title_side = c("left", "right"),
   verbose = TRUE
 )
 }
@@ -30,6 +32,16 @@ Default \code{"."} (current working directory).}
 the file is written as \verb{<file_prefix>.png} (fixed name, no timestamp), e.g.
 \code{gvr_plot.png}. An existing file at that path is overwritten (a message is
 emitted when \code{verbose = TRUE}).}
+
+\item{sample_name_rot}{Numeric; rotation angle (degrees) for the sample-name
+labels at the top of the heatmap. Default \code{45}. Common alternatives are
+\code{0} (horizontal) and \code{90} (vertical). Must be a single finite numeric.}
+
+\item{impact_title_side}{One of \code{"left"} (default) or \code{"right"}; controls
+where the \code{"Variant impact"} annotation title is drawn relative to the
+top stacked-bar panel. \code{"left"} renders the title vertically (acting as a
+y-axis title for the impact panel); \code{"right"} renders it horizontally
+on the right of the panel (the previous default).}
 
 \item{verbose}{Logical; if \code{TRUE} (default) print the path of the file written.}
 }

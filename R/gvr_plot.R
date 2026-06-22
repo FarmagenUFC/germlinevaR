@@ -46,6 +46,14 @@
 #'   the file is written as `<file_prefix>.png` (fixed name, no timestamp), e.g.
 #'   `gvr_plot.png`. An existing file at that path is overwritten (a message is
 #'   emitted when `verbose = TRUE`).
+#' @param sample_name_rot Numeric; rotation angle (degrees) for the sample-name
+#'   labels at the top of the heatmap. Default `45`. Common alternatives are
+#'   `0` (horizontal) and `90` (vertical). Must be a single finite numeric.
+#' @param impact_title_side One of `"left"` (default) or `"right"`; controls
+#'   where the `"Variant impact"` annotation title is drawn relative to the
+#'   top stacked-bar panel. `"left"` renders the title vertically (acting as a
+#'   y-axis title for the impact panel); `"right"` renders it horizontally
+#'   on the right of the panel (the previous default).
 #' @param verbose Logical; if `TRUE` (default) print the path of the file written.
 #'
 #' @return Invisibly, the path of the written PNG (character), or `NA_character_` if
@@ -80,16 +88,25 @@
 #' @importFrom utils head
 #' @export
 gvr_plot <- function(maf,
-                         top_n       = 20,
-                         sample_col  = "Tumor_Sample_Barcode",
-                         out_dir     = ".",
-                         file_prefix = "gvr_plot",
-                         verbose     = TRUE) {
+                         top_n             = 20,
+                         sample_col        = "Tumor_Sample_Barcode",
+                         out_dir           = ".",
+                         file_prefix       = "gvr_plot",
+                         sample_name_rot   = 45,
+                         impact_title_side = c("left", "right"),
+                         verbose           = TRUE) {
 
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("gvr_plot requires the 'data.table' package.")
   }
   dt <- data.table::as.data.table(maf)
+
+  # --- Validate new layout args -----------------------------------------------
+  impact_title_side <- match.arg(impact_title_side)
+  if (!is.numeric(sample_name_rot) || length(sample_name_rot) != 1L ||
+      !is.finite(sample_name_rot))
+    stop("gvr_plot: 'sample_name_rot' must be a single finite numeric (degrees).",
+         call. = FALSE)
 
   # --- Soft guard for IMPACT column (used by top annotation) ----------------
   has_impact <- "IMPACT" %in% names(dt)
@@ -211,27 +228,40 @@ gvr_plot <- function(maf,
     width = grid::unit(1.8, "cm"),
     annotation_name_gp = grid::gpar(fontsize = 9))
 
-  # Top annotation: stacked IMPACT bar (or fallback total-burden bar)
+  # Map impact_title_side -> annotation_name_side/_rot. Left = vertical title
+  # acting as a y-axis label; right = horizontal (the previous default).
+  .impact_name_side <- impact_title_side
+  .impact_name_rot  <- if (impact_title_side == "left") 90 else 0
+
+  # Top annotation: stacked IMPACT bar (or fallback total-burden bar).
+  # Compute pretty y-axis ticks once and reuse for at, labels, and ylim so the
+  # axis line extends all the way to the topmost tick (not just to the data max).
   ta <- if (has_impact) {
+    .imp_at <- pretty(c(0, colSums(imp_mat)), n = 3)
     ComplexHeatmap::HeatmapAnnotation(
-      `Variant impact` = ComplexHeatmap::anno_barplot(
+      `Variant\nimpact` = ComplexHeatmap::anno_barplot(
         t(imp_mat), border = FALSE, beside = FALSE,
         gp = grid::gpar(fill = IMPACT_COLORS[IMPACT_STACK], col = NA),
+        ylim = c(0, max(.imp_at)),
         axis_param = list(
-          at     = pretty(c(0, colSums(imp_mat)), n = 3),
-          labels = paste0(round(pretty(c(0, colSums(imp_mat)), n = 3) / 1000), "k"),
+          at     = .imp_at,
+          labels = paste0(round(.imp_at / 1000), "k"),
           gp     = grid::gpar(fontsize = 7))),
       height = grid::unit(1.6, "cm"),
-      annotation_name_gp = grid::gpar(fontsize = 9))
+      annotation_name_gp   = grid::gpar(fontsize = 9),
+      annotation_name_side = .impact_name_side,
+      annotation_name_rot  = .impact_name_rot)
   } else {
     # fallback: original total-burden bar
+    .bur_at <- pretty(c(0, samp_burden), n = 3)
     ComplexHeatmap::HeatmapAnnotation(
       `Burden` = ComplexHeatmap::anno_barplot(
         samp_burden, border = FALSE,
         gp = grid::gpar(fill = "#0279EE", col = NA),
+        ylim = c(0, max(.bur_at)),
         axis_param = list(
-          at     = pretty(c(0, samp_burden), n = 3),
-          labels = paste0(round(pretty(c(0, samp_burden), n = 3) / 1000), "k"),
+          at     = .bur_at,
+          labels = paste0(round(.bur_at / 1000), "k"),
           gp     = grid::gpar(fontsize = 7))),
       height = grid::unit(1.6, "cm"),
       annotation_name_gp = grid::gpar(fontsize = 9))
@@ -245,8 +275,8 @@ gvr_plot <- function(maf,
     mat, name = "Most severe\nclass", col = col_map, rect_gp = grid::gpar(type = "none"),
     cell_fun = cell_fun, na_col = "#F2F2F2",
     cluster_rows = FALSE, cluster_columns = FALSE,
-    show_heatmap_legend = TRUE, row_names_side = "left", column_names_side = "top",
-    column_names_rot = 45, right_annotation = ra, top_annotation = ta,
+    show_heatmap_legend = FALSE, row_names_side = "left", column_names_side = "top",
+    column_names_rot = sample_name_rot, column_names_centered = TRUE, right_annotation = ra, top_annotation = ta,
     column_title = sprintf("Top %d genes \u00d7 %d sample(s) \u2014 cells show most-severe class",
                            length(top_g), length(samples)),
     column_title_gp = grid::gpar(fontsize = 11))
@@ -257,7 +287,7 @@ gvr_plot <- function(maf,
   final_path <- file.path(out_dir, sprintf("%s.png", file_prefix))
   if (file.exists(final_path) && isTRUE(verbose))
     message(sprintf("gvr_plot: overwriting existing %s", final_path))
-  # IMPACT legend (anno_barplot does not auto-generate one)
+  # IMPACT legend (anno_barplot does not auto-generate one).
   impact_lgd <- if (has_impact)
     ComplexHeatmap::Legend(
       labels    = IMPACT_LEVELS,
@@ -265,12 +295,56 @@ gvr_plot <- function(maf,
       legend_gp = grid::gpar(fill = IMPACT_COLORS[IMPACT_LEVELS]))
   else NULL
 
+  # "Most severe class" legend, built manually from the heatmap palette. The
+  # heatmap's own auto-legend is suppressed (show_heatmap_legend = FALSE) so
+  # we can place IMPACT on top of "Most severe class" via heatmap_legend_list
+  # ordering in draw() below.
+  class_lgd <- ComplexHeatmap::Legend(
+    labels    = names(col_map),
+    title     = "Most severe\nclass",
+    legend_gp = grid::gpar(fill = unname(col_map)))
+
   path <- .fuse_save_png(final_path, function(tmp) {
     grDevices::png(tmp, width = max(1100, 360 + 150 * length(samples)),
                    height = max(720, 110 + 34 * length(top_g)), res = 150)
-    ComplexHeatmap::draw(ht, heatmap_legend_side = "right", merge_legend = TRUE,
-                         annotation_legend_list = if (!is.null(impact_lgd)) list(impact_lgd) else list(),
-                         padding = grid::unit(c(2, 6, 2, 2), "mm"))
+    # Stack IMPACT (if present) on top of "Most severe class". The whole legend
+    # column is positioned manually so it begins at the TOP of the column
+    # annotation (i.e., next to the impact barplot), not at the heatmap body
+    # top. ComplexHeatmap's align_heatmap_legend = "heatmap_top" anchors to
+    # the body top, which leaves IMPACT visually next to the heatmap rather
+    # than next to the impact barplot it describes; the manual overlay fixes
+    # that.
+    .pl <- if (!is.null(impact_lgd))
+      ComplexHeatmap::packLegend(impact_lgd, class_lgd, direction = "vertical",
+                                 row_gap = grid::unit(4, "mm"))
+    else class_lgd
+    ComplexHeatmap::draw(ht, show_heatmap_legend = FALSE,
+                         padding = grid::unit(c(2, 6, 2, 45), "mm"))
+    # Compute device-absolute coordinates of the top column annotation and the
+    # right annotation, then push a viewport for the legend column starting at
+    # the top of the column annotation.
+    .anno_name <- if (has_impact) "annotation_Variant\nimpact_1"
+                  else "annotation_Burden_1"
+    grid::seekViewport(.anno_name)
+    .anno_top <- grid::deviceLoc(grid::unit(0, "npc"), grid::unit(1, "npc"),
+                                 valueOnly = TRUE)
+    grid::upViewport(0)
+    grid::seekViewport("annotation_Variants_1")
+    .ra_right <- grid::deviceLoc(grid::unit(1, "npc"), grid::unit(0, "npc"),
+                                 valueOnly = TRUE)
+    grid::upViewport(0)
+    .dev_w <- grDevices::dev.size("in")[1]
+    .lgd_x <- .ra_right$x + 0.25
+    .lgd_w <- .dev_w - .lgd_x - 0.1
+    grid::pushViewport(grid::viewport(
+      x = grid::unit(.lgd_x, "in"),
+      y = grid::unit(.anno_top$y, "in"),
+      width = grid::unit(.lgd_w, "in"),
+      height = grid::unit(.anno_top$y - 0.1, "in"),
+      just = c("left", "top")))
+    ComplexHeatmap::draw(.pl, x = grid::unit(0, "npc"), y = grid::unit(1, "npc"),
+                         just = c("left", "top"))
+    grid::upViewport()
     grDevices::dev.off()
   })
   if (!is.na(path) && isTRUE(verbose)) message(sprintf("gvr_plot: written %s", path))
