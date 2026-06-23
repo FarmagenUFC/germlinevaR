@@ -868,29 +868,18 @@ gvr_summary <- function(maf,
       # The same builder is reused by the HTML drill-down builder below.
       .gvr_token_idx <- .gvr_build_token_index(dt, cat_specs)
 
-      # vN+10: combined detail sheets -- one sheet per category, all tokens stacked
-      # vertically.  Replaces the previous per-token sheet approach (GEN_*, VC_*,
-      # CS_*, IMP_*).  Layout per sheet:
-      #   Row 1          : column headers (bold, frozen) -- written once
-      #   For each token : blank row | bold merged label row | data rows (no header)
-      # Empty tokens (0 rows) still get a label row so the user sees the token.
+      # vN+11: combined detail sheets -- one sheet per category, all tokens stacked
+      # vertically.  Layout per sheet:
+      #   Row 1          : column headers (bold, frozen)
+      #   Then           : data rows for each token, grouped contiguously in sp$tokens
+      #                    order. No blank dividers, no bold token labels. Empty tokens
+      #                    (0 matching variants) are dropped silently.
       combined_sheet_map <- list(
         top_genes = "Genes_detail",
         vc        = "VC_detail",
         clin_sig  = "Clinical_detail",
         impact    = "Impact_detail"
       )
-      token_hs <- openxlsx::createStyle(textDecoration = "bold")
-      # vN+10 hotfix: blank/label rows must match .xl_proj column types so that
-      # rbindlist preserves numeric/integer types. Without this, blank_row would
-      # carry all-character NAs, force rbindlist to upcast numerics, and writeData
-      # then stores them as shared strings instead of inline numerics (e.g.
-      # gnomADe_AF renders as '7.206e-07' instead of openxlsx's '0.0000007206').
-      blank_row <- (function() {
-        proto <- .xl_proj[0L, .gvr_xl_cols, with = FALSE]
-        typed_na <- lapply(proto, function(col) col[NA_integer_])
-        as.data.frame(typed_na, stringsAsFactors = FALSE)
-      })()
 
       .gvr_write_combined_sheet <- function(wb, sheet_name, cat_nm, sp) {
         # Guard: skip if category absent from cat_specs
@@ -907,63 +896,27 @@ gvr_summary <- function(maf,
           openxlsx::writeData(wb, sheet_name, header_df, headerStyle = hs, startRow = 1L)
           openxlsx::freezePane(wb, sheet_name, firstRow = TRUE)
 
-          # vN+10 Stage E: build the entire sheet body (blank + label + data per token)
-          # as a SINGLE data.frame and emit ONE writeData call. Previously each token
-          # caused 2-3 separate writeData calls; openxlsx serializes each call
-          # through R<->C per cell so writeData overhead is the dominant XLSX cost
-          # at large cohorts. Visual output is identical: row 1 header, then per
-          # token: blank row, bold-merged label row, data rows (capped at .XLSX_ROW_CAP).
+          # Build the entire sheet body as a SINGLE data.frame and emit ONE writeData
+          # call. Token grouping is preserved by iterating sp$tokens in order. Empty
+          # tokens contribute nothing. Per token: rank pool by precomputed global key,
+          # cap at .XLSX_ROW_CAP, append the data rows. Native column types are
+          # preserved through rbindlist because every part comes straight from .xl_proj.
           body_parts <- vector("list", 0L)
-          label_rows <- integer(0L)   # absolute row numbers of bold-merged label rows
-          cur_row    <- 2L            # next row after the header
           for (tok in sp$tokens) {
             row_idx <- .gvr_token_idx[[cat_nm]][[as.character(tok)]]
-            # blank separator row
-            body_parts[[length(body_parts) + 1L]] <- blank_row
-            cur_row <- cur_row + 1L
-            # bold-merged label row
-            label_df       <- blank_row
-            label_df[[1L]] <- as.character(tok)
-            body_parts[[length(body_parts) + 1L]] <- label_df
-            label_rows <- c(label_rows, cur_row)
-            cur_row <- cur_row + 1L
-            # data rows (if any) -- rank each pool by precomputed global key, cap
-            if (length(row_idx) > 0L) {
-              ord_idx <- row_idx[order(.xl_rank_of_row[row_idx])]
-              if (length(ord_idx) > .XLSX_ROW_CAP) ord_idx <- ord_idx[seq_len(.XLSX_ROW_CAP)]
-              sub <- .xl_proj[ord_idx]
-              out_df <- as.data.frame(sub[, .gvr_xl_cols, with = FALSE],
-                                      stringsAsFactors = FALSE)
-              body_parts[[length(body_parts) + 1L]] <- out_df
-              cur_row <- cur_row + nrow(out_df)
-            }
+            if (length(row_idx) == 0L) next
+            ord_idx <- row_idx[order(.xl_rank_of_row[row_idx])]
+            if (length(ord_idx) > .XLSX_ROW_CAP) ord_idx <- ord_idx[seq_len(.XLSX_ROW_CAP)]
+            sub <- .xl_proj[ord_idx]
+            body_parts[[length(body_parts) + 1L]] <- as.data.frame(
+              sub[, .gvr_xl_cols, with = FALSE], stringsAsFactors = FALSE)
           }
           if (length(body_parts) > 0L) {
-            # vN+10 hotfix: blank/label rows now share .xl_proj column types, so
-            # rbindlist preserves native numeric/integer types. NO character
-            # coercion -- that previously caused numerics to be written as shared
-            # strings (e.g. 7.206e-07 instead of openxlsx's 0.0000007206 rendering).
-            # Label-row column 1 is character (token name); it lives in a column
-            # that is already character (Hugo_Symbol / dbSNP_RS / CLIN_SIG / IMPACT)
-            # so no type clash.
             big_body <- data.table::rbindlist(body_parts, use.names = TRUE, fill = TRUE)
             data.table::setcolorder(big_body, .gvr_xl_cols)
             big_body_df <- as.data.frame(big_body, stringsAsFactors = FALSE)
             openxlsx::writeData(wb, sheet_name, big_body_df,
                                 colNames = FALSE, startRow = 2L)
-          }
-          # vN+10 Stage E: apply bold style + merge to label rows AFTER bulk write.
-          # mergeCells is per-row but cheap (no cell data work).
-          if (length(label_rows) > 0L) {
-            n_cols <- length(.gvr_xl_cols)
-            openxlsx::addStyle(wb, sheet_name, token_hs,
-                               rows = rep(label_rows, each = n_cols),
-                               cols = rep(seq_len(n_cols), times = length(label_rows)),
-                               stack = TRUE, gridExpand = FALSE)
-            for (lr in label_rows) {
-              openxlsx::mergeCells(wb, sheet_name,
-                                   cols = seq_len(n_cols), rows = lr)
-            }
           }
 
           # column widths set once after all blocks
