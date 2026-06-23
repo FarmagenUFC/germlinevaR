@@ -11,6 +11,11 @@ gvr_plot(
   out_dir = ".",
   file_prefix = "gvr_plot",
   sample_name_rot = 45,
+  gene_name_size = 10,
+  sample_name_size = 10,
+  axis_tick_size = 7,
+  legend_label_size = 10,
+  legend_title_size = 10,
   impact_title_side = c("left", "right"),
   verbose = TRUE
 )
@@ -36,6 +41,27 @@ emitted when \code{verbose = TRUE}).}
 \item{sample_name_rot}{Numeric; rotation angle (degrees) for the sample-name
 labels at the top of the heatmap. Default \code{45}. Common alternatives are
 \code{0} (horizontal) and \code{90} (vertical). Must be a single finite numeric.}
+
+\item{gene_name_size}{Numeric; font size in points for the gene-name row
+labels (left side of the heatmap). Default \code{10}. Must be a single
+finite positive numeric.}
+
+\item{sample_name_size}{Numeric; font size in points for the sample-name
+column labels (top of the heatmap). Default \code{10}. Must be a single
+finite positive numeric.}
+
+\item{axis_tick_size}{Numeric; font size in points for the y-axis tick
+labels of the top "Variant impact" bar and the right gene-burden bar.
+Default \code{7}. Must be a single finite positive numeric.}
+
+\item{legend_label_size}{Numeric; font size in points for the label text
+of both side legends ("Impact" and "Most severe class"). Default \code{10}.
+Must be a single finite positive numeric.}
+
+\item{legend_title_size}{Numeric; font size in points for the title text
+of both side legends ("Impact" and "Most severe class"). The bold
+face is preserved. Default \code{10}. Must be a single finite positive
+numeric.}
 
 \item{impact_title_side}{One of \code{"left"} (default) or \code{"right"}; controls
 where the \code{"Variant impact"} annotation title is drawn relative to the

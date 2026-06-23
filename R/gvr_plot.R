@@ -49,6 +49,22 @@
 #' @param sample_name_rot Numeric; rotation angle (degrees) for the sample-name
 #'   labels at the top of the heatmap. Default `45`. Common alternatives are
 #'   `0` (horizontal) and `90` (vertical). Must be a single finite numeric.
+#' @param gene_name_size Numeric; font size in points for the gene-name row
+#'   labels (left side of the heatmap). Default `10`. Must be a single
+#'   finite positive numeric.
+#' @param sample_name_size Numeric; font size in points for the sample-name
+#'   column labels (top of the heatmap). Default `10`. Must be a single
+#'   finite positive numeric.
+#' @param axis_tick_size Numeric; font size in points for the y-axis tick
+#'   labels of the top "Variant impact" bar and the right gene-burden bar.
+#'   Default `7`. Must be a single finite positive numeric.
+#' @param legend_label_size Numeric; font size in points for the label text
+#'   of both side legends ("Impact" and "Most severe class"). Default `10`.
+#'   Must be a single finite positive numeric.
+#' @param legend_title_size Numeric; font size in points for the title text
+#'   of both side legends ("Impact" and "Most severe class"). The bold
+#'   face is preserved. Default `10`. Must be a single finite positive
+#'   numeric.
 #' @param impact_title_side One of `"left"` (default) or `"right"`; controls
 #'   where the `"Variant impact"` annotation title is drawn relative to the
 #'   top stacked-bar panel. `"left"` renders the title vertically (acting as a
@@ -93,6 +109,11 @@ gvr_plot <- function(maf,
                          out_dir           = ".",
                          file_prefix       = "gvr_plot",
                          sample_name_rot   = 45,
+                         gene_name_size    = 10,
+                         sample_name_size  = 10,
+                         axis_tick_size    = 7,
+                         legend_label_size = 10,
+                         legend_title_size = 10,
                          impact_title_side = c("left", "right"),
                          verbose           = TRUE) {
 
@@ -107,6 +128,16 @@ gvr_plot <- function(maf,
       !is.finite(sample_name_rot))
     stop("gvr_plot: 'sample_name_rot' must be a single finite numeric (degrees).",
          call. = FALSE)
+  .check_pos_num <- function(x, nm) {
+    if (!is.numeric(x) || length(x) != 1L || !is.finite(x) || x <= 0)
+      stop(sprintf("gvr_plot: '%s' must be a single finite positive numeric (points).", nm),
+           call. = FALSE)
+  }
+  .check_pos_num(gene_name_size,   "gene_name_size")
+  .check_pos_num(sample_name_size, "sample_name_size")
+  .check_pos_num(axis_tick_size,   "axis_tick_size")
+  .check_pos_num(legend_label_size, "legend_label_size")
+  .check_pos_num(legend_title_size, "legend_title_size")
 
   # --- Soft guard for IMPACT column (used by top annotation) ----------------
   has_impact <- "IMPACT" %in% names(dt)
@@ -126,6 +157,33 @@ gvr_plot <- function(maf,
                     "5'UTR", "3'UTR", "5'Flank", "3'Flank", "RNA", "Intron",
                     "IGR", "Targeted_Region")
   .sev_rank <- function(x) { r <- match(x, GVR_SEVERITY); r[is.na(r)] <- length(GVR_SEVERITY) + 1L; r }
+  # Display-only label prettifier: 'Missense_Mutation' -> 'Missense Mutation',
+  # 'HIGH' -> 'High', etc. Preserves region tokens (5'UTR, 3'Flank) and
+  # short uppercase acronyms (RNA, IGR). Used ONLY for legend labels; data
+  # matching and palette keys remain in the original case throughout.
+  .pretty_label <- function(x) {
+    is_acronym <- function(tok)
+      grepl("^[A-Z]{2,5}$", tok) &&
+        !tok %in% c("HIGH", "MODERATE", "LOW", "MODIFIER")
+    cap_first <- function(tok)
+      if (nchar(tok) == 0L) tok
+      else paste0(toupper(substr(tok, 1, 1)), tolower(substr(tok, 2, nchar(tok))))
+    handle_token <- function(tok) {
+      m <- regmatches(tok, regexec("^([0-9]+')(.+)$", tok))[[1]]
+      if (length(m) == 3L) {
+        rest <- m[3]
+        if (is_acronym(rest)) return(paste0(m[2], rest))
+        return(paste0(m[2], cap_first(rest)))
+      }
+      if (is_acronym(tok)) return(tok)
+      cap_first(tok)
+    }
+    vapply(x, function(s) {
+      parts <- strsplit(s, "_", fixed = TRUE)[[1]]
+      paste(vapply(parts, handle_token, character(1), USE.NAMES = FALSE),
+            collapse = " ")
+    }, character(1), USE.NAMES = FALSE)
+  }
   # Colorblind-safe palette (Okabe-Ito + extensions), keyed by class; "Other" = grey.
   GVR_CLASS_COLORS <- c(
     "Translation_Start_Site" = "#000000", "Nonsense_Mutation" = "#D55E00",
@@ -224,7 +282,7 @@ gvr_plot <- function(maf,
     `Variants` = ComplexHeatmap::anno_barplot(
       gb, border = FALSE,
       gp = grid::gpar(fill = "#0279EE", col = NA),
-      axis_param = list(gp = grid::gpar(fontsize = 7))),
+      axis_param = list(gp = grid::gpar(fontsize = axis_tick_size))),
     width = grid::unit(1.8, "cm"),
     annotation_name_gp = grid::gpar(fontsize = 9))
 
@@ -246,7 +304,7 @@ gvr_plot <- function(maf,
         axis_param = list(
           at     = .imp_at,
           labels = paste0(round(.imp_at / 1000), "k"),
-          gp     = grid::gpar(fontsize = 7))),
+          gp     = grid::gpar(fontsize = axis_tick_size))),
       height = grid::unit(1.6, "cm"),
       annotation_name_gp   = grid::gpar(fontsize = 9),
       annotation_name_side = .impact_name_side,
@@ -262,7 +320,7 @@ gvr_plot <- function(maf,
         axis_param = list(
           at     = .bur_at,
           labels = paste0(round(.bur_at / 1000), "k"),
-          gp     = grid::gpar(fontsize = 7))),
+          gp     = grid::gpar(fontsize = axis_tick_size))),
       height = grid::unit(1.6, "cm"),
       annotation_name_gp = grid::gpar(fontsize = 9))
   }
@@ -276,7 +334,10 @@ gvr_plot <- function(maf,
     cell_fun = cell_fun, na_col = "#F2F2F2",
     cluster_rows = FALSE, cluster_columns = FALSE,
     show_heatmap_legend = FALSE, row_names_side = "left", column_names_side = "top",
-    column_names_rot = sample_name_rot, column_names_centered = TRUE, right_annotation = ra, top_annotation = ta,
+    column_names_rot = sample_name_rot, column_names_centered = TRUE,
+    row_names_gp = grid::gpar(fontsize = gene_name_size),
+    column_names_gp = grid::gpar(fontsize = sample_name_size),
+    right_annotation = ra, top_annotation = ta,
     column_title = sprintf("Top %d genes \u00d7 %d sample(s) \u2014 cells show most-severe class",
                            length(top_g), length(samples)),
     column_title_gp = grid::gpar(fontsize = 11))
@@ -290,9 +351,11 @@ gvr_plot <- function(maf,
   # IMPACT legend (anno_barplot does not auto-generate one).
   impact_lgd <- if (has_impact)
     ComplexHeatmap::Legend(
-      labels    = IMPACT_LEVELS,
-      title     = "IMPACT",
-      legend_gp = grid::gpar(fill = IMPACT_COLORS[IMPACT_LEVELS]))
+      labels    = .pretty_label(IMPACT_LEVELS),
+      title     = "Impact",
+      legend_gp = grid::gpar(fill = IMPACT_COLORS[IMPACT_LEVELS]),
+      labels_gp = grid::gpar(fontsize = legend_label_size),
+      title_gp  = grid::gpar(fontsize = legend_title_size, fontface = "bold"))
   else NULL
 
   # "Most severe class" legend, built manually from the heatmap palette. The
@@ -300,9 +363,11 @@ gvr_plot <- function(maf,
   # we can place IMPACT on top of "Most severe class" via heatmap_legend_list
   # ordering in draw() below.
   class_lgd <- ComplexHeatmap::Legend(
-    labels    = names(col_map),
+    labels    = .pretty_label(names(col_map)),
     title     = "Most severe\nclass",
-    legend_gp = grid::gpar(fill = unname(col_map)))
+    legend_gp = grid::gpar(fill = unname(col_map)),
+    labels_gp = grid::gpar(fontsize = legend_label_size),
+    title_gp  = grid::gpar(fontsize = legend_title_size, fontface = "bold"))
 
   path <- .fuse_save_png(final_path, function(tmp) {
     grDevices::png(tmp, width = max(1100, 360 + 150 * length(samples)),
