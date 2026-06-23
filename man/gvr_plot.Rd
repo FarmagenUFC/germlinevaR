@@ -16,6 +16,7 @@ gvr_plot(
   axis_tick_size = 7,
   legend_label_size = 10,
   legend_title_size = 10,
+  legend_label_wrap_chars = Inf,
   impact_title_side = c("left", "right"),
   verbose = TRUE
 )
@@ -62,6 +63,14 @@ Must be a single finite positive numeric.}
 of both side legends ("Impact" and "Most severe class"). The bold
 face is preserved. Default \code{10}. Must be a single finite positive
 numeric.}
+
+\item{legend_label_wrap_chars}{Numeric; if a (prettified) legend label is
+longer than this many characters, it is wrapped onto two lines at the
+space closest to the middle. Default \code{Inf} disables wrapping (so all
+labels stay on one line, matching the legacy behaviour). Use a finite
+integer (e.g. \code{14}) when long labels would clip the right edge at
+large \code{legend_label_size}. Labels without internal spaces (e.g.
+\verb{5'UTR}, \code{RNA}) are never wrapped regardless of length.}
 
 \item{impact_title_side}{One of \code{"left"} (default) or \code{"right"}; controls
 where the \code{"Variant impact"} annotation title is drawn relative to the

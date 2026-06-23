@@ -65,6 +65,13 @@
 #'   of both side legends ("Impact" and "Most severe class"). The bold
 #'   face is preserved. Default `10`. Must be a single finite positive
 #'   numeric.
+#' @param legend_label_wrap_chars Numeric; if a (prettified) legend label is
+#'   longer than this many characters, it is wrapped onto two lines at the
+#'   space closest to the middle. Default `Inf` disables wrapping (so all
+#'   labels stay on one line, matching the legacy behaviour). Use a finite
+#'   integer (e.g. `14`) when long labels would clip the right edge at
+#'   large `legend_label_size`. Labels without internal spaces (e.g.
+#'   `5'UTR`, `RNA`) are never wrapped regardless of length.
 #' @param impact_title_side One of `"left"` (default) or `"right"`; controls
 #'   where the `"Variant impact"` annotation title is drawn relative to the
 #'   top stacked-bar panel. `"left"` renders the title vertically (acting as a
@@ -114,6 +121,7 @@ gvr_plot <- function(maf,
                          axis_tick_size    = 7,
                          legend_label_size = 10,
                          legend_title_size = 10,
+                         legend_label_wrap_chars = Inf,
                          impact_title_side = c("left", "right"),
                          verbose           = TRUE) {
 
@@ -138,6 +146,15 @@ gvr_plot <- function(maf,
   .check_pos_num(axis_tick_size,   "axis_tick_size")
   .check_pos_num(legend_label_size, "legend_label_size")
   .check_pos_num(legend_title_size, "legend_title_size")
+  # legend_label_wrap_chars accepts Inf (the default no-wrap sentinel) as well
+  # as a finite positive numeric. NA, zero, negative, character, or non-scalar
+  # values are rejected with a clear message.
+  if (!is.numeric(legend_label_wrap_chars) ||
+      length(legend_label_wrap_chars) != 1L ||
+      is.na(legend_label_wrap_chars) ||
+      legend_label_wrap_chars <= 0)
+    stop("gvr_plot: 'legend_label_wrap_chars' must be a single positive numeric (Inf is allowed and disables wrapping).",
+         call. = FALSE)
 
   # --- Soft guard for IMPACT column (used by top annotation) ----------------
   has_impact <- "IMPACT" %in% names(dt)
@@ -183,6 +200,21 @@ gvr_plot <- function(maf,
       paste(vapply(parts, handle_token, character(1), USE.NAMES = FALSE),
             collapse = " ")
     }, character(1), USE.NAMES = FALSE)
+  }
+  # Label-wrap helper: if a (display) label is longer than max_chars, split it
+  # onto two lines at the space whose position is closest to nchar(s)/2. Labels
+  # without spaces (acronyms like 5'UTR, RNA, IGR) are returned unchanged. If
+  # max_chars is Inf (default) every label passes through untouched.
+  .wrap_balanced <- function(x, max_chars) {
+    if (!is.finite(max_chars)) return(x)
+    vapply(x, function(s) {
+      if (nchar(s) <= max_chars) return(s)
+      sp <- gregexpr(" ", s, fixed = TRUE)[[1L]]
+      if (length(sp) == 1L && sp[1L] == -1L) return(s)
+      mid <- nchar(s) / 2
+      pick <- sp[which.min(abs(sp - mid))]
+      paste0(substr(s, 1L, pick - 1L), "\n", substr(s, pick + 1L, nchar(s)))
+    }, character(1L), USE.NAMES = FALSE)
   }
   # Colorblind-safe palette (Okabe-Ito + extensions), keyed by class; "Other" = grey.
   GVR_CLASS_COLORS <- c(
@@ -348,14 +380,32 @@ gvr_plot <- function(maf,
   final_path <- file.path(out_dir, sprintf("%s.png", file_prefix))
   if (file.exists(final_path) && isTRUE(verbose))
     message(sprintf("gvr_plot: overwriting existing %s", final_path))
+  # Swatch size: when label wrap is OFF (Inf) or no label actually wraps,
+  # use the ComplexHeatmap default (4mm) so output stays bit-identical to
+  # the unwrapped baseline. When at least one label wraps to two lines, pad
+  # ALL swatches up to the wrapped-row height so the colored squares remain
+  # uniformly sized across the legend (otherwise ComplexHeatmap only inflates
+  # the wrapped row's swatch, making them visually inconsistent). The pad
+  # height was measured empirically on ComplexHeatmap 2.22 as a tight linear
+  # function of fontsize: h_mm(fs) ~= 0.6343 * fs + 1.41 for a 2-line label.
+  .all_labels   <- c(if (has_impact) .pretty_label(IMPACT_LEVELS),
+                     .pretty_label(names(col_map)))
+  .wrap_labels  <- .wrap_balanced(.all_labels, legend_label_wrap_chars)
+  .any_wrapped  <- any(grepl("\n", .wrap_labels, fixed = TRUE))
+  .swatch_side_mm <- if (.any_wrapped) {
+    ceiling((0.6343 * legend_label_size + 1.41) * 10) / 10
+  } else 4
+
   # IMPACT legend (anno_barplot does not auto-generate one).
   impact_lgd <- if (has_impact)
     ComplexHeatmap::Legend(
-      labels    = .pretty_label(IMPACT_LEVELS),
-      title     = "Impact",
-      legend_gp = grid::gpar(fill = IMPACT_COLORS[IMPACT_LEVELS]),
-      labels_gp = grid::gpar(fontsize = legend_label_size),
-      title_gp  = grid::gpar(fontsize = legend_title_size, fontface = "bold"))
+      labels      = .wrap_balanced(.pretty_label(IMPACT_LEVELS), legend_label_wrap_chars),
+      title       = "Impact",
+      legend_gp   = grid::gpar(fill = IMPACT_COLORS[IMPACT_LEVELS]),
+      labels_gp   = grid::gpar(fontsize = legend_label_size),
+      title_gp    = grid::gpar(fontsize = legend_title_size, fontface = "bold"),
+      grid_height = grid::unit(.swatch_side_mm, "mm"),
+      grid_width  = grid::unit(.swatch_side_mm, "mm"))
   else NULL
 
   # "Most severe class" legend, built manually from the heatmap palette. The
@@ -363,11 +413,13 @@ gvr_plot <- function(maf,
   # we can place IMPACT on top of "Most severe class" via heatmap_legend_list
   # ordering in draw() below.
   class_lgd <- ComplexHeatmap::Legend(
-    labels    = .pretty_label(names(col_map)),
-    title     = "Most severe\nclass",
-    legend_gp = grid::gpar(fill = unname(col_map)),
-    labels_gp = grid::gpar(fontsize = legend_label_size),
-    title_gp  = grid::gpar(fontsize = legend_title_size, fontface = "bold"))
+    labels      = .wrap_balanced(.pretty_label(names(col_map)), legend_label_wrap_chars),
+    title       = "Most severe\nclass",
+    legend_gp   = grid::gpar(fill = unname(col_map)),
+    labels_gp   = grid::gpar(fontsize = legend_label_size),
+    title_gp    = grid::gpar(fontsize = legend_title_size, fontface = "bold"),
+    grid_height = grid::unit(.swatch_side_mm, "mm"),
+    grid_width  = grid::unit(.swatch_side_mm, "mm"))
 
   path <- .fuse_save_png(final_path, function(tmp) {
     grDevices::png(tmp, width = max(1100, 360 + 150 * length(samples)),
