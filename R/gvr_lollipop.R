@@ -201,18 +201,22 @@
 #' "No protein-altering variants for <GENE>" annotation. No files are written
 #' for empty-gene plots.
 #'
-#' File output: by default the function writes both SVG and PNG to `out_dir`
-#' (default `"."`, the current working directory), using `out_prefix` (default
-#' `gene`) as the filename prefix:
+#' File output: by default the function writes both SVG and PNG into a
+#' `gvr_lollipop/` subfolder under `out_dir` (default `out_dir = "."`, so files
+#' land in `./gvr_lollipop/`), using `out_prefix` (default `gene`) as the
+#' filename prefix:
 #' \itemize{
-#'   \item `<out_dir>/<out_prefix>_lollipop.svg` - vector (lossless)
-#'   \item `<out_dir>/<out_prefix>_lollipop.png` - raster at `dpi`
+#'   \item `<out_dir>/<out_subdir>/<out_prefix>_lollipop.svg` - vector (lossless)
+#'   \item `<out_dir>/<out_subdir>/<out_prefix>_lollipop.png` - raster at `dpi`
 #' }
-#' Both files are first rendered to `tempdir()` then `cp`'d to `out_dir`, so
-#' S3-backed FUSE mounts (e.g. `/mnt/results/`) work without 0-byte issues.
-#' Set `out_dir = NULL` to suppress file output and return only the ggplot2
-#' object. The function always returns the ggplot2 object regardless of whether
-#' files were written.
+#' The subfolder name is controlled by `out_subdir` (default `"gvr_lollipop"`,
+#' matching the [gvr_genepos.plot()] / [gvr_summary()] convention); set
+#' `out_subdir = NULL` (or `""`) to write directly into `out_dir` with no
+#' subfolder. Both files are first rendered to `tempdir()` then `cp`'d to the
+#' final directory, so S3-backed FUSE mounts (e.g. `/mnt/results/`) work
+#' without 0-byte issues. Set `out_dir = NULL` to suppress file output and
+#' return only the ggplot2 object. The function always returns the ggplot2
+#' object regardless of whether files were written.
 #'
 #' @param gvr An MAF-like `data.table` / `data.frame` from [read.gvr()], or any
 #'   compatible table with at least `Hugo_Symbol`, `HGVSp_Short`,
@@ -340,14 +344,21 @@
 #' @param axis_line_width Numeric(1). Line width (in `ggplot2` linewidth
 #'   units) of axis lines and ticks. Default `0.4` (current visual). Set to
 #'   `0.8` for sibling-package publication defaults.
-#' @param out_dir Character(1) or `NULL`. Output directory for the SVG/PNG
-#'   files. Created if it does not exist. Default `"."` (current working
-#'   directory), matching [gvr_plot()]. Set to `NULL` to suppress file output.
+#' @param out_dir Character(1) or `NULL`. Output directory root for the
+#'   SVG/PNG files. Created if it does not exist. Default `"."` (current
+#'   working directory), matching [gvr_plot()]. Set to `NULL` to suppress
+#'   file output. By default a `gvr_lollipop/` subfolder is created inside
+#'   `out_dir` (see `out_subdir`).
+#' @param out_subdir Character(1) or `NULL`. Subfolder under `out_dir` to
+#'   collect lollipop outputs. Default `"gvr_lollipop"`, matching the
+#'   [gvr_genepos.plot()] / [gvr_summary()] convention. Set to `NULL` (or
+#'   `""`) to write files directly into `out_dir` with no subfolder.
 #' @param out_prefix Character(1) or `NULL`. Filename prefix; output files are
 #'   `<out_prefix>_lollipop.svg` / `<out_prefix>_lollipop.png`. Default `gene`
-#'   (the gene symbol), so `gvr_lollipop(f, "TP53")` writes
-#'   `TP53_lollipop.svg` and `TP53_lollipop.png`. Set to `NULL` to suppress
-#'   file output.
+#'   (the gene symbol), so with default `out_dir = "."` and
+#'   `out_subdir = "gvr_lollipop"`, `gvr_lollipop(f, "TP53")` writes
+#'   `./gvr_lollipop/TP53_lollipop.svg` and `./gvr_lollipop/TP53_lollipop.png`.
+#'   Set to `NULL` to suppress file output.
 #' @param width Numeric(1). Plot width in inches. Default `10`.
 #' @param height Numeric(1). Plot height in inches. Default `4`.
 #' @param dpi Numeric(1). PNG resolution. Default `300`.
@@ -495,6 +506,7 @@ gvr_lollipop <- function(gvr, gene,
                          axis_line_color  = "grey40",
                          axis_line_width  = 0.4,
                          out_dir        = ".",
+                         out_subdir     = "gvr_lollipop",
                          out_prefix     = gene,
                          width          = 10,
                          height         = 4,
@@ -1904,9 +1916,12 @@ gvr_lollipop <- function(gvr, gene,
 
   # ---- File output (default: auto-save, matching gvr_plot behaviour) ----
   if (!is.null(out_dir) && !is.null(out_prefix)) {
-    if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-    svg_path <- file.path(out_dir, sprintf("%s_lollipop.svg", out_prefix))
-    png_path <- file.path(out_dir, sprintf("%s_lollipop.png", out_prefix))
+    target_dir <- if (!is.null(out_subdir) && nzchar(out_subdir))
+      file.path(out_dir, out_subdir) else out_dir
+    if (!dir.exists(target_dir))
+      dir.create(target_dir, recursive = TRUE, showWarnings = FALSE)
+    svg_path <- file.path(target_dir, sprintf("%s_lollipop.svg", out_prefix))
+    png_path <- file.path(target_dir, sprintf("%s_lollipop.png", out_prefix))
 
     # announce overwrite (matching gvr_plot convention)
     if (file.exists(png_path) && isTRUE(verbose))
