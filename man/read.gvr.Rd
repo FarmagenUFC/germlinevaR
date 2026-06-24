@@ -2,7 +2,7 @@
 % Please edit documentation in R/read.gvr.R
 \name{read.gvr}
 \alias{read.gvr}
-\title{Convert VEP-annotated germline VCF(s) to a maftools-style MAF data.table}
+\title{Convert VEP-annotated germline VCF(s) to an MAF-like data.table}
 \usage{
 read.gvr(
   folder = ".",
@@ -56,14 +56,14 @@ Default \code{"\\\\.vcf\\\\.gz$"} (matches any \code{.vcf.gz} file). The old def
 \code{"_\\\\d+(\\\\.(vep|snp[eE]ff))?\\\\.vcf\\\\.gz$"} (requires \verb{_NN} suffix) is
 still available by passing it explicitly.}
 
-\item{write_tsv}{Logical; if \code{TRUE}, also write the MAF as a TSV to \code{out_dir}.
+\item{write_tsv}{Logical; if \code{TRUE}, also write the table as a TSV to \code{out_dir}.
 Default \code{FALSE}.}
 
-\item{write_rds}{Logical; if \code{TRUE}, also write the MAF as an \code{.rds} to \code{out_dir}.
+\item{write_rds}{Logical; if \code{TRUE}, also write the table as an \code{.rds} to \code{out_dir}.
 Default \code{FALSE}.}
 
-\item{write_xlsx}{Logical; if \code{TRUE}, also write the MAF as an \code{.xlsx} workbook
-(single \code{"MAF"} sheet) to \code{out_dir}. Requires the \pkg{openxlsx} package (a
+\item{write_xlsx}{Logical; if \code{TRUE}, also write the table as an \code{.xlsx} workbook
+(single \code{"gvr_table"} sheet) to \code{out_dir}. Requires the \pkg{openxlsx} package (a
 \code{Suggests} dependency); if it is not installed the export is skipped with a
 warning. Default \code{FALSE}. Note: germline MAFs can be very large; Excel handles
 them but the file is big and slow to open, so \code{write_rds}/\code{write_tsv} are better
@@ -78,7 +78,7 @@ from the input.}
 \item{chunk_size}{Integer; number of VCF records processed per chunk (controls peak
 memory and progress granularity). Default \code{25000L}.}
 
-\item{ncbi_build}{Reference build label written into the MAF \code{NCBI_Build}
+\item{ncbi_build}{Reference build label written into the table \code{NCBI_Build}
 column. Default \code{"auto"}: the function inspects the input VCF header
 (VEP \verb{assembly=} / SnpEff \code{SnpEffCmd} database token / first \verb{##contig=}
 length) and picks the canonical label among \code{"GRCh38"}, \code{"GRCh37"},
@@ -144,8 +144,8 @@ An unknown name raises an error listing the available panels. \code{NULL}
 omitting the argument.}
 
 \item{vc_nonSyn}{Logical or character vector. Controls which
-\code{Variant_Classification} values are retained (mirroring maftools'
-\code{vc_nonSyn} argument). \code{FALSE} (default) keeps ALL variant classifications.
+\code{Variant_Classification} values are retained (mirroring the
+convention of the \code{vc_nonSyn} argument). \code{FALSE} (default) keeps ALL variant classifications.
 \code{TRUE} keeps only protein-altering classes (High/Moderate VEP consequences):
 \code{"Frame_Shift_Del"}, \code{"Frame_Shift_Ins"}, \code{"Splice_Site"},
 \code{"Translation_Start_Site"}, \code{"Nonsense_Mutation"}, \code{"Nonstop_Mutation"},
@@ -154,7 +154,7 @@ pass a custom character vector of classifications to keep. Rows with
 missing/blank \code{Variant_Classification} are always removed when this filter
 is active.}
 
-\item{canonical_only}{Logical; when \code{TRUE} (default), drops MAF rows whose
+\item{canonical_only}{Logical; when \code{TRUE} (default), drops table rows whose
 chosen VEP CSQ block has \code{CANONICAL != "YES"}. read.gvr() already prefers
 \code{CANONICAL=YES} when ranking CSQ blocks; this filter discards the
 fallback rows emitted when no canonical block exists for a given ALT.
@@ -177,29 +177,29 @@ non-fork platforms it falls back to sequential. A single file is unaffected.}
 (file i/N, cumulative records, elapsed seconds).}
 }
 \value{
-A \code{data.table} MAF: one row per variant allele, with MAF core columns, all
+An MAF-like \code{data.table}: one row per variant allele, with MAF-like core columns, all
 VEP CSQ fields, key GATK QC fields, \code{Tumor_Sample_Barcode}, and (when enabled) the
 \code{Genotype} and \code{ABraOM_AF} columns. TSV/RDS files are written as a side
 effect when \code{write_tsv}/\code{write_rds} is \code{TRUE}.
 }
 \description{
 Converts VEP-annotated, single-sample germline VCFs (GATK HaplotypeCaller ->
-CNN tranches -> Ensembl VEP, hg38) into a maftools-style table and returns it as
+CNN tranches -> Ensembl VEP, hg38) into an MAF-like table and returns it as
 an in-memory \code{data.table} for downstream filtering (\code{\link[=gvr_filter]{gvr_filter()}}) and
 summarisation (\code{\link[=gvr_summary]{gvr_summary()}}). In folder mode it finds every per-sample VCF,
-converts each, and row-binds them into one combined MAF. The conversion uses base R
+converts each, and row-binds them into one combined gvr table. The conversion uses base R
 \itemize{
-\item \pkg{data.table} only - it does NOT depend on \pkg{maftools}.
+\item \pkg{data.table} only - no external annotation-package dependency.
 }
 }
 \details{
 Output and behaviour:
 \itemize{
-\item Returns the final MAF \code{data.table}, one row per variant ALLELE
+\item Returns the final MAF-like \code{data.table}, one row per variant ALLELE
 (multi-allelic sites are split).
 \item A single most-severe transcript is chosen per allele (VEP severity ->
 \code{CANONICAL} -> \code{MANE_SELECT} -> transcript id).
-\item Columns include the MAF core fields, ALL VEP CSQ fields (read from the VCF
+\item Columns include the MAF-like core fields, ALL VEP CSQ fields (read from the VCF
 header), and key GATK QC fields. \code{FILTER} is retained as a column and ALL
 variants (PASS and non-PASS) are kept.
 \item \code{Tumor_Seq_Allele1}/\code{Tumor_Seq_Allele2} are zygosity-aware (vcf2maf-style),
@@ -230,61 +230,61 @@ case-insensitive).
 }
 \examples{
 \dontrun{
-## Folder mode: merge ALL *_NN.vcf.gz into one MAF
-maf <- read.gvr("/path/to/folder")
+## Folder mode: merge ALL *_NN.vcf.gz into one gvr table
+gvr <- read.gvr("/path/to/folder")
 
 ## Also write TSV + RDS outputs
-maf <- read.gvr("/path/to/folder", write_tsv = TRUE, write_rds = TRUE,
+gvr <- read.gvr("/path/to/folder", write_tsv = TRUE, write_rds = TRUE,
                 out_dir = "/path/to/results")
 
 ## Single-file mode: full path
-maf <- read.gvr(vcf_path = "/path/to/SAMPLE_01.vep.vcf.gz")
+gvr <- read.gvr(vcf_path = "/path/to/SAMPLE_01.vep.vcf.gz")
 
 ## Multi-file mode by full path
-maf <- read.gvr(vcf_path = c("/p/S1.vep.vcf.gz", "/p/S2.vep.vcf.gz"))
+gvr <- read.gvr(vcf_path = c("/p/S1.vep.vcf.gz", "/p/S2.vep.vcf.gz"))
 
 ## Pick basenames from a folder (merges these two but ignores other .vcf.gz)
-maf <- read.gvr(folder = "/p",
+gvr <- read.gvr(folder = "/p",
                 file   = c("S1.vep.vcf.gz", "S2.vep.vcf.gz"))
 
 ## Keep non-canonical CSQ rows too (Phase N+3 behaviour)
-maf <- read.gvr("/path/to/folder", canonical_only = FALSE)
+gvr <- read.gvr("/path/to/folder", canonical_only = FALSE)
 
 ## DP/GQ genotype filter (ON by default; mirrors
 ##   bcftools view -e 'FORMAT/DP<=10 | FORMAT/GQ<=30')
-maf <- read.gvr("/path/to/folder")                               # DP>10 & GQ>30
-maf <- read.gvr("/path/to/folder", min_DP = NULL, min_GQ = NULL) # no DP/GQ filter
-maf <- read.gvr("/path/to/folder", min_DP = 20,  min_GQ = 50)    # stricter
+gvr <- read.gvr("/path/to/folder")                               # DP>10 & GQ>30
+gvr <- read.gvr("/path/to/folder", min_DP = NULL, min_GQ = NULL) # no DP/GQ filter
+gvr <- read.gvr("/path/to/folder", min_DP = 20,  min_GQ = 50)    # stricter
 
 ## Restrict to genes of interest (e.g. an MEN1/parathyroid panel)
-maf <- read.gvr("/path/to/folder",
+gvr <- read.gvr("/path/to/folder",
                 genes = c("MEN1", "RET", "CDKN1B", "CDC73", "CASR", "AIP"))
 
 ## Or use a curated disease panel:
 gvr_list_panels()                              # what panels ship?
 gvr_panel_genes("breast cancer")               # inspect a panel's genes
-maf <- read.gvr("/path/to/folder", panel = "breast cancer")
+gvr <- read.gvr("/path/to/folder", panel = "breast cancer")
 
 ## Multiple panels are unioned (deduplicated):
-maf <- read.gvr("/path/to/folder",
+gvr <- read.gvr("/path/to/folder",
                 panel = c("breast cancer", "hereditary prostate cancer"))
 
 ## Panel-name aliases are accepted:
-maf <- read.gvr("/path/to/folder",
+gvr <- read.gvr("/path/to/folder",
                 panel = "gastrointestinal stromal tumor")  # same as "gist"
 
 ## `panel` and `genes` can be combined:
-maf <- read.gvr("/path/to/folder",
+gvr <- read.gvr("/path/to/folder",
                 panel = "breast cancer",
                 genes = c("CDKN2A", "KRAS"))   # adds 2 to the 24-gene panel
 
 ## Then filter freely, e.g.:
-maf[FILTER == "PASS" & Variant_Classification == "Missense_Mutation"]
+gvr[FILTER == "PASS" & Variant_Classification == "Missense_Mutation"]
 }
 
 }
 \seealso{
-\code{\link[=gvr_filter]{gvr_filter()}} to filter the returned MAF, \code{\link[=gvr_summary]{gvr_summary()}} to summarise it.
+\code{\link[=gvr_filter]{gvr_filter()}} to filter the returned table, \code{\link[=gvr_summary]{gvr_summary()}} to summarise it.
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},

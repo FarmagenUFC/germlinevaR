@@ -1,7 +1,7 @@
-#' Multi-section summary of a germline MAF (read.gvr / gvr_filter output)
+#' Multi-section summary of a germline gvr table (read.gvr / gvr_filter output)
 #'
 #' @description
-#' Produces a multi-section overview of a MAF-style table - the output of
+#' Produces a multi-section overview of a MAF-like table - the output of
 #' [read.gvr()], or of [gvr_filter()] - covering variant burden, affected genes,
 #' functional classes, clinical significance and predicted impact. Every section is
 #' returned as a tidy `data.table` with one column per sample plus a `Total` column.
@@ -16,8 +16,8 @@
 #'     distinct genes affected, and variants with no gene symbol.
 #'   \item `top_genes` - the `top_n_genes` genes with the most variants
 #'     (per-sample + `Total`); unknown/blank genes excluded.
-#'   \item `variant_classification` - counts per `Variant_Classification` (maftools
-#'     functional class), per-sample + `Total`, sorted by `Total` descending.
+#'   \item `variant_classification` - counts per `Variant_Classification` (functional
+#'     class), per-sample + `Total`, sorted by `Total` descending.
 #'   \item `variant_type` - counts per `Variant_Type` (SNP/DEL/INS/ONP/DNP/TNP).
 #'   \item `clin_sig` - counts per `CLIN_SIG` token (ClinVar categories). `CLIN_SIG`
 #'     is split on `&` and `/`, so a variant annotated `"pathogenic&benign"`
@@ -47,12 +47,12 @@
 #'     these are excluded from the distinct-gene tally and from `top_genes`, but their
 #'     variants are still counted in the totals (and reported as "variants with no
 #'     gene symbol").
-#'   \item Works on ANY MAF-shaped table; it makes no assumption about prior
+#'   \item Works on ANY MAF-like table; it makes no assumption about prior
 #'     filtering. It is commonly run on [gvr_filter()] output to summarise the
 #'     retained hits.
 #' }
 #'
-#' @param maf A `data.table`/`data.frame` MAF from [read.gvr()] or [gvr_filter()].
+#' @param gvr An MAF-like `data.table`/`data.frame` from [read.gvr()] or [gvr_filter()].
 #'   Required columns: `Hugo_Symbol`, `Variant_Classification`, `Variant_Type`,
 #'   `IMPACT`, `CLIN_SIG`.
 #' @param sample_col Name of the per-sample column. Default `"Tumor_Sample_Barcode"`.
@@ -119,21 +119,21 @@
 #' output degrades gracefully: if its package(s) are unavailable, that output is
 #' skipped with a warning and the section tables are still returned.
 #'
-#' @seealso [read.gvr()] to build the MAF, [gvr_filter()] to filter it before
+#' @seealso [read.gvr()] to build the table, [gvr_filter()] to filter it before
 #'   summarising, [gvr_plot()] for a cohort top-genes variant matrix.
 #' @family germlinevaR
 #' @author germlinevaR authors
 #'
 #' @examples
 #' \dontrun{
-#' maf <- read.gvr("/path/to/vcf_folder")
+#' gvr <- read.gvr("/path/to/vcf_folder")
 #'
 #' ## ---- Default run -------------------------------------------------------
 #' ## Returns the six section tables AND writes three files into ./gvr_summary/:
 #' ##   * gvr_summary.xlsx         - one sheet per section
 #' ##   * gvr_summary_report.pdf   - the print dashboard report (see below)
 #' ##   * gvr_summary_report.html  - the interactive dashboard (see below)
-#' s <- gvr_summary(maf)
+#' s <- gvr_summary(gvr)
 #' s$variant_classification          # inspect a section
 #' s$impact                          # HIGH -> MODIFIER, in severity order
 #'
@@ -147,7 +147,7 @@
 #' ##                   fit the page width and stacked full-width otherwise, plus
 #' ##                   the Functional-impact (VEP IMPACT) bar chart.
 #' ## Distinct-gene / HIGH-impact KPIs and chart values mirror the returned tables.
-#' s <- gvr_summary(maf)                       # 2-sample cohort -> ~3 PDF pages
+#' s <- gvr_summary(gvr)                       # 2-sample cohort -> ~3 PDF pages
 #'
 #' ## ---- The interactive HTML dashboard ------------------------------------
 #' ## gvr_summary_report.html is the same dashboard, interactive: the four KPI
@@ -156,8 +156,8 @@
 #' ## widgets (per-column sort, a global search box, and pagination). By default
 #' ## it is a single self-contained file you can email or open offline; if pandoc
 #' ## is unavailable it is written alongside a gvr_summary_report_files/ folder.
-#' s <- gvr_summary(maf)                       # writes gvr_summary_report.html
-#' gvr_summary(maf, save_html = FALSE)          # opt out of the HTML report
+#' s <- gvr_summary(gvr)                       # writes gvr_summary_report.html
+#' gvr_summary(gvr, save_html = FALSE)          # opt out of the HTML report
 #'
 #' ## ---- Multi-sample / cohort behaviour -----------------------------------
 #' ## The same call scales to any number of samples; both reports adapt:
@@ -172,17 +172,17 @@
 #' ##                    instead keep every sample column and scroll horizontally.
 #' ## No argument controls this; layout is chosen automatically from sample count
 #' ## and measured table widths. A 20-sample cohort typically spans ~8 PDF pages.
-#' s <- gvr_summary(maf, sample_col = "Tumor_Sample_Barcode")
+#' s <- gvr_summary(gvr, sample_col = "Tumor_Sample_Barcode")
 #'
 #' ## ---- Other modes -------------------------------------------------------
 #' ## Compute only (no files written); still prints a console digest:
-#' s <- gvr_summary(maf, save_excel = FALSE, save_pdf = FALSE, save_html = FALSE)
+#' s <- gvr_summary(gvr, save_excel = FALSE, save_pdf = FALSE, save_html = FALSE)
 #'
 #' ## Summarise filtered hits, writing into results/summary/gvr_summary/:
-#' gvr_summary(gvr_filter(maf), out_dir = "results/summary")
+#' gvr_summary(gvr_filter(gvr), out_dir = "results/summary")
 #'
 #' ## Report more genes and silence the console digest:
-#' gvr_summary(maf, top_n_genes = 30, verbose = FALSE)
+#' gvr_summary(gvr, top_n_genes = 30, verbose = FALSE)
 #' }
 #'
 #' @importFrom data.table as.data.table data.table setnames setcolorder setorder uniqueN copy melt :=
@@ -192,7 +192,7 @@
 #' @export
 
 
-gvr_summary <- function(maf,
+gvr_summary <- function(gvr,
                         sample_col     = "Tumor_Sample_Barcode",
                         top_n_genes    = 20,
                         top_n_variants = 20,
@@ -206,7 +206,7 @@ gvr_summary <- function(maf,
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("gvr_summary requires the 'data.table' package.")
   }
-  dt <- data.table::as.data.table(maf)
+  dt <- data.table::as.data.table(gvr)
   n_total <- nrow(dt)
 
   .is_missing <- function(v) is.na(v) | v == ""

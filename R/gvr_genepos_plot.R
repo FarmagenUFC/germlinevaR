@@ -4,7 +4,7 @@
 # A per-gene "lollipop on the gene structure" plot:
 #   * exon / intron / UTR track for one transcript (Ensembl REST + cache,
 #     optional GTF override)
-#   * one stem-and-dot per MAF variant, placed on a cDNA axis from HGVSc,
+#   * one stem-and-dot per variant, placed on a cDNA axis from HGVSc,
 #     colored by Variant_Classification
 #   * same visual idiom as gvr_lollipop() (bar_half = 0.30, dom_half = 0.60,
 #     same theme, same hotspot wash)
@@ -588,7 +588,7 @@ GVR_CLASS_COLORS <- c(
 #'
 #' Draws a per-gene track plot with exon, intron, and UTR segments for one
 #' transcript, overlaid with lollipops placed on a cDNA-position x-axis using
-#' the `HGVSc` field of each MAF row. Colours follow `Variant_Classification`
+#' the `HGVSc` field of each table row. Colours follow `Variant_Classification`
 #' using the same palette set as [gvr_lollipop()].
 #'
 #' Companion to [gvr_lollipop()] which draws protein-domain rectangles on a
@@ -597,7 +597,7 @@ GVR_CLASS_COLORS <- c(
 #'
 #' @section Transcript resolution:
 #' If `transcript_id` is `NULL`, the chosen transcript is, in order: the
-#' first non-empty `MANE_SELECT` among MAF rows for `gene`; otherwise the
+#' first non-empty `MANE_SELECT` among table rows for `gene`; otherwise the
 #' first `CANONICAL == "YES"` row; otherwise the transcript with the most
 #' rows for that gene. The genome build is read from `NCBI_Build`.
 #'
@@ -621,7 +621,7 @@ GVR_CLASS_COLORS <- c(
 #' `gtf_path` to a Gencode/Ensembl GTF to skip REST entirely; this requires
 #' suggesting `rtracklayer` or falls back to a tiny streaming parser.
 #'
-#' @param maf A MAF data.table produced by [read.gvr()]. Required columns:
+#' @param gvr A MAF-like data.table produced by [read.gvr()]. Required columns:
 #'   `Hugo_Symbol`, `Transcript_ID`, `HGVSc`, `Variant_Classification`,
 #'   `Tumor_Sample_Barcode`, `NCBI_Build`. `MANE_SELECT` and `CANONICAL`
 #'   are used when `transcript_id` is auto-resolved.
@@ -685,20 +685,20 @@ GVR_CLASS_COLORS <- c(
 #' @examples
 #' \dontrun{
 #' # Auto-resolve MANE/CANONICAL transcript for BRCA1
-#' p <- gvr_genepos.plot(maf, "BRCA1")
+#' p <- gvr_genepos.plot(gvr, "BRCA1")
 #'
 #' # Pin transcript and use proportional intron scaling
-#' gvr_genepos.plot(maf, "BRCA1",
+#' gvr_genepos.plot(gvr, "BRCA1",
 #'                  transcript_id = "ENST00000357654",
 #'                  intron_scale  = "proportional")
 #'
 #' # Fully offline using a local GTF
-#' gvr_genepos.plot(maf, "BRCA1",
+#' gvr_genepos.plot(gvr, "BRCA1",
 #'                  gtf_path = "gencode.v44.annotation.gtf.gz")
 #' }
 #'
 #' @export
-gvr_genepos.plot <- function(maf,
+gvr_genepos.plot <- function(gvr,
                              gene,
                              transcript_id    = NULL,
                              vc_keep          = NULL,
@@ -742,24 +742,24 @@ gvr_genepos.plot <- function(maf,
 
 
   # ---- Argument validation -------------------------------------------------
-  if (!data.table::is.data.table(maf)) {
-    if (is.data.frame(maf)) maf <- data.table::as.data.table(maf)
-    else stop("gvr_genepos.plot: 'maf' must be a data.frame or data.table.")
+  if (!data.table::is.data.table(gvr)) {
+    if (is.data.frame(gvr)) gvr <- data.table::as.data.table(gvr)
+    else stop("gvr_genepos.plot: 'gvr' must be a data.frame or data.table.")
   }
   required_cols <- c("Hugo_Symbol", "Transcript_ID", "HGVSc",
                      "Variant_Classification", "Tumor_Sample_Barcode",
                      "NCBI_Build")
-  miss <- setdiff(required_cols, names(maf))
+  miss <- setdiff(required_cols, names(gvr))
   if (length(miss) > 0L)
-    stop(sprintf("gvr_genepos.plot: 'maf' missing required column(s): %s",
+    stop(sprintf("gvr_genepos.plot: 'gvr' missing required column(s): %s",
                  paste(miss, collapse = ", ")))
   if (!is.character(gene) || length(gene) != 1L || !nzchar(gene))
     stop("gvr_genepos.plot: 'gene' must be a single non-empty character.")
 
   # ---- Subset to this gene -------------------------------------------------
-  mdt <- maf[Hugo_Symbol == gene]
+  mdt <- gvr[Hugo_Symbol == gene]
   if (nrow(mdt) == 0L)
-    stop(sprintf("gvr_genepos.plot: gene '%s' not found in maf$Hugo_Symbol.",
+    stop(sprintf("gvr_genepos.plot: gene '%s' not found in gvr$Hugo_Symbol.",
                  gene))
 
   # ---- Resolve transcript --------------------------------------------------
@@ -831,12 +831,12 @@ gvr_genepos.plot <- function(maf,
     struct <- .gvr_genestruct_fetch(transcript_id, assembly, cache_dir_resolved, verbose)
   }
 
-  # ---- Filter MAF rows for this transcript ---------------------------------
+  # ---- Filter table rows for this transcript ---------------------------------
   # Keep rows whose Transcript_ID matches struct$transcript_id (post-versioning).
   mdt[, .__enst__ := sub("\\..*$", "", as.character(Transcript_ID))]
   mdt <- mdt[.__enst__ == transcript_id]
   if (nrow(mdt) == 0L)
-    warning(sprintf("gvr_genepos.plot: no MAF rows match transcript %s after filtering.",
+    warning(sprintf("gvr_genepos.plot: no rows match transcript %s after filtering.",
                     transcript_id))
 
   # ---- Variant-class filter (default mirrors gvr_lollipop) -----------------

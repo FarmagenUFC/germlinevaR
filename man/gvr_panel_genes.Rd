@@ -34,7 +34,7 @@ gvr_panel_genes("hereditary prostate cancer")
 
 \dontrun{
 ## Use in read.gvr()
-maf <- read.gvr("/path/to/folder",
+gvr <- read.gvr("/path/to/folder",
                 panel = c("breast cancer", "hereditary prostate cancer"))
 }
 

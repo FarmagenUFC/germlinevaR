@@ -1,7 +1,7 @@
-#' Filter a read.gvr MAF down to candidate novel variants
+#' Filter a read.gvr table down to candidate novel variants
 #'
 #' @description
-#' Returns only the rows of a `read.gvr()` / `gvr_filter()` MAF that have NO
+#' Returns only the rows of a `read.gvr()` / `gvr_filter()` table that have NO
 #' database evidence in any of the standard catalogues: no rsID in `dbSNP_RS`,
 #' AND no allele frequency in `gnomADe_AF`, `AF`, or `ABraOM_AF`. This is the
 #' canonical "show me only the novel variants" subsetter and complements
@@ -31,23 +31,23 @@
 #' The input is never modified: filtering operates on an internal `data.table`
 #' copy and the output has the same column set and order as the input.
 #'
-#' @param maf data.table / data.frame from [read.gvr()] (or compatible, e.g. the
+#' @param gvr data.table / data.frame from [read.gvr()] (or compatible, e.g. the
 #'   output of [gvr_filter()]). Filtered in a copy; the input object is not
 #'   modified.
 #' @param verbose logical(1). If `TRUE` (default), print a step-by-step audit
 #'   line for each of the 4 cascaded filters showing rows-in -> rows-out and
 #'   percentage retained, ending with a one-line summary.
 #'
-#' @return A `data.table` with the same columns as `maf` but only the rows that
+#' @return A `data.table` with the same columns as `gvr` but only the rows that
 #'   pass all four "no database evidence" checks. If none of the 4 columns is
-#'   present in `maf`, the output equals the input and a warning is issued.
+#'   present in `gvr`, the output equals the input and a warning is issued.
 #'
 #' @seealso [read.gvr()], [gvr_filter()], [gvr_summary()]
 #'
 #' @examples
 #' \dontrun{
-#'   maf <- read.gvr("vcf_dir/", pattern = "\\.vep\\.vcf\\.gz$")
-#'   f   <- gvr_filter(maf)
+#'   gvr <- read.gvr("vcf_dir/", pattern = "\\.vep\\.vcf\\.gz$")
+#'   f   <- gvr_filter(gvr)
 #'   nov <- gvr_novel(f)
 #'   ## quick sanity: every kept row really is novel
 #'   stopifnot(all(is.na(nov$dbSNP_RS)   | nov$dbSNP_RS   == ""))
@@ -56,7 +56,7 @@
 #'
 #' @importFrom data.table as.data.table copy setDT is.data.table
 #' @export
-gvr_novel <- function(maf, verbose = TRUE) {
+gvr_novel <- function(gvr, verbose = TRUE) {
 
   # ---- Nested helpers ----
   .is_missing <- function(x) is.na(x) | x == ""
@@ -73,16 +73,16 @@ gvr_novel <- function(maf, verbose = TRUE) {
   }
 
   # ---- Input validation ----
-  if (!is.data.frame(maf)) {
-    stop("gvr_novel: 'maf' must be a data.frame / data.table.")
+  if (!is.data.frame(gvr)) {
+    stop("gvr_novel: 'gvr' must be a data.frame / data.table.")
   }
-  if (nrow(maf) == 0L) {
+  if (nrow(gvr) == 0L) {
     if (isTRUE(verbose)) message("gvr_novel: input has 0 rows; returning empty table.")
-    return(data.table::as.data.table(maf))
+    return(data.table::as.data.table(gvr))
   }
 
   # ---- Work on a data.table copy (do not modify input) ----
-  dt <- if (data.table::is.data.table(maf)) data.table::copy(maf) else data.table::as.data.table(maf)
+  dt <- if (data.table::is.data.table(gvr)) data.table::copy(gvr) else data.table::as.data.table(gvr)
 
   # ---- Cascade columns + audit-friendly labels (fixed order) ----
   cascade <- list(

@@ -2,10 +2,10 @@
 % Please edit documentation in R/gvr_filter.R
 \name{gvr_filter}
 \alias{gvr_filter}
-\title{Modular, individually-toggleable filtering of a read.gvr MAF}
+\title{Modular, individually-toggleable filtering of a read.gvr table}
 \usage{
 gvr_filter(
-  maf,
+  gvr,
   gnomADe_AF = 0.01,
   AF = 0.01,
   ABraOM_AF = 0.01,
@@ -27,7 +27,7 @@ gvr_filter(
 )
 }
 \arguments{
-\item{maf}{data.table / data.frame from \code{\link[=read.gvr]{read.gvr()}} (or compatible). Filtered in a
+\item{gvr}{data.table / data.frame from \code{\link[=read.gvr]{read.gvr()}} (or compatible). Filtered in a
 copy; the input object is not modified.}
 
 \item{gnomADe_AF}{Numeric upper threshold for the gnomAD exome AF column
@@ -115,10 +115,10 @@ modified. With \code{verbose = TRUE}, a per-filter breakdown (rows in -> out, an
 removed by each active step) is printed as it runs.
 }
 \description{
-Applies a set of independent variant filters to the MAF-style table produced by
+Applies a set of independent variant filters to the MAF-like table produced by
 \code{\link[=read.gvr]{read.gvr()}}. Each distinct filter is its own argument; setting an argument to
 \code{NULL} disables that filter entirely (no rows removed by it). With all defaults,
-\code{gvr_filter(maf)} reproduces the canonical rare / clinically-relevant /
+\code{gvr_filter(gvr)} reproduces the canonical rare / clinically-relevant /
 called-genotype pipeline (AF filters + CLIN_SIG + GT exclusion).
 }
 \details{
@@ -156,33 +156,33 @@ The input is never modified: filtering operates on an internal \code{data.table}
 }
 \examples{
 \dontrun{
-maf <- read.gvr("/path/to/vcf_folder")
+gvr <- read.gvr("/path/to/vcf_folder")
 
 ## Default pipeline: rare variants + clinically relevant + called genotypes:
-maf_clean <- gvr_filter(maf)
+gvr_clean <- gvr_filter(gvr)
 
 ## Add protein-coding biotype filter:
-gvr_filter(maf, biotype_keep = c("protein_coding", "protein_coding_LoF"))
+gvr_filter(gvr, biotype_keep = c("protein_coding", "protein_coding_LoF"))
 
 ## Only the rarity filter on gnomAD exome AF, nothing else:
-gvr_filter(maf, gnomADe_AF = 0.001, AF = NULL, ABraOM_AF = NULL,
+gvr_filter(gvr, gnomADe_AF = 0.001, AF = NULL, ABraOM_AF = NULL,
            clin_sig_terms = NULL, gt_exclude = NULL,
            vc_nonSyn = FALSE, genes = NULL)
 
 ## Pathogenic-only, protein-coding:
-gvr_filter(maf, clin_sig_terms = c("pathogenic", "likely_pathogenic"),
+gvr_filter(gvr, clin_sig_terms = c("pathogenic", "likely_pathogenic"),
            biotype_keep = "protein_coding")
 
 ## Remove benign annotations (including likely_benign and compound entries):
-gvr_filter(maf, remove_benign = TRUE)
+gvr_filter(gvr, remove_benign = TRUE)
 
 ## Keep only protein-altering variants and a gene panel:
-gvr_filter(maf, vc_nonSyn = TRUE, genes = c("TP53", "BRCA1", "BRCA2"))
+gvr_filter(gvr, vc_nonSyn = TRUE, genes = c("TP53", "BRCA1", "BRCA2"))
 }
 
 }
 \seealso{
-\code{\link[=read.gvr]{read.gvr()}} to build the MAF, \code{\link[=gvr_summary]{gvr_summary()}} to summarise the filtered
+\code{\link[=read.gvr]{read.gvr()}} to build the table, \code{\link[=gvr_summary]{gvr_summary()}} to summarise the filtered
 variants.
 
 Other germlinevaR: 

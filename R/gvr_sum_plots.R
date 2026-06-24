@@ -6,7 +6,7 @@
 # gvr_summary() builds internally, then writes each chart as a standalone
 # image plus a multi-panel composite, all in a new folder.
 #
-# Public function: gvr_sum_plots(maf, ...) -- same MAF requirements as
+# Public function: gvr_sum_plots(gvr, ...) -- same table requirements as
 # gvr_summary(). Returns the output folder path invisibly.
 #
 # Engine: ggplot2 + ggsave(); panels assembled with patchwork when available,
@@ -21,7 +21,7 @@
 #' multi-panel composites, written into a new folder.
 #'
 #' @details
-#' The function recomputes the summary sections from the MAF (it does not
+#' The function recomputes the summary sections from the table (it does not
 #' depend on a prior call to [gvr_summary()]), then writes:
 #'
 #' Cohort-level plots (always produced):
@@ -49,7 +49,7 @@
 #' All files are written under `out_dir/folder_name/`. Existing files of the
 #' same name are overwritten; other files in the folder are left alone.
 #'
-#' @param maf data.table or data.frame produced by [read.gvr()] /
+#' @param gvr data.table or data.frame produced by [read.gvr()] /
 #'   [read.gvr.snpeff()] / [read.gvr.dual()]. Required columns:
 #'   `Hugo_Symbol`, `Variant_Classification`, `Variant_Type`, `IMPACT`,
 #'   `CLIN_SIG`; `dbSNP_RS` is optional.
@@ -86,15 +86,15 @@
 #'
 #' @examples
 #' \dontrun{
-#'   maf <- read.gvr("/path/to/vcf/")
-#'   gvr_sum_plots(maf, out_dir = "results", folder_name = "S6_plots",
+#'   gvr <- read.gvr("/path/to/vcf/")
+#'   gvr_sum_plots(gvr, out_dir = "results", folder_name = "S6_plots",
 #'                 format = "pdf")
 #' }
 #'
 #' @importFrom ggplot2 ggplot aes geom_col coord_flip scale_fill_manual labs theme_minimal theme element_text element_blank facet_wrap as_labeller scale_y_continuous position_dodge ggsave
 #' @importFrom data.table as.data.table data.table setorder
 #' @export
-gvr_sum_plots <- function(maf,
+gvr_sum_plots <- function(gvr,
                           out_dir        = ".",
                           folder_name    = "gvr_sum_plots",
                           format         = "png",
@@ -135,9 +135,9 @@ gvr_sum_plots <- function(maf,
   if (!is.numeric(width)  || width  <= 0) stop("gvr_sum_plots: 'width' must be a positive number.",  call. = FALSE)
   if (!is.numeric(height) || height <= 0) stop("gvr_sum_plots: 'height' must be a positive number.", call. = FALSE)
 
-  dt <- data.table::as.data.table(maf)
+  dt <- data.table::as.data.table(gvr)
   if (nrow(dt) == 0L)
-    stop("gvr_sum_plots: 'maf' has zero rows; nothing to plot.", call. = FALSE)
+    stop("gvr_sum_plots: 'gvr' has zero rows; nothing to plot.", call. = FALSE)
 
   # ---------- output folder ------------------------------------------------
   out_path <- file.path(out_dir, folder_name)

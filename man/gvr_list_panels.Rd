@@ -43,14 +43,14 @@ Panels currently shipped:
 
 Use \code{\link[=gvr_panel_genes]{gvr_panel_genes()}} to retrieve the gene vector for a specific
 disease, or pass the panel name (or vector of names) to
-\code{\link[=read.gvr]{read.gvr()}} via its \code{panel} argument to filter a MAF.
+\code{\link[=read.gvr]{read.gvr()}} via its \code{panel} argument to filter a gvr table.
 }
 \examples{
 gvr_list_panels()
 
 ## Use in read.gvr() to keep only breast-cancer genes
 \dontrun{
-maf <- read.gvr("/path/to/folder", panel = "breast cancer")
+gvr <- read.gvr("/path/to/folder", panel = "breast cancer")
 }
 
 }

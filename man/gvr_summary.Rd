@@ -2,10 +2,10 @@
 % Please edit documentation in R/gvr_summary.R
 \name{gvr_summary}
 \alias{gvr_summary}
-\title{Multi-section summary of a germline MAF (read.gvr / gvr_filter output)}
+\title{Multi-section summary of a germline gvr table (read.gvr / gvr_filter output)}
 \usage{
 gvr_summary(
-  maf,
+  gvr,
   sample_col = "Tumor_Sample_Barcode",
   top_n_genes = 20,
   top_n_variants = 20,
@@ -18,7 +18,7 @@ gvr_summary(
 )
 }
 \arguments{
-\item{maf}{A \code{data.table}/\code{data.frame} MAF from \code{\link[=read.gvr]{read.gvr()}} or \code{\link[=gvr_filter]{gvr_filter()}}.
+\item{gvr}{An MAF-like \code{data.table}/\code{data.frame} from \code{\link[=read.gvr]{read.gvr()}} or \code{\link[=gvr_filter]{gvr_filter()}}.
 Required columns: \code{Hugo_Symbol}, \code{Variant_Classification}, \code{Variant_Type},
 \code{IMPACT}, \code{CLIN_SIG}.}
 
@@ -84,7 +84,7 @@ list (one data.table per sample). The \code{top_variants} section is absent if
 whether the Excel/PDF/HTML files are written.
 }
 \description{
-Produces a multi-section overview of a MAF-style table - the output of
+Produces a multi-section overview of a MAF-like table - the output of
 \code{\link[=read.gvr]{read.gvr()}}, or of \code{\link[=gvr_filter]{gvr_filter()}} - covering variant burden, affected genes,
 functional classes, clinical significance and predicted impact. Every section is
 returned as a tidy \code{data.table} with one column per sample plus a \code{Total} column.
@@ -99,8 +99,8 @@ Sections returned (as a named list of \code{data.table}s):
 distinct genes affected, and variants with no gene symbol.
 \item \code{top_genes} - the \code{top_n_genes} genes with the most variants
 (per-sample + \code{Total}); unknown/blank genes excluded.
-\item \code{variant_classification} - counts per \code{Variant_Classification} (maftools
-functional class), per-sample + \code{Total}, sorted by \code{Total} descending.
+\item \code{variant_classification} - counts per \code{Variant_Classification} (functional
+class), per-sample + \code{Total}, sorted by \code{Total} descending.
 \item \code{variant_type} - counts per \code{Variant_Type} (SNP/DEL/INS/ONP/DNP/TNP).
 \item \code{clin_sig} - counts per \code{CLIN_SIG} token (ClinVar categories). \code{CLIN_SIG}
 is split on \code{&} and \code{/}, so a variant annotated \code{"pathogenic&benign"}
@@ -130,7 +130,7 @@ Data conventions:
 these are excluded from the distinct-gene tally and from \code{top_genes}, but their
 variants are still counted in the totals (and reported as "variants with no
 gene symbol").
-\item Works on ANY MAF-shaped table; it makes no assumption about prior
+\item Works on ANY MAF-like table; it makes no assumption about prior
 filtering. It is commonly run on \code{\link[=gvr_filter]{gvr_filter()}} output to summarise the
 retained hits.
 }
@@ -151,14 +151,14 @@ skipped with a warning and the section tables are still returned.
 
 \examples{
 \dontrun{
-maf <- read.gvr("/path/to/vcf_folder")
+gvr <- read.gvr("/path/to/vcf_folder")
 
 ## ---- Default run -------------------------------------------------------
 ## Returns the six section tables AND writes three files into ./gvr_summary/:
 ##   * gvr_summary.xlsx         - one sheet per section
 ##   * gvr_summary_report.pdf   - the print dashboard report (see below)
 ##   * gvr_summary_report.html  - the interactive dashboard (see below)
-s <- gvr_summary(maf)
+s <- gvr_summary(gvr)
 s$variant_classification          # inspect a section
 s$impact                          # HIGH -> MODIFIER, in severity order
 
@@ -172,7 +172,7 @@ s$impact                          # HIGH -> MODIFIER, in severity order
 ##                   fit the page width and stacked full-width otherwise, plus
 ##                   the Functional-impact (VEP IMPACT) bar chart.
 ## Distinct-gene / HIGH-impact KPIs and chart values mirror the returned tables.
-s <- gvr_summary(maf)                       # 2-sample cohort -> ~3 PDF pages
+s <- gvr_summary(gvr)                       # 2-sample cohort -> ~3 PDF pages
 
 ## ---- The interactive HTML dashboard ------------------------------------
 ## gvr_summary_report.html is the same dashboard, interactive: the four KPI
@@ -181,8 +181,8 @@ s <- gvr_summary(maf)                       # 2-sample cohort -> ~3 PDF pages
 ## widgets (per-column sort, a global search box, and pagination). By default
 ## it is a single self-contained file you can email or open offline; if pandoc
 ## is unavailable it is written alongside a gvr_summary_report_files/ folder.
-s <- gvr_summary(maf)                       # writes gvr_summary_report.html
-gvr_summary(maf, save_html = FALSE)          # opt out of the HTML report
+s <- gvr_summary(gvr)                       # writes gvr_summary_report.html
+gvr_summary(gvr, save_html = FALSE)          # opt out of the HTML report
 
 ## ---- Multi-sample / cohort behaviour -----------------------------------
 ## The same call scales to any number of samples; both reports adapt:
@@ -197,22 +197,22 @@ gvr_summary(maf, save_html = FALSE)          # opt out of the HTML report
 ##                    instead keep every sample column and scroll horizontally.
 ## No argument controls this; layout is chosen automatically from sample count
 ## and measured table widths. A 20-sample cohort typically spans ~8 PDF pages.
-s <- gvr_summary(maf, sample_col = "Tumor_Sample_Barcode")
+s <- gvr_summary(gvr, sample_col = "Tumor_Sample_Barcode")
 
 ## ---- Other modes -------------------------------------------------------
 ## Compute only (no files written); still prints a console digest:
-s <- gvr_summary(maf, save_excel = FALSE, save_pdf = FALSE, save_html = FALSE)
+s <- gvr_summary(gvr, save_excel = FALSE, save_pdf = FALSE, save_html = FALSE)
 
 ## Summarise filtered hits, writing into results/summary/gvr_summary/:
-gvr_summary(gvr_filter(maf), out_dir = "results/summary")
+gvr_summary(gvr_filter(gvr), out_dir = "results/summary")
 
 ## Report more genes and silence the console digest:
-gvr_summary(maf, top_n_genes = 30, verbose = FALSE)
+gvr_summary(gvr, top_n_genes = 30, verbose = FALSE)
 }
 
 }
 \seealso{
-\code{\link[=read.gvr]{read.gvr()}} to build the MAF, \code{\link[=gvr_filter]{gvr_filter()}} to filter it before
+\code{\link[=read.gvr]{read.gvr()}} to build the table, \code{\link[=gvr_filter]{gvr_filter()}} to filter it before
 summarising, \code{\link[=gvr_plot]{gvr_plot()}} for a cohort top-genes variant matrix.
 
 Other germlinevaR: 

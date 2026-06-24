@@ -6,7 +6,7 @@
 # read.gvr.snpeff() (SnpEff-only).
 #
 # Public function: read.gvr.dual(folder, vcf_path, ...) -- same signature and
-# defaults as read.gvr(). Returns a data.table with the canonical MAF schema
+# defaults as read.gvr(). Returns a data.table with the canonical table schema
 # (one row per ALT allele, VEP-driven transcript pick), augmented with:
 #   - all VEP CSQ columns including FREQS (81st field, when present in header)
 #   - 4 SnpEff parallel comparison columns: snpeff_consequence, snpeff_impact,
@@ -15,7 +15,7 @@
 #     NMD_Gene, NMD_Pct_Transcripts
 # Output is tagged with attr(., 'annotator') = 'dual'.
 #
-# Implementation approach: delegates the VEP CSQ parse + MAF construction to
+# Implementation approach: delegates the VEP CSQ parse + table construction to
 # read.gvr() via the private force-annotator flag in .gvr_internal_env
 # routing loop). Then runs a second, lightweight pass over the same VCF files
 # to extract ANN/LOF/NMD INFO fields and joins them onto the MAF on
@@ -32,12 +32,12 @@
 # =============================================================================
 
 
-#' Convert dual-annotated germline VCF(s) (VEP + SnpEff) to a maftools-style MAF
+#' Convert dual-annotated germline VCF(s) (VEP + SnpEff) to an MAF-like data.table
 #'
 #' @description
 #' Converts single-sample germline VCFs that carry **both** Ensembl VEP `CSQ`
 #' and SnpEff `ANN` annotation INFO fields on the same records (typical
-#' workflow: SnpEff -> VEP, or vice versa). Returns a maftools-style
+#' workflow: SnpEff -> VEP, or vice versa). Returns an MAF-like
 #' `data.table` with one row per ALT allele, using VEP's transcript pick as
 #' the spine and adding SnpEff-derived comparison columns and LoF/NMD
 #' predictions.
@@ -48,7 +48,7 @@
 #' VCF header.
 #'
 #' @details
-#' Field-level priority: **VEP wins.** The canonical MAF columns and all 80
+#' Field-level priority: **VEP wins.** The canonical table columns and all 80
 #' (or 81 with `FREQS`) VEP-style CSQ columns hold VEP's pick exclusively.
 #' SnpEff data is added in additional columns:
 #' \itemize{
@@ -94,13 +94,13 @@
 #' @examples
 #' \dontrun{
 #'   # Auto-route: read.gvr() detects ANN+CSQ and delegates here.
-#'   maf <- read.gvr("/path/to/dual-annotated-vcfs/")
+#'   gvr <- read.gvr("/path/to/dual-annotated-vcfs/")
 #'
 #'   # Or call directly:
-#'   maf <- read.gvr.dual(folder = "/path/to/dual-annotated-vcfs/")
+#'   gvr <- read.gvr.dual(folder = "/path/to/dual-annotated-vcfs/")
 #'
 #'   # Compare VEP vs SnpEff picks on high-impact variants:
-#'   maf[IMPACT == "HIGH" & snpeff_impact != "" & IMPACT != snpeff_impact,
+#'   gvr[IMPACT == "HIGH" & snpeff_impact != "" & IMPACT != snpeff_impact,
 #'       .(Hugo_Symbol, Consequence, IMPACT, snpeff_gene, snpeff_consequence,
 #'         snpeff_impact)]
 #' }
@@ -133,11 +133,11 @@ read.gvr.dual <- function(folder = ".",
                           verbose    = TRUE) {
 
   # ---------------------------------------------------------------------------
-  # Phase 1: VEP-driven MAF construction.
+  # Phase 1: VEP-driven table construction.
   # ---------------------------------------------------------------------------
   # Delegate to read.gvr() with the force-annotator flag set to "vep" so the
   # VEP body runs even though .detect_annotator() would return "dual" for
-  # these files. This gives us the canonical MAF with one row per ALT allele,
+  # these files. This gives us the canonical table with one row per ALT allele,
   # the canonical 80 (or 81 with FREQS) CSQ columns auto-detected from the
   # actual CSQ header, ABraOM join, build detection, DP/GQ filter, etc.
   # ---------------------------------------------------------------------------
@@ -147,7 +147,7 @@ read.gvr.dual <- function(folder = ".",
   .gvr_set_force_annotator("vep")
   on.exit(.gvr_set_force_annotator(NULL), add = TRUE)
 
-  maf <- read.gvr(
+  gvr <- read.gvr(
     folder            = folder,
     vcf_path          = vcf_path,
     file              = file,
@@ -177,16 +177,16 @@ read.gvr.dual <- function(folder = ".",
     verbose           = verbose
   )
 
-  if (!data.table::is.data.table(maf) || nrow(maf) == 0L) {
+  if (!data.table::is.data.table(gvr) || nrow(gvr) == 0L) {
     # Nothing to do: empty result, tag and return.
-    data.table::setattr(maf, "annotator", "dual")
-    return(maf)
+    data.table::setattr(gvr, "annotator", "dual")
+    return(gvr)
   }
 
   # ---------------------------------------------------------------------------
   # Phase 2: SnpEff ANN/LOF/NMD extraction from the same VCF files.
   # ---------------------------------------------------------------------------
-  # We need to know which VCF files contributed to `maf`. read.gvr() doesn't
+  # We need to know which VCF files contributed to `gvr`. read.gvr() doesn't
   # expose this directly, so re-resolve the same set using the same arguments.
   # ---------------------------------------------------------------------------
   vcf_paths <- .gvr_dual_resolve_files(folder = folder, vcf_path = vcf_path,
@@ -231,13 +231,13 @@ read.gvr.dual <- function(folder = ".",
   # Key: (Tumor_Sample_Barcode, Chromosome, Start_Position, Reference_Allele,
   #       Tumor_Seq_Allele2).
   #
-  # NOTE: read.gvr()'s maf_coords() converts indels to a maftools-style
+  # NOTE: read.gvr()'s gvr_coords() converts indels to an MAF-like
   # representation (e.g. deletion "TC->-", insertion "-AT"). We must apply
   # the SAME normalization to the SnpEff side before joining.
-  # .gvr_dual_extract_snpeff() already emits MAF-style ref/alt using a
-  # verbatim copy of maf_coords(), so the keys align.
+  # .gvr_dual_extract_snpeff() already emits MAF-like ref/alt using a
+  # verbatim copy of gvr_coords(), so the keys align.
   # ---------------------------------------------------------------------------
-  matched <- .gvr_dual_attach_snpeff(maf, snpeff_tab, verbose = verbose)
+  matched <- .gvr_dual_attach_snpeff(gvr, snpeff_tab, verbose = verbose)
 
   if (isTRUE(verbose)) {
     n_match_gene <- sum(matched$snpeff_gene != "" & matched$Hugo_Symbol != "" &
@@ -270,7 +270,7 @@ read.gvr.dual <- function(folder = ".",
 
   # Tag and final-dimension diagnostic
   data.table::setattr(matched, "annotator", "dual")
-  data.table::setattr(matched, "ncbi_build", attr(maf, "ncbi_build"))
+  data.table::setattr(matched, "ncbi_build", attr(gvr, "ncbi_build"))
 
   if (isTRUE(verbose))
     message(sprintf("Final Table Dimensions: %d rows x %d columns.",
@@ -297,8 +297,8 @@ read.gvr.dual <- function(folder = ".",
     if (isTRUE(write_xlsx)) {
       xlsx_path <- paste0(base, ".xlsx")
       wb <- openxlsx::createWorkbook()
-      openxlsx::addWorksheet(wb, "MAF")
-      openxlsx::writeData(wb, "MAF", as.data.frame(matched))
+      openxlsx::addWorksheet(wb, "gvr_table")
+      openxlsx::writeData(wb, "gvr_table", as.data.frame(matched))
       openxlsx::saveWorkbook(wb, xlsx_path, overwrite = TRUE)
       if (isTRUE(verbose)) message("  Wrote XLSX: ", xlsx_path)
     }
@@ -314,7 +314,7 @@ read.gvr.dual <- function(folder = ".",
 # .gvr_dual_resolve_files()       -- locate VCFs from folder/pattern/file/vcf_path
 # .gvr_dual_extract_snpeff()      -- second-pass parse: ANN + LOF + NMD per record
 # .gvr_dual_attach_snpeff()       -- join SnpEff lookup onto VEP MAF spine
-# .gvr_dual_maf_coords()          -- pos/ref/alt -> MAF-style (start, ref, alt)
+# .gvr_dual_gvr_coords()          -- pos/ref/alt -> MAF-like (start, ref, alt)
 # .gvr_dual_strip_snpeff_allele() -- normalize SnpEff non-standard allele forms
 # .gvr_dual_pull_info()           -- vectorised extractor for ;-separated INFO KEY=VAL
 # .gvr_dual_header_sample()       -- sample name from #CHROM header
@@ -351,15 +351,15 @@ read.gvr.dual <- function(folder = ".",
 }
 
 
-# MAF-style coords for one (pos, ref, alt). VERBATIM COPY of read.gvr.R's
-# nested maf_coords() helper (defined inside read.gvr() at lines ~910-930).
+# MAF-like coords for one (pos, ref, alt). VERBATIM COPY of read.gvr.R's
+# nested gvr_coords() helper (defined inside read.gvr() at lines ~910-930).
 # Keeping this identical is REQUIRED so the SnpEff side of the dual reader
 # produces the same join keys (Reference_Allele, Tumor_Seq_Allele2,
-# Start_Position) that VEP path emits. If read.gvr.R's maf_coords ever
+# Start_Position) that VEP path emits. If read.gvr.R's gvr_coords ever
 # changes, mirror the change here.
 #
 # Returns a list: (var_type, start, end, ref_allele, tum_allele2)
-.gvr_dual_maf_coords <- function(pos, ref, alt) {
+.gvr_dual_gvr_coords <- function(pos, ref, alt) {
   pos <- as.integer(pos)
   if (is.na(alt) || alt == "*")
     return(list(var_type = "DEL", start = pos, end = pos,
@@ -462,9 +462,9 @@ read.gvr.dual <- function(folder = ".",
 
 
 # Extract SnpEff ANN + LOF + NMD from VCF files, returning a long-format
-# data.table keyed by (sample, chrom, pos, ref, alt) using MAF-style alleles
+# data.table keyed by (sample, chrom, pos, ref, alt) using MAF-like alleles
 # (deletions as "TC"->"-", insertions as "-"->"AT"; matches read.gvr()'s
-# maf_coords() output exactly).
+# gvr_coords() output exactly).
 #
 # Per-row pre-selection of the best ANN block requires the VEP Hugo_Symbol
 # for gene-aware matching. We do that at attach time, not here -- here we
@@ -550,8 +550,8 @@ read.gvr.dual <- function(folder = ".",
 
         for (ai in seq_along(alts_ri)) {
           this_alt <- alts_ri[ai]
-          # MAF-style coords for this (ref, alt) pair: VERBATIM read.gvr() logic
-          mc <- .gvr_dual_maf_coords(pos[ri], ref[ri], this_alt)
+          # MAF-like coords for this (ref, alt) pair: VERBATIM read.gvr() logic
+          mc <- .gvr_dual_gvr_coords(pos[ri], ref[ri], this_alt)
           # Find ANN blocks matching this ALT (after SnpEff allele stripping)
           if (length(block_allele)) {
             sel <- which(block_allele == this_alt)
@@ -594,16 +594,16 @@ read.gvr.dual <- function(folder = ".",
 
 
 # Attach SnpEff lookup table to VEP MAF spine. snpeff_tab has one row per
-# (sample, chrom, pos, ref, alt) -- the MAF granularity. For each MAF row we
+# (sample, chrom, pos, ref, alt) -- the MAF granularity. For each table row we
 # look up the matching snpeff_tab row, then pick the best ANN block:
-#   1) ANN block whose Gene_Name matches MAF Hugo_Symbol (preferred)
+#   1) ANN block whose Gene_Name matches Hugo_Symbol (preferred)
 #   2) Else the first ANN block matching the ALT allele
 #   3) Else empty
-# LOF/NMD: prefer the gene matching MAF Hugo_Symbol; else first gene listed.
-.gvr_dual_attach_snpeff <- function(maf, snpeff_tab, verbose) {
-  m <- data.table::copy(maf)
+# LOF/NMD: prefer the gene matching Hugo_Symbol; else first gene listed.
+.gvr_dual_attach_snpeff <- function(gvr, snpeff_tab, verbose) {
+  m <- data.table::copy(gvr)
 
-  # Default-empty columns first (so every MAF row has them even if no snpeff_tab match).
+  # Default-empty columns first (so every table row has them even if no snpeff_tab match).
   m[, snpeff_consequence := ""]
   m[, snpeff_impact      := ""]
   m[, snpeff_gene        := ""]

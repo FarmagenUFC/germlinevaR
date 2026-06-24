@@ -5,7 +5,7 @@
 # read.gvr() (VEP).
 #
 # Public function: read.gvr.snpeff(folder, vcf_path, ...) -- same signature
-# and defaults as read.gvr(). Returns a data.table with the canonical MAF
+# and defaults as read.gvr(). Returns a data.table with the canonical table
 # schema and attr(., 'annotator') = 'snpeff'.
 #
 # This file defines ONE public function. All helpers (.AF_FIELDS_SNPEFF,
@@ -15,17 +15,17 @@
 # =============================================================================
 
 
-#' Convert SnpEff-annotated germline VCF(s) to a maftools-style MAF data.table
+#' Convert SnpEff-annotated germline VCF(s) to an MAF-like data.table
 #'
 #' @description
 #' Converts SnpEff-annotated, single-sample germline VCFs (GATK HaplotypeCaller ->
-#' CNN tranches -> SnpEff, hg38) into a maftools-style table and returns it as
+#' CNN tranches -> SnpEff, hg38) into an MAF-like table and returns it as
 #' an in-memory `data.table` for downstream filtering ([gvr_filter()]) and
 #' summarisation ([gvr_summary()]). In folder mode it finds every per-sample VCF,
-#' converts each, and row-binds them into one combined MAF. Emits the SAME
+#' converts each, and row-binds them into one combined gvr table. Emits the SAME
 #' canonical 80-field schema as [read.gvr()] so downstream code is annotator-
-#' agnostic. The conversion uses base R + \pkg{data.table} only - it does NOT
-#' depend on \pkg{maftools}.
+#' agnostic. The conversion uses base R + \pkg{data.table} only - no external
+#' annotation-package dependency.
 #'
 #' This function is the SnpEff sibling of [read.gvr()] (VEP-annotated VCFs).
 #' Both readers are usually invoked through [read.gvr()], which auto-routes
@@ -36,10 +36,10 @@
 #' @details
 #' Output and behaviour:
 #' \itemize{
-#'   \item Returns the final MAF `data.table`, one row per variant ALLELE
+#'   \item Returns the final MAF-like `data.table`, one row per variant ALLELE
 #'     (multi-allelic sites are split). Multiple `ANN` annotation blocks per
 #'     allele are reduced to one most-severe transcript per allele.
-#'   \item Columns include the MAF core fields, the canonical 80 VEP CSQ field
+#'   \item Columns include the MAF-like core fields, the canonical 80 VEP CSQ field
 #'     names (populated from the equivalent SnpEff ANN fields where available;
 #'     blank for fields SnpEff does not supply), and key GATK QC fields.
 #'     `FILTER` is retained as a column and ALL variants (PASS and non-PASS) are
@@ -51,7 +51,7 @@
 #'   \item Absent values are written as the empty string `""` (not `NA`);
 #'     downstream [gvr_filter()] / [gvr_summary()] treat `NA` and `""` identically
 #'     as "missing".
-#'   \item Output is tagged with `attr(maf, "annotator") = "snpeff"` so downstream
+#'   \item Output is tagged with `attr(gvr, "annotator") = "snpeff"` so downstream
 #'     code can distinguish the source.
 #' }
 #'
@@ -109,12 +109,12 @@
 #'   Default `"\\.vcf\\.gz$"` (matches any `.vcf.gz` file). The old default
 #'   `"_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$"` is still available by passing
 #'   it explicitly.
-#' @param write_tsv Logical; if `TRUE`, also write the MAF as a TSV to `out_dir`.
+#' @param write_tsv Logical; if `TRUE`, also write the table as a TSV to `out_dir`.
 #'   Default `FALSE`.
-#' @param write_rds Logical; if `TRUE`, also write the MAF as an `.rds` to `out_dir`.
+#' @param write_rds Logical; if `TRUE`, also write the table as an `.rds` to `out_dir`.
 #'   Default `FALSE`.
-#' @param write_xlsx Logical; if `TRUE`, also write the MAF as an `.xlsx` workbook
-#'   (single `"MAF"` sheet) to `out_dir`. Requires the \pkg{openxlsx} package (a
+#' @param write_xlsx Logical; if `TRUE`, also write the table as an `.xlsx` workbook
+#'   (single `"gvr_table"` sheet) to `out_dir`. Requires the \pkg{openxlsx} package (a
 #'   `Suggests` dependency); if it is not installed the export is skipped with a
 #'   warning. Default `FALSE`. Excel caps a sheet at 1,048,576 rows.
 #' @param out_dir Output directory for written TSV/RDS/XLSX. `NULL` (default) uses
@@ -124,7 +124,7 @@
 #'   one from the input.
 #' @param chunk_size Integer; number of VCF records processed per chunk (controls
 #'   peak memory and progress granularity). Default `25000L`.
-#' @param ncbi_build Reference build label written into the MAF `NCBI_Build`
+#' @param ncbi_build Reference build label written into the table `NCBI_Build`
 #'   column. Default `"auto"`: the function inspects the input VCF header
 #'   (VEP `assembly=` / SnpEff `SnpEffCmd` database token / first `##contig=`
 #'   length) and picks the canonical label among `"GRCh38"`, `"GRCh37"`,
@@ -178,8 +178,8 @@
 #'   (default) disables panel filtering; behaviour is then byte-identical to
 #'   omitting the argument.
 #' @param vc_nonSyn Logical or character vector. Controls which
-#'   `Variant_Classification` values are retained (mirroring maftools'
-#'   `vc_nonSyn` argument). `FALSE` (default) keeps ALL variant classifications.
+#'   `Variant_Classification` values are retained (mirroring the
+#'   convention of the `vc_nonSyn` argument). `FALSE` (default) keeps ALL variant classifications.
 #'   `TRUE` keeps only protein-altering classes (High/Moderate VEP consequences):
 #'   `"Frame_Shift_Del"`, `"Frame_Shift_Ins"`, `"Splice_Site"`,
 #'   `"Translation_Start_Site"`, `"Nonsense_Mutation"`, `"Nonstop_Mutation"`,
@@ -190,7 +190,7 @@
 #' @param canonical_only Logical; accepted for API symmetry with [read.gvr()].
 #'   SnpEff's ANN field has no `CANONICAL` flag, so this filter cannot be
 #'   applied. When `TRUE` (the default), `read.gvr.snpeff()` emits a one-time
-#'   warning and returns the unfiltered MAF (same result as
+#'   warning and returns the unfiltered table (same result as
 #'   `canonical_only = FALSE`).
 #' @param ncores Integer; number of worker processes for converting MULTIPLE input
 #'   files in parallel via [parallel::mclapply()] (fork-based; Unix/macOS only).
@@ -201,7 +201,7 @@
 #' @param verbose Logical; if `TRUE` (default) print per-file and per-chunk progress
 #'   (file i/N, cumulative records, elapsed seconds).
 #'
-#' @return A `data.table` MAF: one row per variant allele, with MAF core columns,
+#' @return An MAF-like `data.table`: one row per variant allele, with MAF-like core columns,
 #'   the canonical 80 VEP CSQ field names (populated from SnpEff ANN where
 #'   available; blank otherwise), key GATK QC fields, `Tumor_Sample_Barcode`, and
 #'   (when enabled) the `Genotype` and `ABraOM_AF` columns.
@@ -210,42 +210,42 @@
 #'
 #' @seealso [read.gvr()] for the VEP-annotated sibling reader (and the recommended
 #'   entrypoint, which auto-routes SnpEff input to this function),
-#'   [gvr_filter()] to filter the returned MAF, [gvr_summary()] to summarise it.
+#'   [gvr_filter()] to filter the returned table, [gvr_summary()] to summarise it.
 #' @family germlinevaR
 #' @author germlinevaR authors
 #'
 #' @examples
 #' \dontrun{
-#' ## Folder mode: merge ALL *_NN.snpeff.vcf.gz into one MAF
-#' maf <- read.gvr.snpeff("/path/to/folder")
+#' ## Folder mode: merge ALL *_NN.snpeff.vcf.gz into one gvr table
+#' gvr <- read.gvr.snpeff("/path/to/folder")
 #'
 #' ## Or use read.gvr() to auto-route (SnpEff inputs are dispatched here):
-#' maf <- read.gvr("/path/to/folder")
+#' gvr <- read.gvr("/path/to/folder")
 #'
 #' ## Single-file mode: full path
-#' maf <- read.gvr.snpeff(vcf_path = "/path/to/SAMPLE_01.snpeff.vcf.gz")
+#' gvr <- read.gvr.snpeff(vcf_path = "/path/to/SAMPLE_01.snpeff.vcf.gz")
 #'
 #' ## Multi-file mode by full path
-#' maf <- read.gvr.snpeff(
+#' gvr <- read.gvr.snpeff(
 #'   vcf_path = c("/p/S1.snpeff.vcf.gz", "/p/S2.snpeff.vcf.gz"))
 #'
 #' ## Pick basenames from a folder (merges these two but ignores other .vcf.gz)
-#' maf <- read.gvr.snpeff(folder = "/p",
+#' gvr <- read.gvr.snpeff(folder = "/p",
 #'                        file   = c("S1.snpeff.vcf.gz", "S2.snpeff.vcf.gz"))
 #'
 #' ## Disable the DP/GQ genotype filter entirely
-#' maf <- read.gvr.snpeff("/path/to/folder", min_DP = NULL, min_GQ = NULL)
+#' gvr <- read.gvr.snpeff("/path/to/folder", min_DP = NULL, min_GQ = NULL)
 #'
 #' ## Restrict to genes of interest
-#' maf <- read.gvr.snpeff("/path/to/folder",
+#' gvr <- read.gvr.snpeff("/path/to/folder",
 #'                        genes = c("MEN1", "RET", "CDKN1B", "CDC73"))
 #'
 #' ## Or use a curated disease panel:
 #' gvr_list_panels()
-#' maf <- read.gvr.snpeff("/path/to/folder", panel = "breast cancer")
+#' gvr <- read.gvr.snpeff("/path/to/folder", panel = "breast cancer")
 #'
 #' ## Multiple panels are unioned (deduplicated):
-#' maf <- read.gvr.snpeff("/path/to/folder",
+#' gvr <- read.gvr.snpeff("/path/to/folder",
 #'                        panel = c("breast cancer", "hereditary prostate cancer"))
 #' }
 #'
@@ -260,7 +260,7 @@ read.gvr.snpeff <- function(folder = ".",
                            pattern    = "\\.vcf\\.gz$",   # vN+4: any .vcf.gz; old default was "_\\d+(\\.(vep|snp[eE]ff))?\\.vcf\\.gz$"
                            write_tsv  = FALSE,
                            write_rds  = FALSE,
-                           write_xlsx = FALSE,   # v6: also write the MAF as .xlsx (one "MAF" sheet)
+                           write_xlsx = FALSE,   # v6: also write the table as .xlsx (one "gvr_table" sheet)
                            out_dir    = NULL,
                            out_prefix = NULL,
                            chunk_size = 25000L,
@@ -555,7 +555,7 @@ read.gvr.snpeff <- function(folder = ".",
   # -----------------------------------------------------------------------------
   # convert_chunk_snpeff(dt, ann_fields, sample_name, fns, opts)
   #
-  # Per-chunk SnpEff -> MAF row decoder. Mirrors the data flow of VEP
+  # Per-chunk SnpEff -> table row decoder. Mirrors the data flow of VEP
   # convert_chunk() in read.gvr.R but parses SnpEff ANN blocks instead of CSQ.
   #
   # Arguments
@@ -565,8 +565,8 @@ read.gvr.snpeff <- function(folder = ".",
   #              per ANN block).
   # ann_fields   character vector of ANN field names, from get_ann_fields().
   # sample_name  string used to fill Tumor_Sample_Barcode.
-  # fns          list of helper functions: info_parse, maf_coords,
-  #              vep_to_maf_class, url_decode, make_hgvsp_short,
+  # fns          list of helper functions: info_parse, gvr_coords,
+  #              vep_to_gvr_class, url_decode, make_hgvsp_short,
   #              gt_codes_for_alt. (closure-free design: passed in explicitly.)
   # opts         list of chunk-state variables:
   #                ncbi_build, dp_min, gq_min,
@@ -625,8 +625,8 @@ read.gvr.snpeff <- function(folder = ".",
 
     # Hoist helpers from fns into local names for inner-loop speed
     info_parse        <- fns$info_parse
-    maf_coords        <- fns$maf_coords
-    vep_to_maf_class  <- fns$vep_to_maf_class
+    gvr_coords        <- fns$gvr_coords
+    vep_to_gvr_class  <- fns$vep_to_gvr_class
     url_decode        <- fns$url_decode
     make_hgvsp_short  <- fns$make_hgvsp_short
     gt_codes_for_alt  <- fns$gt_codes_for_alt
@@ -840,7 +840,7 @@ read.gvr.snpeff <- function(folder = ".",
       for (ai in seq_along(alts)) {
         alt <- alts[ai]
         sel <- which(block_allele == alt)
-        coords <- maf_coords(pos, ref, alt); vt <- coords$var_type
+        coords <- gvr_coords(pos, ref, alt); vt <- coords$var_type
 
         if (length(sel) > 0L) {
           chosen <- block_fields[[ sel[1L] ]]
@@ -870,7 +870,7 @@ read.gvr.snpeff <- function(folder = ".",
         top_term <- if (is.na(ann_cons) || ann_cons == "") NA_character_ else {
           strsplit(ann_cons, "&", fixed = TRUE)[[1L]][1L]
         }
-        var_class <- if (is.na(top_term)) "Targeted_Region" else vep_to_maf_class(top_term, vt)
+        var_class <- if (is.na(top_term)) "Targeted_Region" else vep_to_gvr_class(top_term, vt)
         hugo <- if (is.na(ann_gname) || ann_gname == "") "Unknown" else ann_gname
 
         gc <- gt_codes_for_alt(gt, ai)
@@ -878,7 +878,7 @@ read.gvr.snpeff <- function(folder = ".",
           if (is.na(code)) return(".")
           if (code == 0L)  return(coords$ref_allele)
           if (code == ai)  return(coords$tum_allele2)
-          if (code >= 1L && code <= length(alts)) return(maf_coords(pos, ref, alts[code])$tum_allele2)
+          if (code >= 1L && code <= length(alts)) return(gvr_coords(pos, ref, alts[code])$tum_allele2)
           "."
         }
         t_allele1 <- map_code(gc$c1); t_allele2 <- map_code(gc$c2)
@@ -1191,12 +1191,12 @@ read.gvr.snpeff <- function(folder = ".",
   # 1. Local helper definitions (kept inside the function => fully self-contained)
   #    [UNCHANGED CORE ENGINE from v1]
   # ==========================================================================
-  ## 1b. VEP consequence -> MAF Variant_Classification  (A2: memoized)
+  ## 1b. VEP consequence -> Variant_Classification  (A2: memoized)
   ## var_class is a PURE function of (top_term, var_type); both are small-cardinality
   ## (19 distinct classes; a handful of var_types), so cache on the composite key.
   ## Inner function unchanged; cached value byte-identical.
   .v2m_cache <- new.env(parent = emptyenv())
-  .vep_to_maf_class_uncached <- function(term, var_type) {
+  .vep_to_gvr_class_uncached <- function(term, var_type) {
     m <- switch(term,
       "splice_acceptor_variant"="Splice_Site","splice_donor_variant"="Splice_Site",
       "transcript_ablation"="Splice_Site","exon_loss_variant"="Splice_Site",
@@ -1228,12 +1228,12 @@ read.gvr.snpeff <- function(folder = ".",
     if (term == "disruptive_inframe_deletion")  m <- "In_Frame_Del"
     m
   }
-  vep_to_maf_class <- function(term, var_type) {
+  vep_to_gvr_class <- function(term, var_type) {
     key <- paste0(if (is.na(term)) "\001NA" else term, "\002",
                   if (is.na(var_type)) "\001NA" else var_type)
     hit <- .v2m_cache[[key]]
     if (!is.null(hit)) return(hit)
-    val <- .vep_to_maf_class_uncached(term, var_type)
+    val <- .vep_to_gvr_class_uncached(term, var_type)
     assign(key, val, envir = .v2m_cache)
     val
   }
@@ -1272,7 +1272,7 @@ read.gvr.snpeff <- function(folder = ".",
   }
 
   ## 1e. MAF coordinate + allele conversion for one REF/ALT pair
-  maf_coords <- function(pos, ref, alt) {
+  gvr_coords <- function(pos, ref, alt) {
     pos <- as.integer(pos)
     if (alt == "*") return(list(var_type="DEL", start=pos, end=pos,
                                 ref_allele=ref, tum_allele2="*"))
@@ -1340,7 +1340,7 @@ read.gvr.snpeff <- function(folder = ".",
     }
   }
 
-  ## 1j. Convert ONE snpeff-annotated vcf file end-to-end. Returns a per-file MAF
+  ## 1j. Convert ONE snpeff-annotated vcf file end-to-end. Returns a per-file MAF-like data.table
   ##     data.table. Mirrors the VEP convert_one_vcf in read.gvr.R; the only
   ##     differences are (a) get_ann_fields instead of get_csq_fields, (b)
   ##     convert_chunk_snpeff instead of convert_chunk, and (c) the verbose
@@ -1356,8 +1356,8 @@ read.gvr.snpeff <- function(folder = ".",
     # Pack helpers + chunk-state for the closure-free convert_chunk_snpeff()
     fns_pack <- list(
       info_parse        = info_parse,
-      maf_coords        = maf_coords,
-      vep_to_maf_class  = vep_to_maf_class,
+      gvr_coords        = gvr_coords,
+      vep_to_gvr_class  = vep_to_gvr_class,
       url_decode        = url_decode,
       make_hgvsp_short  = make_hgvsp_short,
       gt_codes_for_alt  = gt_codes_for_alt
@@ -1410,7 +1410,7 @@ read.gvr.snpeff <- function(folder = ".",
     }
     close(con)
 
-    maf_one <- data.table::rbindlist(chunks, use.names = TRUE, fill = TRUE)
+    gvr_one <- data.table::rbindlist(chunks, use.names = TRUE, fill = TRUE)
     if (verbose) {
       message(sprintf("[file %d/%d] done: %s records",
                       file_idx, file_total, format(total_in, big.mark = ",")))
@@ -1425,13 +1425,13 @@ read.gvr.snpeff <- function(folder = ".",
                         if (total_in > 0L) 100 * n_drop_file / total_in else 0))
       }
     }
-    attr(maf_one, "sample_name") <- sample_name
-    attr(maf_one, "n_dropped")   <- n_drop_file
-    maf_one
+    attr(gvr_one, "sample_name") <- sample_name
+    attr(gvr_one, "n_dropped")   <- n_drop_file
+    gvr_one
   }
 
   # ==========================================================================
-  # 2. Convert every file and ROW-BIND into one combined MAF
+  # 2. Convert every file and ROW-BIND into one combined gvr table
   # ==========================================================================
   t_all <- Sys.time()
 
@@ -1441,7 +1441,7 @@ read.gvr.snpeff <- function(folder = ".",
   ##     convert_one_vcf decompressed each file AGAIN to convert it -> every file
   ##     was read twice. On the 2-file test set the redundant pre-count pass cost
   ##     ~34.5 s (~8% of runtime). Since the count is used ONLY for the cosmetic
-  ##     progress percentage (it never touches the MAF), we drop it and let the
+  ##     progress percentage (it never touches the table), we drop it and let the
   ##     conversion report a cumulative running record count + elapsed time
   ##     instead of a %. This is byte-identical in OUTPUT; only verbose progress
   ##     text changes (and only when verbose=TRUE). convert_one_vcf already
@@ -1457,9 +1457,9 @@ read.gvr.snpeff <- function(folder = ".",
   t_global    <- t_all
 
   # v6 (PERF): optional multi-core conversion ACROSS FILES. Each VCF is converted
-  # independently (its own MAF chunk) before the final rbindlist, so files are
+  # independently (its own table chunk) before the final rbindlist, so files are
   # embarrassingly parallel. ncores>1 forks parallel::mclapply over the file list;
-  # mclapply preserves input order, so `per_file` (and thus the combined MAF) is
+  # mclapply preserves input order, so `per_file` (and thus the combined gvr table) is
   # byte-identical to the sequential path regardless of ncores. Only effective with
   # >1 file and a fork-capable OS; otherwise we run the original sequential loop.
   # Default ncores=1L => exactly the previous behaviour. The shared global_done<<-
@@ -1496,7 +1496,7 @@ read.gvr.snpeff <- function(folder = ".",
     }
     sample_names <- vapply(per_file, function(x) attr(x, "sample_name"), character(1))
     if (verbose) for (i in seq_along(vcf_paths))
-      message(sprintf("[file %d/%d] done: %s (sample: %s, %s MAF rows)",
+      message(sprintf("[file %d/%d] done: %s (sample: %s, %s rows)",
                       i, n_files, basename(vcf_paths[i]), sample_names[i],
                       format(nrow(per_file[[i]]), big.mark = ",")))
   } else {
@@ -1514,9 +1514,9 @@ read.gvr.snpeff <- function(folder = ".",
     warning(sprintf("Duplicate Tumor_Sample_Barcode(s) across files: %s",
                     paste(unique(dup_samp), collapse=", ")))
 
-  maf <- data.table::rbindlist(per_file, use.names = TRUE, fill = TRUE)
-  if (verbose) message(sprintf("COMBINED: %d file(s) | %d MAF rows (%d cols) in %.0fs",
-                               length(vcf_paths), nrow(maf), ncol(maf),
+  gvr <- data.table::rbindlist(per_file, use.names = TRUE, fill = TRUE)
+  if (verbose) message(sprintf("COMBINED: %d file(s) | %d rows (%d cols) in %.0fs",
+                               length(vcf_paths), nrow(gvr), ncol(gvr),
                                as.numeric(difftime(Sys.time(), t_all, units="secs"))))
 
   # ==========================================================================
@@ -1531,7 +1531,7 @@ read.gvr.snpeff <- function(folder = ".",
   ##     (otherwise stripping the core copy would make it differ from the CSQ
   ##     copy and the strict check would refuse to drop it).
   if (dedup_columns) {
-    cn <- names(maf)
+    cn <- names(gvr)
     dup_names <- unique(cn[duplicated(cn)])
     dropped <- character(0); renamed <- character(0)
     # Vectorized URL-decode (fast; mirrors the per-element url_decode helper).
@@ -1544,10 +1544,10 @@ read.gvr.snpeff <- function(folder = ".",
       keep <- idx[1]
       # Columns are "identical" iff, after URL-decoding and treating ""/NA as the
       # SAME 'missing' token, every row matches. This is the correct equivalence:
-      # the MAF-core copy writes "" for missing while the raw CSQ copy writes NA,
+      # the MAF-like-core copy writes "" for missing while the raw CSQ copy writes NA,
       # so a naive (a==b) leaves NA at those rows and must not count as a difference.
       identical_to_keep <- function(j) {
-        a <- url_decode_vec(maf[[keep]]); b <- url_decode_vec(maf[[j]])
+        a <- url_decode_vec(gvr[[keep]]); b <- url_decode_vec(gvr[[j]])
         a[is.na(a)] <- ""        # normalize NA -> "" (missing)
         b[is.na(b)] <- ""
         all(a == b)              # no NA left, so all() is unambiguous
@@ -1558,21 +1558,21 @@ read.gvr.snpeff <- function(folder = ".",
         else renamed <- c(renamed, nm)
       }
       if (length(to_drop) > 0L) {
-        maf[, (to_drop) := NULL]
+        gvr[, (to_drop) := NULL]
         dropped <- c(dropped, nm)
-        cn <- names(maf)  # refresh after deletion
+        cn <- names(gvr)  # refresh after deletion
       }
     }
     # rename any surviving same-named-but-differing duplicates to avoid collision
-    cn <- names(maf)
+    cn <- names(gvr)
     if (any(duplicated(cn))) {
       for (nm in unique(cn[duplicated(cn)])) {
         idx <- which(cn == nm)
         for (k in seq_along(idx)[-1]) {
           new <- paste0(nm, ".csq", if (k > 2) k - 1 else "")
-          data.table::setnames(maf, idx[k], new)
+          data.table::setnames(gvr, idx[k], new)
         }
-        cn <- names(maf)
+        cn <- names(gvr)
       }
     }
   }
@@ -1583,22 +1583,22 @@ read.gvr.snpeff <- function(folder = ".",
     # Vectorized strip: remove up to first ':'. Empty/NA pass through unchanged.
     strip_prefix_vec <- function(x) ifelse(is.na(x) | x == "", x, sub("^[^:]*:", "", x))
     for (col in c("HGVSc", "HGVSp")) {
-      if (col %in% names(maf)) {
-        data.table::set(maf, j = col, value = strip_prefix_vec(maf[[col]]))   # in-place, no copy
+      if (col %in% names(gvr)) {
+        data.table::set(gvr, j = col, value = strip_prefix_vec(gvr[[col]]))   # in-place, no copy
       }
     }
   }
 
   ## 3c. Add Genotype = Tumor_Seq_Allele1 / Tumor_Seq_Allele2 ----------------
   if (add_genotype) {
-    data.table::setDT(maf)   # ensure a clean data.table (prior := NULL may have left a shallow copy)
-    if (all(c("Tumor_Seq_Allele1","Tumor_Seq_Allele2") %in% names(maf))) {
-      maf[, Genotype := paste(Tumor_Seq_Allele1, Tumor_Seq_Allele2, sep = "/")]
+    data.table::setDT(gvr)   # ensure a clean data.table (prior := NULL may have left a shallow copy)
+    if (all(c("Tumor_Seq_Allele1","Tumor_Seq_Allele2") %in% names(gvr))) {
+      gvr[, Genotype := paste(Tumor_Seq_Allele1, Tumor_Seq_Allele2, sep = "/")]
       # place Genotype directly after Tumor_Seq_Allele2
-      nm <- names(maf)
+      nm <- names(gvr)
       after <- which(nm == "Tumor_Seq_Allele2")
       neworder <- append(setdiff(nm, "Genotype"), "Genotype", after = after)
-      data.table::setcolorder(maf, neworder)
+      data.table::setcolorder(gvr, neworder)
     }
   }
 
@@ -1612,8 +1612,8 @@ read.gvr.snpeff <- function(folder = ".",
   ##     (rsID alone is ambiguous at multi-allelic sites; alleles disambiguate.)
   ##     Blank "" where there is no rsID+allele match. Frequency only.
   if (add_abraom) {
-    data.table::setDT(maf)
-    maf[, ABraOM_AF := ""]                  # default blank (no-match convention)
+    data.table::setDT(gvr)
+    gvr[, ABraOM_AF := ""]                  # default blank (no-match convention)
     ok <- TRUE
     # Resolve the ABraOM file: explicit path, else cached copy, else download.
     apath <- abraom_path
@@ -1685,28 +1685,28 @@ read.gvr.snpeff <- function(folder = ".",
                              af  = as.character(Frequencies))])
           data.table::setkey(lut, rs, ref, alt)
           # MAF join keys (uppercased; both sides use '-' for indel empty allele).
-          maf[, `:=`(.rs  = dbSNP_RS,
+          gvr[, `:=`(.rs  = dbSNP_RS,
                      .ref = toupper(Reference_Allele),
                      .alt = toupper(Tumor_Seq_Allele2))]
-          hit <- lut[maf[, .(.rs, .ref, .alt)],
+          hit <- lut[gvr[, .(.rs, .ref, .alt)],
                      on = c(rs = ".rs", ref = ".ref", alt = ".alt"),
                      x.af]            # vector of matched AF, NA where no match
-          maf[, ABraOM_AF := ifelse(is.na(hit), "", hit)]
-          maf[, c(".rs",".ref",".alt") := NULL]
+          gvr[, ABraOM_AF := ifelse(is.na(hit), "", hit)]
+          gvr[, c(".rs",".ref",".alt") := NULL]
           # Place the new column with the other population-frequency columns:
           # right after MAX_AF_POPS / MAX_AF / the last gnomAD column (whichever
           # exists). This groups it with gnomAD/1000G AFs, NOT the INFO_* block.
-          nm <- names(maf)
+          nm <- names(gvr)
           anchors <- c(grep("^MAX_AF_POPS$", nm), grep("^MAX_AF$", nm),
                        grep("^gnomAD", nm))
           after <- if (length(anchors)) max(anchors) else length(nm) - 1L
           neworder <- append(setdiff(nm, "ABraOM_AF"),
                               "ABraOM_AF", after = after)
-          data.table::setcolorder(maf, neworder)
+          data.table::setcolorder(gvr, neworder)
           if (verbose) message(sprintf(
             "ABraOM: annotated %d/%d rows (%.1f%%) with ABraOM frequency (rsID+allele join).",
-            sum(nzchar(maf$ABraOM_AF)), nrow(maf),
-            100*mean(nzchar(maf$ABraOM_AF))))
+            sum(nzchar(gvr$ABraOM_AF)), nrow(gvr),
+            100*mean(nzchar(gvr$ABraOM_AF))))
         }
       }
     }
@@ -1721,19 +1721,19 @@ read.gvr.snpeff <- function(folder = ".",
   ##     FINAL row filter, AFTER all annotation but BEFORE drop_empty_cols, so
   ##     emptiness is evaluated on the subsetted rows.
   if (!is.null(genes)) {
-    data.table::setDT(maf)
+    data.table::setDT(gvr)
     genes_chr <- as.character(genes)
     genes_chr <- genes_chr[!is.na(genes_chr) & nzchar(genes_chr)]
     want <- unique(toupper(trimws(genes_chr)))
-    n_before <- nrow(maf)
-    have <- toupper(trimws(as.character(maf$Hugo_Symbol)))
-    maf <- maf[have %in% want]
+    n_before <- nrow(gvr)
+    have <- toupper(trimws(as.character(gvr$Hugo_Symbol)))
+    gvr <- gvr[have %in% want]
     if (verbose) {
       found    <- intersect(want, unique(have))
       notfound <- setdiff(want, unique(have))
       message(sprintf(
         "gene subset: kept %s / %s rows across %d / %d requested gene(s)%s.",
-        format(nrow(maf), big.mark = ","), format(n_before, big.mark = ","),
+        format(nrow(gvr), big.mark = ","), format(n_before, big.mark = ","),
         length(found), length(want),
         if (length(notfound)) paste0(" (not found: ", paste(notfound, collapse = ", "), ")") else ""))
     }
@@ -1749,8 +1749,8 @@ read.gvr.snpeff <- function(folder = ".",
   ##     explicit `genes` extras) names them inline. Observation point
   ##     matches "gene subset:" semantics (pre vc_nonSyn / drop_empty_cols).
   if (verbose && exists(".panel_genes_for_summary", inherits = FALSE)) {
-    data.table::setDT(maf)
-    have_syms <- unique(toupper(trimws(as.character(maf$Hugo_Symbol))))
+    data.table::setDT(gvr)
+    have_syms <- unique(toupper(trimws(as.character(gvr$Hugo_Symbol))))
     p_present <- intersect(.panel_genes_for_summary, have_syms)
     p_missing <- setdiff(.panel_genes_for_summary, have_syms)
     extras_chunk <- if (length(.panel_extras_for_summary) > 0L) {
@@ -1769,27 +1769,27 @@ read.gvr.snpeff <- function(folder = ".",
   }
 
   ## 3d-ter. Variant-Classification non-synonymous filter (opt-in) -----------
-  ##     Mirrors maftools' vc_nonSyn: keep only protein-altering classes.
+  ##     Mirrors the non-synonymous-only filter: keep only protein-altering classes.
   ##     FALSE (default) = keep all. TRUE = keep the 9 standard High/Moderate
   ##     classes. A custom character vector = keep those specific classes.
   ##     Applied AFTER gene subset, BEFORE drop_empty_cols.
   if (!identical(vc_nonSyn, FALSE)) {
-    data.table::setDT(maf)
+    data.table::setDT(gvr)
     vc_default <- c("Frame_Shift_Del", "Frame_Shift_Ins", "Splice_Site",
                     "Translation_Start_Site", "Nonsense_Mutation", "Nonstop_Mutation",
                     "In_Frame_Del", "In_Frame_Ins", "Missense_Mutation")
     vc_keep <- if (isTRUE(vc_nonSyn)) vc_default else as.character(vc_nonSyn)
     vc_keep <- vc_keep[!is.na(vc_keep) & nzchar(vc_keep)]
     if (length(vc_keep) > 0L) {
-      n_before <- nrow(maf)
-      vc_col <- as.character(maf$Variant_Classification)
+      n_before <- nrow(gvr)
+      vc_col <- as.character(gvr$Variant_Classification)
       # Remove rows with missing/blank Variant_Classification when filter is active
-      maf <- maf[!is.na(vc_col) & nzchar(vc_col) & vc_col %in% vc_keep]
+      gvr <- gvr[!is.na(vc_col) & nzchar(vc_col) & vc_col %in% vc_keep]
       if (verbose) {
-        dropped <- n_before - nrow(maf)
+        dropped <- n_before - nrow(gvr)
         message(sprintf(
           "vc_nonSyn: kept %s / %s rows (%d classification(s): %s; removed %s silent/other)",
-          format(nrow(maf), big.mark = ","), format(n_before, big.mark = ","),
+          format(nrow(gvr), big.mark = ","), format(n_before, big.mark = ","),
           length(vc_keep), paste(vc_keep, collapse = ", "),
           format(dropped, big.mark = ",")))
       }
@@ -1800,14 +1800,14 @@ read.gvr.snpeff <- function(folder = ".",
   ##     Remove any column whose values are ALL missing (NA or "") across the
   ##     entire combined table. Default FALSE = keep full schema.
   if (drop_empty_cols) {
-    data.table::setDT(maf)
+    data.table::setDT(gvr)
     is_all_empty <- function(col) {
-      v <- maf[[col]]; vc <- as.character(v)
+      v <- gvr[[col]]; vc <- as.character(v)
       all(is.na(v) | vc == "")
     }
-    empty_cols <- names(maf)[vapply(names(maf), is_all_empty, logical(1))]
+    empty_cols <- names(gvr)[vapply(names(gvr), is_all_empty, logical(1))]
     if (length(empty_cols) > 0L) {
-      maf[, (empty_cols) := NULL]
+      gvr[, (empty_cols) := NULL]
       if (verbose) message(sprintf("drop_empty_cols: removed %d all-empty column(s): %s",
                                    length(empty_cols), paste(empty_cols, collapse=", ")))
     } else if (verbose) {
@@ -1815,12 +1815,12 @@ read.gvr.snpeff <- function(folder = ".",
     }
   }
 
-  if (verbose) message(sprintf("Final Table Dimensions: %d rows x %d columns.", nrow(maf), ncol(maf)))
+  if (verbose) message(sprintf("Final Table Dimensions: %d rows x %d columns.", nrow(gvr), ncol(gvr)))
 
   # Tag annotator BEFORE writes so saved TSV/RDS/XLSX carry the attribute too.
   # (R's saveRDS preserves attributes; CSV/TSV is just columns so the attribute
   #  is for in-memory consumers -- but we still keep it consistent.)
-  data.table::setattr(maf, "annotator", "snpeff")
+  data.table::setattr(gvr, "annotator", "snpeff")
 
   # ==========================================================================
   # 4. Optional file outputs
@@ -1833,15 +1833,15 @@ read.gvr.snpeff <- function(folder = ".",
     if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
     if (is.null(out_prefix)) {
       if (length(vcf_paths) > 1L) {
-        out_prefix <- "combined.maf"                                  # multi-file
+        out_prefix <- "combined.gvr.tsv"                              # multi-file
       } else {
         out_prefix <- sub("\\.vcf\\.gz$", "", basename(vcf_paths[1])) # single file
-        out_prefix <- paste0(out_prefix, ".maf")
+        out_prefix <- paste0(out_prefix, ".gvr.tsv")
       }
     }
     if (write_tsv) {
       tsv_path <- file.path(out_dir, paste0(out_prefix, ".tsv"))
-      data.table::fwrite(maf, tsv_path, sep = "\t", quote = FALSE, na = "")
+      data.table::fwrite(gvr, tsv_path, sep = "\t", quote = FALSE, na = "")
       if (verbose) message("Wrote TSV: ", tsv_path)
     }
     if (write_rds) {
@@ -1850,7 +1850,7 @@ read.gvr.snpeff <- function(folder = ".",
       # a local POSIX path (tempdir / /workspace) and then shell `cp` it over.
       rds_final <- file.path(out_dir, paste0(out_prefix, ".rds"))
       tmp_rds   <- file.path(tempdir(), paste0(out_prefix, ".rds"))
-      saveRDS(maf, tmp_rds, compress = TRUE)
+      saveRDS(gvr, tmp_rds, compress = TRUE)
       system2("cp", c(shQuote(tmp_rds), shQuote(rds_final)))   # always shell-cp
       sz <- suppressWarnings(file.info(rds_final)$size)
       if (is.na(sz) || sz == 0)
@@ -1859,12 +1859,12 @@ read.gvr.snpeff <- function(folder = ".",
         message(sprintf("Wrote RDS: %s (%.0f MB)", rds_final, sz/1e6))
     }
     if (write_xlsx) {
-      # B1: optional Excel export of the FINAL MAF (one "MAF" sheet). Mirrors the
+      # B1: optional Excel export of the FINAL gvr table (one "gvr_table" sheet). Mirrors the
       # FUSE-safe openxlsx pattern used by gvr_summary: build the workbook, save to a
       # local temp file, then shell-cp to out_dir (openxlsx uses zip random-access
       # writes that can silently 0-byte on S3-backed mounts). Degrades gracefully:
       # if openxlsx is absent we warn and skip (TSV/RDS, if requested, still wrote).
-      # NOTE: a germline MAF can be very large (hundreds of thousands of rows). Excel
+      # NOTE: a germline gvr table can be very large (hundreds of thousands of rows). Excel
       # handles it but the file is big and slow to open; write_rds / write_tsv remain
       # the better choice for large tables / downstream R use.
       if (!requireNamespace("openxlsx", quietly = TRUE)) {
@@ -1873,15 +1873,15 @@ read.gvr.snpeff <- function(folder = ".",
         xlsx_final <- file.path(out_dir, paste0(out_prefix, ".xlsx"))
         if (file.exists(xlsx_final) && verbose)
           message(sprintf("  Overwriting existing Excel: %s", xlsx_final))
-        if (nrow(maf) > 1000000L)
-          warning(sprintf("read.gvr: MAF has %s rows; Excel's per-sheet limit is 1,048,576 rows.",
-                          format(nrow(maf), big.mark = ",")))
+        if (nrow(gvr) > 1000000L)
+          warning(sprintf("read.gvr: table has %s rows; Excel's per-sheet limit is 1,048,576 rows.",
+                          format(nrow(gvr), big.mark = ",")))
         wb <- openxlsx::createWorkbook()
         hs <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
-        openxlsx::addWorksheet(wb, "MAF")
-        openxlsx::writeData(wb, "MAF", as.data.frame(maf), headerStyle = hs)
-        openxlsx::freezePane(wb, "MAF", firstRow = TRUE)
-        openxlsx::setColWidths(wb, "MAF", cols = seq_len(ncol(maf)), widths = "auto")
+        openxlsx::addWorksheet(wb, "gvr_table")
+        openxlsx::writeData(wb, "gvr_table", as.data.frame(gvr), headerStyle = hs)
+        openxlsx::freezePane(wb, "gvr_table", firstRow = TRUE)
+        openxlsx::setColWidths(wb, "gvr_table", cols = seq_len(ncol(gvr)), widths = "auto")
         tmp_xlsx <- file.path(tempdir(), paste0(out_prefix, ".xlsx"))
         wrote_ok <- tryCatch({ openxlsx::saveWorkbook(wb, tmp_xlsx, overwrite = TRUE); TRUE },
                              error = function(e) {
@@ -1901,6 +1901,6 @@ read.gvr.snpeff <- function(folder = ".",
   }
 
   # set a friendly key-less data.table and return
-  data.table::setDT(maf)
-  maf[]
+  data.table::setDT(gvr)
+  gvr[]
 }

@@ -2,12 +2,12 @@
 % Please edit documentation in R/gvr_novel.R
 \name{gvr_novel}
 \alias{gvr_novel}
-\title{Filter a read.gvr MAF down to candidate novel variants}
+\title{Filter a read.gvr table down to candidate novel variants}
 \usage{
-gvr_novel(maf, verbose = TRUE)
+gvr_novel(gvr, verbose = TRUE)
 }
 \arguments{
-\item{maf}{data.table / data.frame from \code{\link[=read.gvr]{read.gvr()}} (or compatible, e.g. the
+\item{gvr}{data.table / data.frame from \code{\link[=read.gvr]{read.gvr()}} (or compatible, e.g. the
 output of \code{\link[=gvr_filter]{gvr_filter()}}). Filtered in a copy; the input object is not
 modified.}
 
@@ -16,12 +16,12 @@ line for each of the 4 cascaded filters showing rows-in -> rows-out and
 percentage retained, ending with a one-line summary.}
 }
 \value{
-A \code{data.table} with the same columns as \code{maf} but only the rows that
+A \code{data.table} with the same columns as \code{gvr} but only the rows that
 pass all four "no database evidence" checks. If none of the 4 columns is
-present in \code{maf}, the output equals the input and a warning is issued.
+present in \code{gvr}, the output equals the input and a warning is issued.
 }
 \description{
-Returns only the rows of a \code{read.gvr()} / \code{gvr_filter()} MAF that have NO
+Returns only the rows of a \code{read.gvr()} / \code{gvr_filter()} table that have NO
 database evidence in any of the standard catalogues: no rsID in \code{dbSNP_RS},
 AND no allele frequency in \code{gnomADe_AF}, \code{AF}, or \code{ABraOM_AF}. This is the
 canonical "show me only the novel variants" subsetter and complements
@@ -53,8 +53,8 @@ copy and the output has the same column set and order as the input.
 }
 \examples{
 \dontrun{
-  maf <- read.gvr("vcf_dir/", pattern = "\\\\.vep\\\\.vcf\\\\.gz$")
-  f   <- gvr_filter(maf)
+  gvr <- read.gvr("vcf_dir/", pattern = "\\\\.vep\\\\.vcf\\\\.gz$")
+  f   <- gvr_filter(gvr)
   nov <- gvr_novel(f)
   ## quick sanity: every kept row really is novel
   stopifnot(all(is.na(nov$dbSNP_RS)   | nov$dbSNP_RS   == ""))

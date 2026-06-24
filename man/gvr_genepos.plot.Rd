@@ -5,7 +5,7 @@
 \title{Gene-track lollipop plot on a cDNA axis}
 \usage{
 gvr_genepos.plot(
-  maf,
+  gvr,
   gene,
   transcript_id = NULL,
   vc_keep = NULL,
@@ -41,7 +41,7 @@ gvr_genepos.plot(
 )
 }
 \arguments{
-\item{maf}{A MAF data.table produced by \code{\link[=read.gvr]{read.gvr()}}. Required columns:
+\item{gvr}{A MAF-like data.table produced by \code{\link[=read.gvr]{read.gvr()}}. Required columns:
 \code{Hugo_Symbol}, \code{Transcript_ID}, \code{HGVSc}, \code{Variant_Classification},
 \code{Tumor_Sample_Barcode}, \code{NCBI_Build}. \code{MANE_SELECT} and \code{CANONICAL}
 are used when \code{transcript_id} is auto-resolved.}
@@ -131,7 +131,7 @@ is written to \verb{<out_dir>/<out_subdir>/<out_prefix>.<format>} when
 \description{
 Draws a per-gene track plot with exon, intron, and UTR segments for one
 transcript, overlaid with lollipops placed on a cDNA-position x-axis using
-the \code{HGVSc} field of each MAF row. Colours follow \code{Variant_Classification}
+the \code{HGVSc} field of each table row. Colours follow \code{Variant_Classification}
 using the same palette set as \code{\link[=gvr_lollipop]{gvr_lollipop()}}.
 }
 \details{
@@ -142,7 +142,7 @@ cDNA axis.
 \section{Transcript resolution}{
 
 If \code{transcript_id} is \code{NULL}, the chosen transcript is, in order: the
-first non-empty \code{MANE_SELECT} among MAF rows for \code{gene}; otherwise the
+first non-empty \code{MANE_SELECT} among table rows for \code{gene}; otherwise the
 first \code{CANONICAL == "YES"} row; otherwise the transcript with the most
 rows for that gene. The genome build is read from \code{NCBI_Build}.
 }
@@ -174,15 +174,15 @@ suggesting \code{rtracklayer} or falls back to a tiny streaming parser.
 \examples{
 \dontrun{
 # Auto-resolve MANE/CANONICAL transcript for BRCA1
-p <- gvr_genepos.plot(maf, "BRCA1")
+p <- gvr_genepos.plot(gvr, "BRCA1")
 
 # Pin transcript and use proportional intron scaling
-gvr_genepos.plot(maf, "BRCA1",
+gvr_genepos.plot(gvr, "BRCA1",
                  transcript_id = "ENST00000357654",
                  intron_scale  = "proportional")
 
 # Fully offline using a local GTF
-gvr_genepos.plot(maf, "BRCA1",
+gvr_genepos.plot(gvr, "BRCA1",
                  gtf_path = "gencode.v44.annotation.gtf.gz")
 }
 

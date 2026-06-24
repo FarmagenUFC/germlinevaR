@@ -5,7 +5,7 @@
 \title{Export gvr_summary() plots as standalone image files}
 \usage{
 gvr_sum_plots(
-  maf,
+  gvr,
   out_dir = ".",
   folder_name = "gvr_sum_plots",
   format = "png",
@@ -21,7 +21,7 @@ gvr_sum_plots(
 )
 }
 \arguments{
-\item{maf}{data.table or data.frame produced by \code{\link[=read.gvr]{read.gvr()}} /
+\item{gvr}{data.table or data.frame produced by \code{\link[=read.gvr]{read.gvr()}} /
 \code{\link[=read.gvr.snpeff]{read.gvr.snpeff()}} / \code{\link[=read.gvr.dual]{read.gvr.dual()}}. Required columns:
 \code{Hugo_Symbol}, \code{Variant_Classification}, \code{Variant_Type}, \code{IMPACT},
 \code{CLIN_SIG}; \code{dbSNP_RS} is optional.}
@@ -68,7 +68,7 @@ renders in its HTML/PDF dashboard, but as individual image files and as
 multi-panel composites, written into a new folder.
 }
 \details{
-The function recomputes the summary sections from the MAF (it does not
+The function recomputes the summary sections from the table (it does not
 depend on a prior call to \code{\link[=gvr_summary]{gvr_summary()}}), then writes:
 
 Cohort-level plots (always produced):
@@ -98,8 +98,8 @@ same name are overwritten; other files in the folder are left alone.
 }
 \examples{
 \dontrun{
-  maf <- read.gvr("/path/to/vcf/")
-  gvr_sum_plots(maf, out_dir = "results", folder_name = "S6_plots",
+  gvr <- read.gvr("/path/to/vcf/")
+  gvr_sum_plots(gvr, out_dir = "results", folder_name = "S6_plots",
                 format = "pdf")
 }
 

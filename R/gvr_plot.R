@@ -1,7 +1,7 @@
-#' Cohort top-genes variant matrix from a germline MAF (read.gvr / gvr_filter output)
+#' Cohort top-genes variant matrix from a germline gvr table (read.gvr / gvr_filter output)
 #'
 #' @description
-#' Draws a maftools-style top-genes variant matrix from a MAF-style table - the output of
+#' Draws a top-genes variant matrix from an MAF-like table - the output of
 #' [read.gvr()], or of [gvr_filter()] - and writes it to a PNG file. Rows are the
 #' top-`top_n` genes (ranked by number of distinct samples mutated, then by variant
 #' count); columns are samples. Each gene x sample cell shows the single MOST-SEVERE
@@ -30,11 +30,11 @@
 #'   \item "Missing" means `NA` OR empty string `""`.
 #'   \item Unknown/blank gene symbols are `Hugo_Symbol` in `c(".", "", "Unknown")`;
 #'     these are excluded from the top-genes variant matrix.
-#'   \item Works on ANY MAF-shaped table; it makes no assumption about prior
+#'   \item Works on ANY MAF-like table; it makes no assumption about prior
 #'     filtering. It is commonly run on [gvr_filter()] output.
 #' }
 #'
-#' @param maf A `data.table`/`data.frame` MAF from [read.gvr()] or [gvr_filter()].
+#' @param gvr An MAF-like `data.table`/`data.frame` from [read.gvr()] or [gvr_filter()].
 #'   Required columns: `Hugo_Symbol`, `Variant_Classification`.
 #' @param top_n Integer; number of genes (rows) shown, ranked by number of distinct
 #'   samples mutated then by variant count. Default `20`.
@@ -88,21 +88,21 @@
 #' If it is not installed the top-genes variant matrix is skipped with a warning and `NA_character_`
 #' is returned.
 #'
-#' @seealso [gvr_summary()] for the tabular summary, [read.gvr()] to build the MAF,
+#' @seealso [gvr_summary()] for the tabular summary, [read.gvr()] to build the table,
 #'   [gvr_filter()] to filter it before plotting.
 #' @family germlinevaR
 #' @author germlinevaR authors
 #'
 #' @examples
 #' \dontrun{
-#' maf <- read.gvr("/path/to/vcf_folder")
+#' gvr <- read.gvr("/path/to/vcf_folder")
 #'
 #' ## write a top-20 variant matrix to the current directory
-#' p <- gvr_plot(maf)
+#' p <- gvr_plot(gvr)
 #' p                                  # path to the PNG
 #'
 #' ## smaller top-genes variant matrix of filtered hits, into a results folder
-#' gvr_plot(gvr_filter(maf), top_n = 15, out_dir = "results/plots")
+#' gvr_plot(gvr_filter(gvr), top_n = 15, out_dir = "results/plots")
 #' }
 #'
 #' @importFrom data.table as.data.table data.table setorder uniqueN :=
@@ -110,7 +110,7 @@
 #' @importFrom grid gpar grid.rect unit
 #' @importFrom utils head
 #' @export
-gvr_plot <- function(maf,
+gvr_plot <- function(gvr,
                          top_n             = 20,
                          sample_col        = "Tumor_Sample_Barcode",
                          out_dir           = ".",
@@ -128,7 +128,7 @@ gvr_plot <- function(maf,
   if (!requireNamespace("data.table", quietly = TRUE)) {
     stop("gvr_plot requires the 'data.table' package.")
   }
-  dt <- data.table::as.data.table(maf)
+  dt <- data.table::as.data.table(gvr)
 
   # --- Validate new layout args -----------------------------------------------
   impact_title_side <- match.arg(impact_title_side)
@@ -164,7 +164,7 @@ gvr_plot <- function(maf,
   .is_missing <- function(v) is.na(v) | v == ""
   UNKNOWN_GENE <- c(".", "", "Unknown")
 
-  # --- Variant_Classification severity order (maftools-style, high -> low). ----
+  # --- Variant_Classification severity order (high -> low). ----
   #     Used to collapse multi-class gene x sample cells to a single most-severe
   #     class. Any class not listed sorts LAST and renders grey.
   GVR_SEVERITY <- c("Translation_Start_Site", "Nonsense_Mutation", "Nonstop_Mutation",

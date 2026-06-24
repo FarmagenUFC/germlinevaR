@@ -1,10 +1,10 @@
-#' Modular, individually-toggleable filtering of a read.gvr MAF
+#' Modular, individually-toggleable filtering of a read.gvr table
 #'
 #' @description
-#' Applies a set of independent variant filters to the MAF-style table produced by
+#' Applies a set of independent variant filters to the MAF-like table produced by
 #' [read.gvr()]. Each distinct filter is its own argument; setting an argument to
 #' `NULL` disables that filter entirely (no rows removed by it). With all defaults,
-#' `gvr_filter(maf)` reproduces the canonical rare / clinically-relevant /
+#' `gvr_filter(gvr)` reproduces the canonical rare / clinically-relevant /
 #' called-genotype pipeline (AF filters + CLIN_SIG + GT exclusion).
 #'
 #' @details
@@ -40,7 +40,7 @@
 #'
 #' The input is never modified: filtering operates on an internal `data.table` copy.
 #'
-#' @param maf data.table / data.frame from [read.gvr()] (or compatible). Filtered in a
+#' @param gvr data.table / data.frame from [read.gvr()] (or compatible). Filtered in a
 #'   copy; the input object is not modified.
 #'
 #' @param gnomADe_AF Numeric upper threshold for the gnomAD exome AF column
@@ -110,41 +110,41 @@
 #'   modified. With `verbose = TRUE`, a per-filter breakdown (rows in -> out, and rows
 #'   removed by each active step) is printed as it runs.
 #'
-#' @seealso [read.gvr()] to build the MAF, [gvr_summary()] to summarise the filtered
+#' @seealso [read.gvr()] to build the table, [gvr_summary()] to summarise the filtered
 #'   variants.
 #' @family germlinevaR
 #' @author germlinevaR authors
 #'
 #' @examples
 #' \dontrun{
-#' maf <- read.gvr("/path/to/vcf_folder")
+#' gvr <- read.gvr("/path/to/vcf_folder")
 #'
 #' ## Default pipeline: rare variants + clinically relevant + called genotypes:
-#' maf_clean <- gvr_filter(maf)
+#' gvr_clean <- gvr_filter(gvr)
 #'
 #' ## Add protein-coding biotype filter:
-#' gvr_filter(maf, biotype_keep = c("protein_coding", "protein_coding_LoF"))
+#' gvr_filter(gvr, biotype_keep = c("protein_coding", "protein_coding_LoF"))
 #'
 #' ## Only the rarity filter on gnomAD exome AF, nothing else:
-#' gvr_filter(maf, gnomADe_AF = 0.001, AF = NULL, ABraOM_AF = NULL,
+#' gvr_filter(gvr, gnomADe_AF = 0.001, AF = NULL, ABraOM_AF = NULL,
 #'            clin_sig_terms = NULL, gt_exclude = NULL,
 #'            vc_nonSyn = FALSE, genes = NULL)
 #'
 #' ## Pathogenic-only, protein-coding:
-#' gvr_filter(maf, clin_sig_terms = c("pathogenic", "likely_pathogenic"),
+#' gvr_filter(gvr, clin_sig_terms = c("pathogenic", "likely_pathogenic"),
 #'            biotype_keep = "protein_coding")
 #'
 #' ## Remove benign annotations (including likely_benign and compound entries):
-#' gvr_filter(maf, remove_benign = TRUE)
+#' gvr_filter(gvr, remove_benign = TRUE)
 #'
 #' ## Keep only protein-altering variants and a gene panel:
-#' gvr_filter(maf, vc_nonSyn = TRUE, genes = c("TP53", "BRCA1", "BRCA2"))
+#' gvr_filter(gvr, vc_nonSyn = TRUE, genes = c("TP53", "BRCA1", "BRCA2"))
 #' }
 #'
 #' @importFrom data.table as.data.table
 #' @importFrom openxlsx createWorkbook
 #' @export
-gvr_filter <- function(maf,
+gvr_filter <- function(gvr,
                        gnomADe_AF = 0.01,
                        AF = 0.01,
                        ABraOM_AF = 0.01,
@@ -172,7 +172,7 @@ gvr_filter <- function(maf,
   `%notin%` <- function(x, table) !(x %in% table)
 
   # --- Work on a copy; never mutate the caller's object -----------------------
-  dt <- data.table::as.data.table(maf)   # copies if input is a data.frame/data.table
+  dt <- data.table::as.data.table(gvr)   # copies if input is a data.frame/data.table
   n_in_total <- nrow(dt)
 
   # --- Helper: detect missing (NA OR empty string) ----------------------------

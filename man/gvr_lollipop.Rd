@@ -2,10 +2,10 @@
 % Please edit documentation in R/gvr_lollipop.R
 \name{gvr_lollipop}
 \alias{gvr_lollipop}
-\title{Per-gene amino-acid lollipop plot for a germline MAF}
+\title{Per-gene amino-acid lollipop plot for a germline gvr table}
 \usage{
 gvr_lollipop(
-  maf,
+  gvr,
   gene,
   vc_keep = NULL,
   protein_length = NULL,
@@ -44,7 +44,7 @@ gvr_lollipop(
 )
 }
 \arguments{
-\item{maf}{A \code{data.table} / \code{data.frame} MAF from \code{\link[=read.gvr]{read.gvr()}}, or any
+\item{gvr}{An MAF-like \code{data.table} / \code{data.frame} from \code{\link[=read.gvr]{read.gvr()}}, or any
 compatible table with at least \code{Hugo_Symbol}, \code{HGVSp_Short},
 \code{Variant_Classification}, \code{Tumor_Sample_Barcode}, \code{Protein_position}.}
 
@@ -62,7 +62,7 @@ UniProt REST query used for \code{domains = "auto"}. Wins by default;
 see \code{protein_length_strict} to opt out.
 \item User-supplied value when \code{protein_length_strict = TRUE}, or
 when UniProt is unreachable.
-\item Mode of the \verb{<pos>/<total>} totals parsed from the MAF
+\item Mode of the \verb{<pos>/<total>} totals parsed from the table
 \code{Protein_position} column (entries without a \code{/} are skipped).
 \item \code{ceiling(max(positions) * 1.1)} fallback.
 }
@@ -247,11 +247,11 @@ disk as a side effect. Set \code{out_dir = NULL} to suppress file output.
 }
 \description{
 Builds a ggplot2 lollipop plot of every protein-altering variant of a single
-gene in a \code{read.gvr()} / \code{gvr_filter()} / \code{gvr_novel()} MAF. Each amino-acid
+gene in a \code{read.gvr()} / \code{gvr_filter()} / \code{gvr_novel()} table. Each amino-acid
 position is a stem; each sample-variant carried at that position is one dot
 stacked on the stem; dots are coloured by \code{Variant_Classification} using the
 package's colourblind-safe palette. A horizontal protein-body bar is drawn
-along the x-axis (\code{maftools::lollipopPlot} style); protein domains are
+along the x-axis (lollipop-style); protein domains are
 overlaid as coloured rectangles on top of that bar. By default, domains are
 fetched automatically from the EBI InterPro REST API (\code{domains = "auto"}).
 Pass \code{domains = NULL} for a plain bar with no domains, or supply a
@@ -349,8 +349,8 @@ files were written.
 }
 \examples{
 \dontrun{
-  maf <- read.gvr("vcf_dir/", pattern = "\\\\.vep\\\\.vcf\\\\.gz$")
-  f   <- gvr_filter(maf)
+  gvr <- read.gvr("vcf_dir/", pattern = "\\\\.vep\\\\.vcf\\\\.gz$")
+  f   <- gvr_filter(gvr)
 
   ## default: auto-fetches InterPro domains, auto-saves to "."
   p <- gvr_lollipop(f, "TP53")

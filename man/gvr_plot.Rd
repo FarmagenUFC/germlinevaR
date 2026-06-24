@@ -2,10 +2,10 @@
 % Please edit documentation in R/gvr_plot.R
 \name{gvr_plot}
 \alias{gvr_plot}
-\title{Cohort top-genes variant matrix from a germline MAF (read.gvr / gvr_filter output)}
+\title{Cohort top-genes variant matrix from a germline gvr table (read.gvr / gvr_filter output)}
 \usage{
 gvr_plot(
-  maf,
+  gvr,
   top_n = 20,
   sample_col = "Tumor_Sample_Barcode",
   out_dir = ".",
@@ -22,7 +22,7 @@ gvr_plot(
 )
 }
 \arguments{
-\item{maf}{A \code{data.table}/\code{data.frame} MAF from \code{\link[=read.gvr]{read.gvr()}} or \code{\link[=gvr_filter]{gvr_filter()}}.
+\item{gvr}{An MAF-like \code{data.table}/\code{data.frame} from \code{\link[=read.gvr]{read.gvr()}} or \code{\link[=gvr_filter]{gvr_filter()}}.
 Required columns: \code{Hugo_Symbol}, \code{Variant_Classification}.}
 
 \item{top_n}{Integer; number of genes (rows) shown, ranked by number of distinct
@@ -86,7 +86,7 @@ the plot was skipped (\pkg{ComplexHeatmap} not installed, or no known-gene
 variants present).
 }
 \description{
-Draws a maftools-style top-genes variant matrix from a MAF-style table - the output of
+Draws a top-genes variant matrix from an MAF-like table - the output of
 \code{\link[=read.gvr]{read.gvr()}}, or of \code{\link[=gvr_filter]{gvr_filter()}} - and writes it to a PNG file. Rows are the
 top-\code{top_n} genes (ranked by number of distinct samples mutated, then by variant
 count); columns are samples. Each gene x sample cell shows the single MOST-SEVERE
@@ -115,7 +115,7 @@ Data conventions:
 \item "Missing" means \code{NA} OR empty string \code{""}.
 \item Unknown/blank gene symbols are \code{Hugo_Symbol} in \code{c(".", "", "Unknown")};
 these are excluded from the top-genes variant matrix.
-\item Works on ANY MAF-shaped table; it makes no assumption about prior
+\item Works on ANY MAF-like table; it makes no assumption about prior
 filtering. It is commonly run on \code{\link[=gvr_filter]{gvr_filter()}} output.
 }
 }
@@ -128,19 +128,19 @@ is returned.
 
 \examples{
 \dontrun{
-maf <- read.gvr("/path/to/vcf_folder")
+gvr <- read.gvr("/path/to/vcf_folder")
 
 ## write a top-20 variant matrix to the current directory
-p <- gvr_plot(maf)
+p <- gvr_plot(gvr)
 p                                  # path to the PNG
 
 ## smaller top-genes variant matrix of filtered hits, into a results folder
-gvr_plot(gvr_filter(maf), top_n = 15, out_dir = "results/plots")
+gvr_plot(gvr_filter(gvr), top_n = 15, out_dir = "results/plots")
 }
 
 }
 \seealso{
-\code{\link[=gvr_summary]{gvr_summary()}} for the tabular summary, \code{\link[=read.gvr]{read.gvr()}} to build the MAF,
+\code{\link[=gvr_summary]{gvr_summary()}} for the tabular summary, \code{\link[=read.gvr]{read.gvr()}} to build the table,
 \code{\link[=gvr_filter]{gvr_filter()}} to filter it before plotting.
 
 Other germlinevaR: 

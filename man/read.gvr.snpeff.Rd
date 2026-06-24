@@ -2,7 +2,7 @@
 % Please edit documentation in R/read.gvr.snpeff.R
 \name{read.gvr.snpeff}
 \alias{read.gvr.snpeff}
-\title{Convert SnpEff-annotated germline VCF(s) to a maftools-style MAF data.table}
+\title{Convert SnpEff-annotated germline VCF(s) to an MAF-like data.table}
 \usage{
 read.gvr.snpeff(
   folder = ".",
@@ -55,14 +55,14 @@ Default \code{"\\\\.vcf\\\\.gz$"} (matches any \code{.vcf.gz} file). The old def
 \code{"_\\\\d+(\\\\.(vep|snp[eE]ff))?\\\\.vcf\\\\.gz$"} is still available by passing
 it explicitly.}
 
-\item{write_tsv}{Logical; if \code{TRUE}, also write the MAF as a TSV to \code{out_dir}.
+\item{write_tsv}{Logical; if \code{TRUE}, also write the table as a TSV to \code{out_dir}.
 Default \code{FALSE}.}
 
-\item{write_rds}{Logical; if \code{TRUE}, also write the MAF as an \code{.rds} to \code{out_dir}.
+\item{write_rds}{Logical; if \code{TRUE}, also write the table as an \code{.rds} to \code{out_dir}.
 Default \code{FALSE}.}
 
-\item{write_xlsx}{Logical; if \code{TRUE}, also write the MAF as an \code{.xlsx} workbook
-(single \code{"MAF"} sheet) to \code{out_dir}. Requires the \pkg{openxlsx} package (a
+\item{write_xlsx}{Logical; if \code{TRUE}, also write the table as an \code{.xlsx} workbook
+(single \code{"gvr_table"} sheet) to \code{out_dir}. Requires the \pkg{openxlsx} package (a
 \code{Suggests} dependency); if it is not installed the export is skipped with a
 warning. Default \code{FALSE}. Excel caps a sheet at 1,048,576 rows.}
 
@@ -76,7 +76,7 @@ one from the input.}
 \item{chunk_size}{Integer; number of VCF records processed per chunk (controls
 peak memory and progress granularity). Default \code{25000L}.}
 
-\item{ncbi_build}{Reference build label written into the MAF \code{NCBI_Build}
+\item{ncbi_build}{Reference build label written into the table \code{NCBI_Build}
 column. Default \code{"auto"}: the function inspects the input VCF header
 (VEP \verb{assembly=} / SnpEff \code{SnpEffCmd} database token / first \verb{##contig=}
 length) and picks the canonical label among \code{"GRCh38"}, \code{"GRCh37"},
@@ -143,8 +143,8 @@ An unknown name raises an error listing the available panels. \code{NULL}
 omitting the argument.}
 
 \item{vc_nonSyn}{Logical or character vector. Controls which
-\code{Variant_Classification} values are retained (mirroring maftools'
-\code{vc_nonSyn} argument). \code{FALSE} (default) keeps ALL variant classifications.
+\code{Variant_Classification} values are retained (mirroring the
+convention of the \code{vc_nonSyn} argument). \code{FALSE} (default) keeps ALL variant classifications.
 \code{TRUE} keeps only protein-altering classes (High/Moderate VEP consequences):
 \code{"Frame_Shift_Del"}, \code{"Frame_Shift_Ins"}, \code{"Splice_Site"},
 \code{"Translation_Start_Site"}, \code{"Nonsense_Mutation"}, \code{"Nonstop_Mutation"},
@@ -156,7 +156,7 @@ is active.}
 \item{canonical_only}{Logical; accepted for API symmetry with \code{\link[=read.gvr]{read.gvr()}}.
 SnpEff's ANN field has no \code{CANONICAL} flag, so this filter cannot be
 applied. When \code{TRUE} (the default), \code{read.gvr.snpeff()} emits a one-time
-warning and returns the unfiltered MAF (same result as
+warning and returns the unfiltered table (same result as
 \code{canonical_only = FALSE}).}
 
 \item{ncores}{Integer; number of worker processes for converting MULTIPLE input
@@ -170,7 +170,7 @@ non-fork platforms it falls back to sequential. A single file is unaffected.}
 (file i/N, cumulative records, elapsed seconds).}
 }
 \value{
-A \code{data.table} MAF: one row per variant allele, with MAF core columns,
+An MAF-like \code{data.table}: one row per variant allele, with MAF-like core columns,
 the canonical 80 VEP CSQ field names (populated from SnpEff ANN where
 available; blank otherwise), key GATK QC fields, \code{Tumor_Sample_Barcode}, and
 (when enabled) the \code{Genotype} and \code{ABraOM_AF} columns.
@@ -179,13 +179,13 @@ effect when \code{write_tsv}/\code{write_rds}/\code{write_xlsx} is \code{TRUE}.
 }
 \description{
 Converts SnpEff-annotated, single-sample germline VCFs (GATK HaplotypeCaller ->
-CNN tranches -> SnpEff, hg38) into a maftools-style table and returns it as
+CNN tranches -> SnpEff, hg38) into an MAF-like table and returns it as
 an in-memory \code{data.table} for downstream filtering (\code{\link[=gvr_filter]{gvr_filter()}}) and
 summarisation (\code{\link[=gvr_summary]{gvr_summary()}}). In folder mode it finds every per-sample VCF,
-converts each, and row-binds them into one combined MAF. Emits the SAME
+converts each, and row-binds them into one combined gvr table. Emits the SAME
 canonical 80-field schema as \code{\link[=read.gvr]{read.gvr()}} so downstream code is annotator-
-agnostic. The conversion uses base R + \pkg{data.table} only - it does NOT
-depend on \pkg{maftools}.
+agnostic. The conversion uses base R + \pkg{data.table} only - no external
+annotation-package dependency.
 
 This function is the SnpEff sibling of \code{\link[=read.gvr]{read.gvr()}} (VEP-annotated VCFs).
 Both readers are usually invoked through \code{\link[=read.gvr]{read.gvr()}}, which auto-routes
@@ -196,10 +196,10 @@ pipelines.
 \details{
 Output and behaviour:
 \itemize{
-\item Returns the final MAF \code{data.table}, one row per variant ALLELE
+\item Returns the final MAF-like \code{data.table}, one row per variant ALLELE
 (multi-allelic sites are split). Multiple \code{ANN} annotation blocks per
 allele are reduced to one most-severe transcript per allele.
-\item Columns include the MAF core fields, the canonical 80 VEP CSQ field
+\item Columns include the MAF-like core fields, the canonical 80 VEP CSQ field
 names (populated from the equivalent SnpEff ANN fields where available;
 blank for fields SnpEff does not supply), and key GATK QC fields.
 \code{FILTER} is retained as a column and ALL variants (PASS and non-PASS) are
@@ -211,7 +211,7 @@ e.g. \code{"T/C"}) is added next to the alleles.
 \item Absent values are written as the empty string \code{""} (not \code{NA});
 downstream \code{\link[=gvr_filter]{gvr_filter()}} / \code{\link[=gvr_summary]{gvr_summary()}} treat \code{NA} and \code{""} identically
 as "missing".
-\item Output is tagged with \code{attr(maf, "annotator") = "snpeff"} so downstream
+\item Output is tagged with \code{attr(gvr, "annotator") = "snpeff"} so downstream
 code can distinguish the source.
 }
 
@@ -256,36 +256,36 @@ case-insensitive).
 }
 \examples{
 \dontrun{
-## Folder mode: merge ALL *_NN.snpeff.vcf.gz into one MAF
-maf <- read.gvr.snpeff("/path/to/folder")
+## Folder mode: merge ALL *_NN.snpeff.vcf.gz into one gvr table
+gvr <- read.gvr.snpeff("/path/to/folder")
 
 ## Or use read.gvr() to auto-route (SnpEff inputs are dispatched here):
-maf <- read.gvr("/path/to/folder")
+gvr <- read.gvr("/path/to/folder")
 
 ## Single-file mode: full path
-maf <- read.gvr.snpeff(vcf_path = "/path/to/SAMPLE_01.snpeff.vcf.gz")
+gvr <- read.gvr.snpeff(vcf_path = "/path/to/SAMPLE_01.snpeff.vcf.gz")
 
 ## Multi-file mode by full path
-maf <- read.gvr.snpeff(
+gvr <- read.gvr.snpeff(
   vcf_path = c("/p/S1.snpeff.vcf.gz", "/p/S2.snpeff.vcf.gz"))
 
 ## Pick basenames from a folder (merges these two but ignores other .vcf.gz)
-maf <- read.gvr.snpeff(folder = "/p",
+gvr <- read.gvr.snpeff(folder = "/p",
                        file   = c("S1.snpeff.vcf.gz", "S2.snpeff.vcf.gz"))
 
 ## Disable the DP/GQ genotype filter entirely
-maf <- read.gvr.snpeff("/path/to/folder", min_DP = NULL, min_GQ = NULL)
+gvr <- read.gvr.snpeff("/path/to/folder", min_DP = NULL, min_GQ = NULL)
 
 ## Restrict to genes of interest
-maf <- read.gvr.snpeff("/path/to/folder",
+gvr <- read.gvr.snpeff("/path/to/folder",
                        genes = c("MEN1", "RET", "CDKN1B", "CDC73"))
 
 ## Or use a curated disease panel:
 gvr_list_panels()
-maf <- read.gvr.snpeff("/path/to/folder", panel = "breast cancer")
+gvr <- read.gvr.snpeff("/path/to/folder", panel = "breast cancer")
 
 ## Multiple panels are unioned (deduplicated):
-maf <- read.gvr.snpeff("/path/to/folder",
+gvr <- read.gvr.snpeff("/path/to/folder",
                        panel = c("breast cancer", "hereditary prostate cancer"))
 }
 
@@ -293,7 +293,7 @@ maf <- read.gvr.snpeff("/path/to/folder",
 \seealso{
 \code{\link[=read.gvr]{read.gvr()}} for the VEP-annotated sibling reader (and the recommended
 entrypoint, which auto-routes SnpEff input to this function),
-\code{\link[=gvr_filter]{gvr_filter()}} to filter the returned MAF, \code{\link[=gvr_summary]{gvr_summary()}} to summarise it.
+\code{\link[=gvr_filter]{gvr_filter()}} to filter the returned table, \code{\link[=gvr_summary]{gvr_summary()}} to summarise it.
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},

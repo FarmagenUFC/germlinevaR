@@ -16,7 +16,7 @@ utils::globalVariables(c(
 
   # --- read.gvr(): temp/internal columns created via := ---------------------
   ".rs", ".ref", ".alt",
-  # --- read.gvr(): MAF columns referenced bare inside data.table calls ------
+  # --- read.gvr(): table columns referenced bare inside data.table calls ------
   "Genotype", "Tumor_Seq_Allele1", "Tumor_Seq_Allele2", "ABraOM_AF",
   "dbSNP_RS", "Reference_Allele",
   # --- read.gvr(): ABraOM lookup-table columns (built then keyed/joined) ----
@@ -54,8 +54,8 @@ utils::globalVariables(c(
   "exon_idx", "region_kind", "g_start", "g_end", "length_bp",
   "x_start", "x_end", "kind", "pos", "valid",
   ".__enst__", ".__kind__", ".__valid__", ".__x__", ".__top__",
-  # --- gvr_genepos.plot(): VEP-annotated MAF cols used in transcript pick
-  # MANE_SELECT/CANONICAL/Transcript_ID are MAF columns from read.gvr(),
+  # --- gvr_genepos.plot(): VEP-annotated table cols used in transcript pick
+  # MANE_SELECT/CANONICAL/Transcript_ID are table columns from read.gvr(),
   # referenced bare in dt[...] filters during transcript auto-resolution.
   "MANE_SELECT", "CANONICAL", "Transcript_ID",
   # ggplot aes() reuses 'x' as a column name in dot_df/label_df/stem_df.

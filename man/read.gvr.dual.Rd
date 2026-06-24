@@ -2,7 +2,7 @@
 % Please edit documentation in R/read.gvr.dual.R
 \name{read.gvr.dual}
 \alias{read.gvr.dual}
-\title{Convert dual-annotated germline VCF(s) (VEP + SnpEff) to a maftools-style MAF}
+\title{Convert dual-annotated germline VCF(s) (VEP + SnpEff) to an MAF-like data.table}
 \usage{
 read.gvr.dual(
   folder = ".",
@@ -56,14 +56,14 @@ Default \code{"\\\\.vcf\\\\.gz$"} (matches any \code{.vcf.gz} file). The old def
 \code{"_\\\\d+(\\\\.(vep|snp[eE]ff))?\\\\.vcf\\\\.gz$"} (requires \verb{_NN} suffix) is
 still available by passing it explicitly.}
 
-\item{write_tsv}{Logical; if \code{TRUE}, also write the MAF as a TSV to \code{out_dir}.
+\item{write_tsv}{Logical; if \code{TRUE}, also write the table as a TSV to \code{out_dir}.
 Default \code{FALSE}.}
 
-\item{write_rds}{Logical; if \code{TRUE}, also write the MAF as an \code{.rds} to \code{out_dir}.
+\item{write_rds}{Logical; if \code{TRUE}, also write the table as an \code{.rds} to \code{out_dir}.
 Default \code{FALSE}.}
 
-\item{write_xlsx}{Logical; if \code{TRUE}, also write the MAF as an \code{.xlsx} workbook
-(single \code{"MAF"} sheet) to \code{out_dir}. Requires the \pkg{openxlsx} package (a
+\item{write_xlsx}{Logical; if \code{TRUE}, also write the table as an \code{.xlsx} workbook
+(single \code{"gvr_table"} sheet) to \code{out_dir}. Requires the \pkg{openxlsx} package (a
 \code{Suggests} dependency); if it is not installed the export is skipped with a
 warning. Default \code{FALSE}. Note: germline MAFs can be very large; Excel handles
 them but the file is big and slow to open, so \code{write_rds}/\code{write_tsv} are better
@@ -78,7 +78,7 @@ from the input.}
 \item{chunk_size}{Integer; number of VCF records processed per chunk (controls peak
 memory and progress granularity). Default \code{25000L}.}
 
-\item{ncbi_build}{Reference build label written into the MAF \code{NCBI_Build}
+\item{ncbi_build}{Reference build label written into the table \code{NCBI_Build}
 column. Default \code{"auto"}: the function inspects the input VCF header
 (VEP \verb{assembly=} / SnpEff \code{SnpEffCmd} database token / first \verb{##contig=}
 length) and picks the canonical label among \code{"GRCh38"}, \code{"GRCh37"},
@@ -144,8 +144,8 @@ An unknown name raises an error listing the available panels. \code{NULL}
 omitting the argument.}
 
 \item{vc_nonSyn}{Logical or character vector. Controls which
-\code{Variant_Classification} values are retained (mirroring maftools'
-\code{vc_nonSyn} argument). \code{FALSE} (default) keeps ALL variant classifications.
+\code{Variant_Classification} values are retained (mirroring the
+convention of the \code{vc_nonSyn} argument). \code{FALSE} (default) keeps ALL variant classifications.
 \code{TRUE} keeps only protein-altering classes (High/Moderate VEP consequences):
 \code{"Frame_Shift_Del"}, \code{"Frame_Shift_Ins"}, \code{"Splice_Site"},
 \code{"Translation_Start_Site"}, \code{"Nonsense_Mutation"}, \code{"Nonstop_Mutation"},
@@ -154,7 +154,7 @@ pass a custom character vector of classifications to keep. Rows with
 missing/blank \code{Variant_Classification} are always removed when this filter
 is active.}
 
-\item{canonical_only}{Logical; when \code{TRUE} (default), drops MAF rows whose
+\item{canonical_only}{Logical; when \code{TRUE} (default), drops table rows whose
 chosen VEP CSQ block has \code{CANONICAL != "YES"}. read.gvr() already prefers
 \code{CANONICAL=YES} when ranking CSQ blocks; this filter discards the
 fallback rows emitted when no canonical block exists for a given ALT.
@@ -183,7 +183,7 @@ A \code{data.table} with one row per ALT allele, ~124 columns. Carries
 \description{
 Converts single-sample germline VCFs that carry \strong{both} Ensembl VEP \code{CSQ}
 and SnpEff \code{ANN} annotation INFO fields on the same records (typical
-workflow: SnpEff -> VEP, or vice versa). Returns a maftools-style
+workflow: SnpEff -> VEP, or vice versa). Returns an MAF-like
 \code{data.table} with one row per ALT allele, using VEP's transcript pick as
 the spine and adding SnpEff-derived comparison columns and LoF/NMD
 predictions.
@@ -194,7 +194,7 @@ This function is the dual-annotator sibling of \code{\link[=read.gvr]{read.gvr()
 VCF header.
 }
 \details{
-Field-level priority: \strong{VEP wins.} The canonical MAF columns and all 80
+Field-level priority: \strong{VEP wins.} The canonical table columns and all 80
 (or 81 with \code{FREQS}) VEP-style CSQ columns hold VEP's pick exclusively.
 SnpEff data is added in additional columns:
 \itemize{
@@ -234,13 +234,13 @@ option reference.
 \examples{
 \dontrun{
   # Auto-route: read.gvr() detects ANN+CSQ and delegates here.
-  maf <- read.gvr("/path/to/dual-annotated-vcfs/")
+  gvr <- read.gvr("/path/to/dual-annotated-vcfs/")
 
   # Or call directly:
-  maf <- read.gvr.dual(folder = "/path/to/dual-annotated-vcfs/")
+  gvr <- read.gvr.dual(folder = "/path/to/dual-annotated-vcfs/")
 
   # Compare VEP vs SnpEff picks on high-impact variants:
-  maf[IMPACT == "HIGH" & snpeff_impact != "" & IMPACT != snpeff_impact,
+  gvr[IMPACT == "HIGH" & snpeff_impact != "" & IMPACT != snpeff_impact,
       .(Hugo_Symbol, Consequence, IMPACT, snpeff_gene, snpeff_consequence,
         snpeff_impact)]
 }

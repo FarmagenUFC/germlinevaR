@@ -110,15 +110,15 @@
   out
 }
 
-#' Per-gene amino-acid lollipop plot for a germline MAF
+#' Per-gene amino-acid lollipop plot for a germline gvr table
 #'
 #' @description
 #' Builds a ggplot2 lollipop plot of every protein-altering variant of a single
-#' gene in a `read.gvr()` / `gvr_filter()` / `gvr_novel()` MAF. Each amino-acid
+#' gene in a `read.gvr()` / `gvr_filter()` / `gvr_novel()` table. Each amino-acid
 #' position is a stem; each sample-variant carried at that position is one dot
 #' stacked on the stem; dots are coloured by `Variant_Classification` using the
 #' package's colourblind-safe palette. A horizontal protein-body bar is drawn
-#' along the x-axis (`maftools::lollipopPlot` style); protein domains are
+#' along the x-axis (lollipop-style); protein domains are
 #' overlaid as coloured rectangles on top of that bar. By default, domains are
 #' fetched automatically from the EBI InterPro REST API (`domains = "auto"`).
 #' Pass `domains = NULL` for a plain bar with no domains, or supply a
@@ -214,7 +214,7 @@
 #' object. The function always returns the ggplot2 object regardless of whether
 #' files were written.
 #'
-#' @param maf A `data.table` / `data.frame` MAF from [read.gvr()], or any
+#' @param gvr An MAF-like `data.table` / `data.frame` from [read.gvr()], or any
 #'   compatible table with at least `Hugo_Symbol`, `HGVSp_Short`,
 #'   `Variant_Classification`, `Tumor_Sample_Barcode`, `Protein_position`.
 #' @param gene Character(1). The gene symbol (matched against `Hugo_Symbol`).
@@ -229,7 +229,7 @@
 #'       see `protein_length_strict` to opt out.
 #'     \item User-supplied value when `protein_length_strict = TRUE`, or
 #'       when UniProt is unreachable.
-#'     \item Mode of the `<pos>/<total>` totals parsed from the MAF
+#'     \item Mode of the `<pos>/<total>` totals parsed from the table
 #'       `Protein_position` column (entries without a `/` are skipped).
 #'     \item `ceiling(max(positions) * 1.1)` fallback.
 #'   }
@@ -382,8 +382,8 @@
 #'
 #' @examples
 #' \dontrun{
-#'   maf <- read.gvr("vcf_dir/", pattern = "\\.vep\\.vcf\\.gz$")
-#'   f   <- gvr_filter(maf)
+#'   gvr <- read.gvr("vcf_dir/", pattern = "\\.vep\\.vcf\\.gz$")
+#'   f   <- gvr_filter(gvr)
 #'
 #'   ## default: auto-fetches InterPro domains, auto-saves to "."
 #'   p <- gvr_lollipop(f, "TP53")
@@ -467,7 +467,7 @@
 #' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_rect geom_text annotate scale_color_manual scale_fill_identity scale_x_continuous scale_y_continuous labs theme_classic theme element_text element_blank ggsave
 #' @importFrom grDevices svg dev.off
 #' @export
-gvr_lollipop <- function(maf, gene,
+gvr_lollipop <- function(gvr, gene,
                          vc_keep        = NULL,
                          protein_length = NULL,
                          protein_length_strict = FALSE,
@@ -1000,8 +1000,8 @@ gvr_lollipop <- function(maf, gene,
   }
 
   # ---- Input validation ----
-  if (!is.data.frame(maf)) {
-    stop("gvr_lollipop: 'maf' must be a data.frame / data.table.")
+  if (!is.data.frame(gvr)) {
+    stop("gvr_lollipop: 'gvr' must be a data.frame / data.table.")
   }
   if (!is.character(gene) || length(gene) != 1L || !nzchar(gene)) {
     stop("gvr_lollipop: 'gene' must be a single non-empty string.")
@@ -1015,7 +1015,7 @@ gvr_lollipop <- function(maf, gene,
 
   req_cols <- c("Hugo_Symbol", "HGVSp_Short", "Variant_Classification",
                 "Tumor_Sample_Barcode", "Protein_position")
-  miss_req <- req_cols[!req_cols %in% names(maf)]
+  miss_req <- req_cols[!req_cols %in% names(gvr)]
   if (length(miss_req) > 0L) {
     stop(sprintf("gvr_lollipop: required column(s) not found: %s",
                  paste(miss_req, collapse = ", ")))
@@ -1055,19 +1055,19 @@ gvr_lollipop <- function(maf, gene,
   }
 
   # ---- Subset to gene + protein-altering ----
-  dt <- if (data.table::is.data.table(maf)) data.table::copy(maf) else data.table::as.data.table(maf)
+  dt <- if (data.table::is.data.table(gvr)) data.table::copy(gvr) else data.table::as.data.table(gvr)
   .gene_sym <- gene
   dt <- dt[Hugo_Symbol == .gene_sym]
 
   if (nrow(dt) == 0L) {
-    warning(sprintf("gvr_lollipop: no rows for gene '%s' in input MAF", gene))
+    warning(sprintf("gvr_lollipop: no rows for gene '%s' in input table", gene))
     return(.empty_plot(gene))
   }
   if (isTRUE(verbose)) message(sprintf("gvr_lollipop: '%s' - %d rows in gene", gene, nrow(dt)))
 
   dt <- dt[Variant_Classification %in% vc_use]
   if (nrow(dt) == 0L) {
-    warning(sprintf("gvr_lollipop: no protein-altering variants for '%s' in input MAF", gene))
+    warning(sprintf("gvr_lollipop: no protein-altering variants for '%s' in input table", gene))
     return(.empty_plot(gene))
   }
   if (isTRUE(verbose)) message(sprintf("gvr_lollipop: '%s' - %d rows after VC filter", gene, nrow(dt)))
@@ -1109,7 +1109,7 @@ gvr_lollipop <- function(maf, gene,
   }
   protein_length <- max(protein_length, max(dt$.__aa_pos__, na.rm = TRUE))
 
-  # ---- Phase L: precedence resolver — UniProt > user-supplied > MAF inference ----
+  # ---- Phase L: precedence resolver — UniProt > user-supplied > table inference ----
   # Pull the UniProt canonical length (already captured for auto; standalone fetch otherwise).
   # Hotfix 1: if auto-dispatch returned a domains df without uniprot_length
   # attribute (e.g. pre-Phase-L cache hit, in-memory OR on-disk), the capture

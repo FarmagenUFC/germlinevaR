@@ -211,14 +211,14 @@
 #'
 #' Use [gvr_panel_genes()] to retrieve the gene vector for a specific
 #' disease, or pass the panel name (or vector of names) to
-#' [read.gvr()] via its `panel` argument to filter a MAF.
+#' [read.gvr()] via its `panel` argument to filter a gvr table.
 #'
 #' @examples
 #' gvr_list_panels()
 #'
 #' ## Use in read.gvr() to keep only breast-cancer genes
 #' \dontrun{
-#' maf <- read.gvr("/path/to/folder", panel = "breast cancer")
+#' gvr <- read.gvr("/path/to/folder", panel = "breast cancer")
 #' }
 #'
 #' @seealso [gvr_panel_genes()], [read.gvr()].
@@ -257,7 +257,7 @@ gvr_list_panels <- function() {
 #'
 #' \dontrun{
 #' ## Use in read.gvr()
-#' maf <- read.gvr("/path/to/folder",
+#' gvr <- read.gvr("/path/to/folder",
 #'                 panel = c("breast cancer", "hereditary prostate cancer"))
 #' }
 #'
