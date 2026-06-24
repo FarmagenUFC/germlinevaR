@@ -158,13 +158,9 @@ is active.}
 chosen VEP CSQ block has \code{CANONICAL != "YES"}. read.gvr() already prefers
 \code{CANONICAL=YES} when ranking CSQ blocks; this filter discards the
 fallback rows emitted when no canonical block exists for a given ALT.
-On a typical exome this removes ~10-15\% of rows (S1 baseline: 13.65\%);
-wall-time savings are modest (under 10\%) because the CSQ string still
-has to be read and parsed to know if a row is canonical. Set to \code{FALSE}
-to retain all rows (the Phase N+3 behaviour). For SnpEff-annotated
-input, the ANN field has no CANONICAL flag — \code{canonical_only=TRUE} is
-ignored with a warning, and the result is the same as
-\code{canonical_only=FALSE}.}
+For SnpEff-annotated input, the ANN field has no CANONICAL flag —
+\code{canonical_only=TRUE} is ignored with a warning, and the result is the
+same as \code{canonical_only=FALSE}.}
 
 \item{ncores}{Integer; number of worker processes for converting MULTIPLE input
 files in parallel via \code{\link[parallel:mcdummies]{parallel::mclapply()}} (fork-based; Unix/macOS only).

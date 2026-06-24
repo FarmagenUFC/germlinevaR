@@ -19,7 +19,7 @@ knitr::opts_chunk$set(
 
 **germlinevaR** is a self-contained R toolchain for single-sample
 germline VCFs annotated with Ensembl VEP, SnpEff, or both. It turns
-on-disk VCFs into a maftools-style MAF `data.table`, filters them with
+on-disk VCFs into an MAF-like `data.table`, filters them with
 a modular set of toggles, isolates candidate novel variants, summarises
 a cohort, and renders publication-ready per-gene plots — all inside one
 R session, without an external pipeline.
@@ -39,7 +39,7 @@ library(germlinevaR)
 library(data.table)
 ```
 
-## 1. Reading a VCF into a MAF
+## 1. Reading a VCF into an MAF-like table
 
 `read.gvr()` is the auto-routing entry point: it inspects the VCF header,
 detects whether annotations come from VEP, SnpEff, or both, and dispatches
@@ -47,7 +47,7 @@ to the correct sibling reader (`read.gvr`, `read.gvr.snpeff`, or
 `read.gvr.dual`). When you read your own data, point `read.gvr()` at the
 folder containing your VCF file(s) -- the function discovers every
 `*.vcf.gz` in that directory, auto-detects the annotator on each file,
-and returns one MAF row per ALT allele. All files in a batch must share
+and returns one MAF-like row per ALT allele. All files in a batch must share
 the same annotator; mixed VEP/SnpEff folders are rejected. For this
 vignette we stage the shipped example into a temporary directory and
 read it from there:
@@ -60,15 +60,15 @@ file.copy(
   file.path(vcf_dir, "example.vep.vcf.gz")
 )
 
-maf <- read.gvr(vcf_dir, verbose = FALSE)
-dim(maf)
+gvr <- read.gvr(vcf_dir, verbose = FALSE)
+dim(gvr)
 ```
 
 The returned `data.table` carries one row per ALT allele on the
 most-severe transcript, with a canonical 116-column schema:
 
-```{r show-maf}
-head(maf[, .(Hugo_Symbol, Variant_Classification, IMPACT,
+```{r show-gvr}
+head(gvr[, .(Hugo_Symbol, Variant_Classification, IMPACT,
              Tumor_Sample_Barcode)])
 ```
 
@@ -81,7 +81,7 @@ independent toggles. Defaults drop variants common in gnomAD exomes,
 ClinVar annotation or no annotation at all:
 
 ```{r filter-default}
-filt <- gvr_filter(maf, verbose = FALSE)
+filt <- gvr_filter(gvr, verbose = FALSE)
 dim(filt)
 table(filt$Variant_Classification)
 ```
@@ -95,7 +95,7 @@ gvr_list_panels()                    # registered panels
 panel <- gvr_panel_genes("breast cancer")
 panel
 
-filt_bc <- gvr_filter(maf, genes = panel, verbose = FALSE)
+filt_bc <- gvr_filter(gvr, genes = panel, verbose = FALSE)
 filt_bc[, .(Hugo_Symbol, HGVSp_Short, Variant_Classification, IMPACT)]
 ```
 
@@ -110,7 +110,7 @@ dbSNP rsID **and** no allele frequency in gnomAD, 1000 Genomes, or
 ABraOM. These are the variants most worth following up:
 
 ```{r novel}
-novel <- gvr_novel(maf, verbose = FALSE)
+novel <- gvr_novel(gvr, verbose = FALSE)
 dim(novel)
 novel[, .(Hugo_Symbol, HGVSp_Short, Variant_Classification, IMPACT)]
 ```
@@ -128,7 +128,7 @@ disable those side effects here to keep the vignette fast:
 
 ```{r summary}
 summ <- gvr_summary(
-  maf,
+  gvr,
   save_excel = FALSE, save_pdf = FALSE, save_html = FALSE,
   verbose    = FALSE
 )
@@ -148,12 +148,12 @@ germlinevaR produces several families of plots: per-gene
 **HTML-dashboard panels** that `gvr_summary(save_html = TRUE)` embeds
 in its interactive output (also writable as standalone PNGs via
 `gvr_sum_plots()`). The figures below were rendered from a real cohort
-— the tiny example MAF shipped with the package is too sparse for a
+— the tiny example MAF-like table shipped with the package is too sparse for a
 meaningful top-genes variant matrix or dashboard, so those two families are described
-in the text only; call the functions yourself against your own MAF to
+in the text only; call the functions yourself against your own MAF-like table to
 reproduce the layouts.
 
-**Protein-domain lollipop** — `gvr_lollipop(maf, gene = "TP53")`
+**Protein-domain lollipop** — `gvr_lollipop(gvr, gene = "TP53")`
 draws variants along the protein, with InterPro domains fetched and
 cached on the fly:
 
@@ -161,7 +161,7 @@ cached on the fly:
 knitr::include_graphics("figures/lollipop_TP53.png")
 ```
 
-**Gene-structure lollipop** — `gvr_genepos.plot(maf, gene = "BRCA1")`
+**Gene-structure lollipop** — `gvr_genepos.plot(gvr, gene = "BRCA1")`
 draws variants along the gene's cDNA, with exon/intron/UTR regions
 resolved via Ensembl REST or a local GTF:
 
@@ -169,7 +169,7 @@ resolved via Ensembl REST or a local GTF:
 knitr::include_graphics("figures/genepos_BRCA1.png")
 ```
 
-**Top-genes variant matrix and dashboard** — `gvr_plot(maf, top_n = 20, out_dir = ".")`
+**Top-genes variant matrix and dashboard** — `gvr_plot(gvr, top_n = 20, out_dir = ".")`
 writes a `ComplexHeatmap` top-genes variant matrix PNG of the top mutated genes across
 samples, coloured by variant classification.
 `gvr_sum_plots()` writes the same panels that

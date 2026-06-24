@@ -5,8 +5,13 @@
 #' CNN tranches -> Ensembl VEP, hg38) into an MAF-like table and returns it as
 #' an in-memory `data.table` for downstream filtering ([gvr_filter()]) and
 #' summarisation ([gvr_summary()]). In folder mode it finds every per-sample VCF,
-#' converts each, and row-binds them into one combined gvr table. The conversion uses base R
-#' + \pkg{data.table} only - no external annotation-package dependency.
+#' converts each, and row-binds them into one combined gvr table. The conversion
+#' uses base R and \pkg{data.table} only - no external annotation-package
+#' dependency. This is the recommended entry point for all germline VCFs:
+#' [read.gvr()] inspects each input's INFO tags and, when needed, delegates to
+#' [read.gvr.snpeff()] for SnpEff-annotated VCFs or [read.gvr.dual()] for VCFs
+#' carrying both VEP and SnpEff annotations, so a single call handles every
+#' annotator combination.
 #'
 #' @details
 #' Output and behaviour:
@@ -142,13 +147,9 @@
 #'   chosen VEP CSQ block has `CANONICAL != "YES"`. read.gvr() already prefers
 #'   `CANONICAL=YES` when ranking CSQ blocks; this filter discards the
 #'   fallback rows emitted when no canonical block exists for a given ALT.
-#'   On a typical exome this removes ~10-15% of rows (S1 baseline: 13.65%);
-#'   wall-time savings are modest (under 10%) because the CSQ string still
-#'   has to be read and parsed to know if a row is canonical. Set to `FALSE`
-#'   to retain all rows (the Phase N+3 behaviour). For SnpEff-annotated
-#'   input, the ANN field has no CANONICAL flag — `canonical_only=TRUE` is
-#'   ignored with a warning, and the result is the same as
-#'   `canonical_only=FALSE`.
+#'   For SnpEff-annotated input, the ANN field has no CANONICAL flag —
+#'   `canonical_only=TRUE` is ignored with a warning, and the result is the
+#'   same as `canonical_only=FALSE`.
 #' @param ncores Integer; number of worker processes for converting MULTIPLE input
 #'   files in parallel via [parallel::mclapply()] (fork-based; Unix/macOS only).
 #'   Default `1L` runs sequentially and is byte-identical to previous behaviour.
@@ -162,7 +163,9 @@
 #'   `Genotype` and `ABraOM_AF` columns. TSV/RDS files are written as a side
 #'   effect when `write_tsv`/`write_rds` is `TRUE`.
 #'
-#' @seealso [gvr_filter()] to filter the returned table, [gvr_summary()] to summarise it.
+#' @seealso [gvr_filter()] to filter the returned table, [gvr_summary()] to summarise it,
+#'   [read.gvr.snpeff()] for SnpEff-annotated VCFs, [read.gvr.dual()] for VCFs with both
+#'   VEP and SnpEff annotations.
 #' @family germlinevaR
 #' @author germlinevaR authors
 #'
@@ -185,7 +188,7 @@
 #' gvr <- read.gvr(folder = "/p",
 #'                 file   = c("S1.vep.vcf.gz", "S2.vep.vcf.gz"))
 #'
-#' ## Keep non-canonical CSQ rows too (Phase N+3 behaviour)
+#' ## Keep non-canonical CSQ rows too
 #' gvr <- read.gvr("/path/to/folder", canonical_only = FALSE)
 #'
 #' ## DP/GQ genotype filter (ON by default; mirrors

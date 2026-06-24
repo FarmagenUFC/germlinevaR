@@ -12,9 +12,9 @@ status](https://img.shields.io/badge/CRAN-not%20yet-orange.svg)](https://CRAN.R-
 <!-- badges: end -->
 
 A self-contained toolchain for single-sample germline VCFs annotated
-with Ensembl VEP, SnpEff, or both — from on-disk VCF to filtered MAF,
-candidate novel variants, cohort summary, a top-genes variant matrix,
-and per-gene protein-domain lollipops, all in one R session.
+with Ensembl VEP, SnpEff, or both — from on-disk VCF to filtered gvr
+table, candidate novel variants, cohort summary, a top-genes variant
+matrix, and per-gene protein-domain lollipops, all in one R session.
 
 ## Hero example
 
@@ -22,9 +22,9 @@ and per-gene protein-domain lollipops, all in one R session.
 library(germlinevaR)
 
 vcf_dir <- system.file("extdata", package = "germlinevaR")
-maf     <- read.gvr(vcf_dir)             # 62 rows x 116 cols
-filt    <- gvr_filter(maf)               # 7 rows (default thresholds)
-novel   <- gvr_novel(maf)                # 3 candidates with no rsID / no AF
+gvr     <- read.gvr(vcf_dir)             # 62 rows x 116 cols
+filt    <- gvr_filter(gvr)               # 7 rows (default thresholds)
+novel   <- gvr_novel(gvr)                # 3 candidates with no rsID / no AF
 summ    <- gvr_summary(filt, out_dir = tempdir())  # XLSX + PDF + HTML dashboard + 8 tables
 gvr_plot(filt, top_n = 20, out_dir = tempdir())    # top-genes variant matrix (PNG)
 ```
@@ -45,10 +45,10 @@ but is not required to read them.
 ## What it does
 
 germlinevaR turns one or more per-sample VEP- or SnpEff-annotated VCFs
-into a maftools-style MAF `data.table` (one row per ALT allele, one
-most-severe transcript per allele) using three sibling readers that
-share a canonical 80-field schema and are auto-routed from the VCF
-header. From there you get:
+into an MAF-like `data.table` (one row per ALT allele, one most-severe
+transcript per allele) using three sibling readers that share a
+canonical 80-field schema and are auto-routed from the VCF header. From
+there you get:
 
 - a tunable, modular filter (`gvr_filter`) over population AF, clinical
   significance, biotype, variant classification, genotype, and panel;

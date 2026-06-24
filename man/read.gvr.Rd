@@ -158,13 +158,9 @@ is active.}
 chosen VEP CSQ block has \code{CANONICAL != "YES"}. read.gvr() already prefers
 \code{CANONICAL=YES} when ranking CSQ blocks; this filter discards the
 fallback rows emitted when no canonical block exists for a given ALT.
-On a typical exome this removes ~10-15\% of rows (S1 baseline: 13.65\%);
-wall-time savings are modest (under 10\%) because the CSQ string still
-has to be read and parsed to know if a row is canonical. Set to \code{FALSE}
-to retain all rows (the Phase N+3 behaviour). For SnpEff-annotated
-input, the ANN field has no CANONICAL flag — \code{canonical_only=TRUE} is
-ignored with a warning, and the result is the same as
-\code{canonical_only=FALSE}.}
+For SnpEff-annotated input, the ANN field has no CANONICAL flag —
+\code{canonical_only=TRUE} is ignored with a warning, and the result is the
+same as \code{canonical_only=FALSE}.}
 
 \item{ncores}{Integer; number of worker processes for converting MULTIPLE input
 files in parallel via \code{\link[parallel:mcdummies]{parallel::mclapply()}} (fork-based; Unix/macOS only).
@@ -187,10 +183,13 @@ Converts VEP-annotated, single-sample germline VCFs (GATK HaplotypeCaller ->
 CNN tranches -> Ensembl VEP, hg38) into an MAF-like table and returns it as
 an in-memory \code{data.table} for downstream filtering (\code{\link[=gvr_filter]{gvr_filter()}}) and
 summarisation (\code{\link[=gvr_summary]{gvr_summary()}}). In folder mode it finds every per-sample VCF,
-converts each, and row-binds them into one combined gvr table. The conversion uses base R
-\itemize{
-\item \pkg{data.table} only - no external annotation-package dependency.
-}
+converts each, and row-binds them into one combined gvr table. The conversion
+uses base R and \pkg{data.table} only - no external annotation-package
+dependency. This is the recommended entry point for all germline VCFs:
+\code{\link[=read.gvr]{read.gvr()}} inspects each input's INFO tags and, when needed, delegates to
+\code{\link[=read.gvr.snpeff]{read.gvr.snpeff()}} for SnpEff-annotated VCFs or \code{\link[=read.gvr.dual]{read.gvr.dual()}} for VCFs
+carrying both VEP and SnpEff annotations, so a single call handles every
+annotator combination.
 }
 \details{
 Output and behaviour:
@@ -247,7 +246,7 @@ gvr <- read.gvr(vcf_path = c("/p/S1.vep.vcf.gz", "/p/S2.vep.vcf.gz"))
 gvr <- read.gvr(folder = "/p",
                 file   = c("S1.vep.vcf.gz", "S2.vep.vcf.gz"))
 
-## Keep non-canonical CSQ rows too (Phase N+3 behaviour)
+## Keep non-canonical CSQ rows too
 gvr <- read.gvr("/path/to/folder", canonical_only = FALSE)
 
 ## DP/GQ genotype filter (ON by default; mirrors
@@ -284,7 +283,9 @@ gvr[FILTER == "PASS" & Variant_Classification == "Missense_Mutation"]
 
 }
 \seealso{
-\code{\link[=gvr_filter]{gvr_filter()}} to filter the returned table, \code{\link[=gvr_summary]{gvr_summary()}} to summarise it.
+\code{\link[=gvr_filter]{gvr_filter()}} to filter the returned table, \code{\link[=gvr_summary]{gvr_summary()}} to summarise it,
+\code{\link[=read.gvr.snpeff]{read.gvr.snpeff()}} for SnpEff-annotated VCFs, \code{\link[=read.gvr.dual]{read.gvr.dual()}} for VCFs with both
+VEP and SnpEff annotations.
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},

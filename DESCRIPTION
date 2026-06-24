@@ -9,7 +9,7 @@ Maintainer: Thiago Loreto Matos <farmagenufc@gmail.com>
 Description: 
     A self-contained toolchain for single-sample germline variant calls
     annotated with Ensembl VEP, SnpEff, or both. Converts per-sample VCFs
-    into a maftools-style MAF 'data.table' (one row per ALT allele, one
+    into an MAF-like 'data.table' (one row per ALT allele, one
     most-severe transcript per allele) via three sibling readers that
     share a canonical 80-field schema and are auto-routed from the VCF
     header. Cohort folders are processed in parallel with a live
