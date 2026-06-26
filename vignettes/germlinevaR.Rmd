@@ -2,8 +2,19 @@
 title: "germlinevaR walkthrough"
 author:
   - name: Thiago Loreto Matos
-    affiliation: FarmagenUFC
+    affiliation: |
+      Pharmacogenetics Laboratory, Drug Research and Development Center,
+      Department of Physiology and Pharmacology, Federal University of Ceará,
+      Fortaleza, 60430-160, Brazil
+    email: thiago-loreto@hotmail.com
+  - name: Felipe Pantoja Mesquita
+    affiliation: |
+      Pharmacogenetics Laboratory, Drug Research and Development Center,
+      Department of Physiology and Pharmacology, Federal University of Ceará,
+      Fortaleza, 60430-160, Brazil
+    email: felipemesquita05@gmail.com
 date: "`r Sys.Date()`"
+package: germlinevaR
 output:
   BiocStyle::html_document:
     toc: true
