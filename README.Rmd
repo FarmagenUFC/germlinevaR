@@ -118,10 +118,13 @@ self-contained interactive HTML dashboard with plotly drill-downs and
 DT tables. Call `gvr_summary(..., save_html = TRUE)` against your own
 cohort to render them.
 
-## Vignette
+## Documentation
 
-See `vignette("germlinevaR")` for a 3–5 minute end-to-end walkthrough on
-the shipped example data.
+- **Full vignette (HTML):** [germlinevaR walkthrough](https://farmagenufc.github.io/germlinevaR/articles/germlinevaR.html)
+- After installing the package, open the vignette locally with:
+  ``` r
+  vignette("germlinevaR", package = "germlinevaR")
+  ```
 
 ## Citation
 

@@ -50,7 +50,7 @@ Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.0.0
 RoxygenNote: 7.3.3
 NeedsCompilation: no
-Packaged: 2026-06-26 21:18:33 UTC; root
+Packaged: 2026-06-26 22:33:48 UTC; root
 Author: Thiago Loreto Matos [aut, cre],
   Felipe Pantoja Mesquita [aut]
 Maintainer: Thiago Loreto Matos <thiago-loreto@hotmail.com>
