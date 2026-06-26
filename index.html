@@ -62,21 +62,9 @@
 
 <p>A self-contained toolchain for single-sample germline VCFs annotated with Ensembl VEP, SnpEff, or both — from on-disk VCF to filtered gvr table, candidate novel variants, cohort summary, a top-genes variant matrix, and per-gene protein-domain lollipops, all in one R session.</p>
 <div class="section level2">
-<h2 id="documentation">Documentation<a class="anchor" aria-label="anchor" href="#documentation"></a>
-</h2>
-<ul>
-<li><p><strong>Full vignette (HTML):</strong> <a href="https://farmagenufc.github.io/germlinevaR/articles/germlinevaR.html">germlinevaR vignette</a> <em>(rendered version available once the pkgdown site is deployed)</em></p></li>
-<li>
-<p>After installing the package, open the vignette locally with:</p>
-<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/vignette.html" class="external-link">vignette</a></span><span class="op">(</span><span class="st">"germlinevaR"</span>, package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span></span></code></pre></div>
-</li>
-</ul>
-</div>
-<div class="section level2">
 <h2 id="hero-example">Hero example<a class="anchor" aria-label="anchor" href="#hero-example"></a>
 </h2>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/FarmagenUFC/germlinevaR" class="external-link">germlinevaR</a></span><span class="op">)</span></span>
 <span></span>
 <span><span class="va">vcf_dir</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span></span>
@@ -89,14 +77,13 @@
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>Install the release version from Bioconductor:</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="fu"><a href="https://rdrr.io/r/base/ns-load.html" class="external-link">requireNamespace</a></span><span class="op">(</span><span class="st">"BiocManager"</span>, quietly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span>
+<p>germlinevaR is submitted to Bioconductor. Once accepted, install the release version with:</p>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw">if</span> <span class="op">(</span><span class="op">!</span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">require</a></span><span class="op">(</span><span class="st"><a href="https://bioconductor.github.io/BiocManager/" class="external-link">"BiocManager"</a></span>, quietly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span></span>
 <span>    <span class="fu"><a href="https://rdrr.io/r/utils/install.packages.html" class="external-link">install.packages</a></span><span class="op">(</span><span class="st">"BiocManager"</span><span class="op">)</span></span>
-<span></span>
 <span><span class="fu">BiocManager</span><span class="fu">::</span><span class="fu"><a href="https://bioconductor.github.io/BiocManager/reference/install.html" class="external-link">install</a></span><span class="op">(</span><span class="st">"germlinevaR"</span><span class="op">)</span></span></code></pre></div>
-<p>Install the development version from GitHub:</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<p>The in-development version on GitHub:</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># install.packages("remotes")</span></span>
 <span><span class="fu">remotes</span><span class="fu">::</span><span class="fu">install_github</span><span class="op">(</span><span class="st">"FarmagenUFC/germlinevaR"</span><span class="op">)</span></span></code></pre></div>
 <p>System requirements: R (&gt;= 4.4.0). Optional: <code>bgzip</code> from <a href="https://www.htslib.org/" class="external-link">HTSlib</a> is convenient for re-bgzipping VCFs but is not required to read them.</p>
@@ -173,13 +160,6 @@
 </table>
 </div>
 <div class="section level2">
-<h2 id="top-genes-variant-matrix">Top-genes variant matrix<a class="anchor" aria-label="anchor" href="#top-genes-variant-matrix"></a>
-</h2>
-<p><code><a href="reference/gvr_plot.html">gvr_plot()</a></code> produces a <code>ComplexHeatmap</code>-based cohort overview: each row is a gene, each column a sample, and each cell is coloured by the most severe variant class observed. The top bar shows per-sample variant impact (HIGH / MODERATE / LOW / MODIFIER); the right bar shows per-gene total burden. The figure below uses illustrative multi-sample data:</p>
-<p>
-<img src="articles/figures/gvr_plot_demo.png" alt="Top-genes variant matrix — illustrative multi-sample data" width="90%"></p>
-</div>
-<div class="section level2">
 <h2 id="per-gene-plots">Per-gene plots<a class="anchor" aria-label="anchor" href="#per-gene-plots"></a>
 </h2>
 <p>Protein-domain lollipop (<code>gvr_lollipop</code>) and gene-structure lollipop (<code>gvr_genepos.plot</code>) for, e.g., TP53 and BRCA1:</p>
@@ -188,9 +168,16 @@
 <p><code><a href="reference/gvr_summary.html">gvr_summary()</a></code> also writes the same panels into a multi-page PDF and a self-contained interactive HTML dashboard with plotly drill-downs and DT tables. Call <code>gvr_summary(..., save_html = TRUE)</code> against your own cohort to render them.</p>
 </div>
 <div class="section level2">
-<h2 id="vignette">Vignette<a class="anchor" aria-label="anchor" href="#vignette"></a>
+<h2 id="documentation">Documentation<a class="anchor" aria-label="anchor" href="#documentation"></a>
 </h2>
-<p>See <code><a href="articles/germlinevaR.html">vignette("germlinevaR")</a></code> for a 3–5 minute end-to-end walkthrough on the shipped example data.</p>
+<ul>
+<li><p><strong>Full vignette (HTML):</strong> <a href="https://farmagenufc.github.io/germlinevaR/articles/germlinevaR.html">germlinevaR walkthrough</a></p></li>
+<li>
+<p>After installing the package, open the vignette locally with:</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/vignette.html" class="external-link">vignette</a></span><span class="op">(</span><span class="st">"germlinevaR"</span>, package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span></span></code></pre></div>
+</li>
+</ul>
 </div>
 <div class="section level2">
 <h2 id="citation">Citation<a class="anchor" aria-label="anchor" href="#citation"></a>
@@ -200,7 +187,7 @@
 <div class="section level2">
 <h2 id="license">License<a class="anchor" aria-label="anchor" href="#license"></a>
 </h2>
-<p>MIT (c) 2025 Thiago Loreto Matos, Felipe Pantoja Mesquita. See <code>LICENSE</code>.</p>
+<p>MIT (c) 2026 Thiago Loreto Matos, Felipe Pantoja Mesquita. See <code>LICENSE</code>.</p>
 </div>
 </div>
   </main><aside class="col-md-3"><div class="links">

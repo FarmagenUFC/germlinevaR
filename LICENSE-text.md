@@ -1,4 +1,4 @@
 # License
 
     YEAR: 2026
-    COPYRIGHT HOLDER: Thiago Loreto Matos
+    COPYRIGHT HOLDER: Thiago Loreto Matos, Felipe Pantoja Mesquita

@@ -425,7 +425,7 @@ top of the protein-body bar up to the top of the stack.</p>
 a position, the most-common one is shown followed by <code>(+N more)</code>. Set
 <code>label_top = 0</code> to disable labels, <code>label_top = Inf</code> to label every
 position. If <span class="pkg">ggrepel</span> is installed, labels are placed via
-<code><a href="https://ggrepel.slowkow.com/reference/geom_text_repel.html" class="external-link">ggrepel::geom_text_repel()</a></code>; otherwise a plain <code><a href="https://ggplot2.tidyverse.org/reference/geom_text.html" class="external-link">geom_text()</a></code> is used.</p>
+<code><a href="https://ggrepel.slowkow.com/reference/geom_text_repel.html" class="external-link">ggrepel::geom_text_repel()</a></code>; otherwise a plain <code>geom_text()</code> is used.</p>
 <p>Protein-body bar: a thin horizontal rectangle is drawn straddling <code>y = 0</code>
 from x = 0 to x = <code>protein_length</code>. Bar height scales with the visible
 stack height (about 4 percent of the y range, clamped to <code>[0.15, 0.5]</code>).
@@ -482,10 +482,12 @@ object regardless of whether files were written.</p>
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/ns-load.html" class="external-link">requireNamespace</a></span><span class="op">(</span><span class="st">"ggplot2"</span>, quietly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span></span>
-<span class="r-in"><span>  <span class="co">## Load the shipped example table; suppress file output and network call</span></span></span>
+<span class="r-in"><span>  <span class="co">## Load the shipped example table; pass domains = NULL to skip the</span></span></span>
+<span class="r-in"><span>  <span class="co">## InterPro REST call (needs network), and out_dir = NULL to return</span></span></span>
+<span class="r-in"><span>  <span class="co">## the ggplot object instead of writing files.</span></span></span>
 <span class="r-in"><span>  <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example_gvr.rds"</span>,</span></span>
 <span class="r-in"><span>                             package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="co">## OR4F5 is the first gene in the example; use domains=NULL to skip REST</span></span></span>
+<span class="r-in"><span>  <span class="co">## OR4F5 is the first gene in the example</span></span></span>
 <span class="r-in"><span>  <span class="va">p</span> <span class="op">&lt;-</span> <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">gvr</span>, gene <span class="op">=</span> <span class="st">"OR4F5"</span>, domains <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
 <span class="r-in"><span>                    out_dir <span class="op">=</span> <span class="cn">NULL</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
 <span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">p</span><span class="op">)</span></span></span>
@@ -493,88 +495,29 @@ object regardless of whether files were written.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "ggplot2::ggplot" "ggplot"          "ggplot2::gg"     "S7_object"      </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [5] "gg"             </span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span>  <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="read.gvr.html">read.gvr</a></span><span class="op">(</span><span class="st">"vcf_dir/"</span>, pattern <span class="op">=</span> <span class="st">"\\.vep\\.vcf\\.gz$"</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="va">f</span>   <span class="op">&lt;-</span> <span class="fu"><a href="gvr_filter.html">gvr_filter</a></span><span class="op">(</span><span class="va">gvr</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># \donttest{</span></span></span>
+<span class="r-in"><span>  <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example_gvr.rds"</span>,</span></span>
+<span class="r-in"><span>                             package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span>  <span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/ns-load.html" class="external-link">requireNamespace</a></span><span class="op">(</span><span class="st">"ggplot2"</span>, quietly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span></span>
+<span class="r-in"><span>    <span class="co">## Plain bar plot, no domain rectangles, returning the ggplot</span></span></span>
+<span class="r-in"><span>    <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">gvr</span>, <span class="st">"OR4F5"</span>, domains <span class="op">=</span> <span class="cn">NULL</span>, out_dir <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
+<span class="r-in"><span>                 verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## default: auto-fetches InterPro domains, auto-saves to "."</span></span></span>
-<span class="r-in"><span>  <span class="va">p</span> <span class="op">&lt;-</span> <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"TP53"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## second call uses cache, no network</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"TP53"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## plain bar, no domain rectangles</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"TP53"</span>, domains <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## with user-supplied domains (TP53 example - canonical UniProt P04637)</span></span></span>
-<span class="r-in"><span>  <span class="va">tp53_dom</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span></span>
-<span class="r-in"><span>    start <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">95</span>,   <span class="fl">323</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>    end   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">288</span>,  <span class="fl">356</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>    name  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"DNA-binding"</span>, <span class="st">"Tetramerization"</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>    color <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"#FF9400"</span>, <span class="st">"#75A025"</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"TP53"</span>, domains <span class="op">=</span> <span class="va">tp53_dom</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## non-human cohort: pass the NCBI taxonomy id</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"Trp53"</span>, organism <span class="op">=</span> <span class="fl">10090</span><span class="op">)</span> <span class="co"># mouse</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## HPC: send the cache to scratch</span></span></span>
-<span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/base/Sys.setenv.html" class="external-link">Sys.setenv</a></span><span class="op">(</span>GVR_CACHE_DIR <span class="op">=</span> <span class="st">"/scratch/$USER/germlinevaR_cache"</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"MUC16"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## disable on-disk caching entirely (CI / shared scratch)</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"BRCA1"</span>, cache_dir <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## suppress file output, return ggplot2 only</span></span></span>
-<span class="r-in"><span>  <span class="va">p</span> <span class="op">&lt;-</span> <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"BRCA1"</span>, out_dir <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/base/print.html" class="external-link">print</a></span><span class="op">(</span><span class="va">p</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Long protein, two label strategies side-by-side</span></span></span>
-<span class="r-in"><span>  <span class="co">## MUC19 has 9-12 InterPro domains clustered in aa 470-1604, so</span></span></span>
-<span class="r-in"><span>  <span class="co">## name-mode labels overlap. Number-mode keeps the in-plot annotation</span></span></span>
-<span class="r-in"><span>  <span class="co">## compact and routes domain names into a side legend.</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"MUC19"</span>, domain_label_mode <span class="op">=</span> <span class="st">"name"</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"MUC19"</span>, domain_label_mode <span class="op">=</span> <span class="st">"number"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Opt-in heuristic chooses between "name" and "number" automatically</span></span></span>
-<span class="r-in"><span>  <span class="co">## (uses "number" when protein &gt; 2000 aa AND &gt;= 5 InterPro domains).</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"MUC19"</span>, domain_label_mode <span class="op">=</span> <span class="st">"auto"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Highlight hotspots: clusters of &gt;= 4 variants within 20 aa</span></span></span>
-<span class="r-in"><span>  <span class="co">## (the default; set hotspot_min_n = Inf to disable).</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"TP53"</span>, hotspot_window <span class="op">=</span> <span class="fl">20</span>, hotspot_min_n <span class="op">=</span> <span class="fl">4</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Inside-rectangle domain labels (new default in Phase J)</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"TP53"</span>, domain_label_position <span class="op">=</span> <span class="st">"inside"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Legacy below-rectangle labels with leader lines</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"TP53"</span>, domain_label_position <span class="op">=</span> <span class="st">"below"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Sibling-package publication defaults for axes</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"TP53"</span>,</span></span>
-<span class="r-in"><span>               axis_text_size <span class="op">=</span> <span class="fl">12</span>, axis_title_size <span class="op">=</span> <span class="fl">14</span>,</span></span>
-<span class="r-in"><span>               axis_text_color <span class="op">=</span> <span class="st">"black"</span>, axis_title_color <span class="op">=</span> <span class="st">"black"</span>,</span></span>
-<span class="r-in"><span>               axis_line_color <span class="op">=</span> <span class="st">"black"</span>, axis_line_width <span class="op">=</span> <span class="fl">0.8</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Colour-blind-safe variant palette (positional, not semantic)</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"TP53"</span>, variant_palette <span class="op">=</span> <span class="st">"okabe_ito"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Override Missense colour only; rest stay GVR semantic</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"TP53"</span>,</span></span>
-<span class="r-in"><span>               variant_palette <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>Missense_Mutation <span class="op">=</span> <span class="st">"#FF00FF"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Override Missense + use Nature palette for the remaining classes</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"TP53"</span>,</span></span>
-<span class="r-in"><span>               variant_palette <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span>Missense_Mutation <span class="op">=</span> <span class="st">"#FF00FF"</span>, <span class="st">"nature"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Domain rectangles coloured along the viridis gradient</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">f</span>, <span class="st">"MUC19"</span>, domain_palette <span class="op">=</span> <span class="st">"viridis"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## List available palettes / inspect colours</span></span></span>
-<span class="r-in"><span>  <span class="fu"><a href="gvr_list_palettes.html">gvr_list_palettes</a></span><span class="op">(</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="fu"><a href="gvr_color_palette.html">gvr_color_palette</a></span><span class="op">(</span><span class="st">"nature"</span>, n <span class="op">=</span> <span class="fl">5</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
+<span class="r-in"><span>    <span class="co">## User-supplied domains (canonical TP53 / UniProt P04637)</span></span></span>
+<span class="r-in"><span>    <span class="va">tp53_dom</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span>      start <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">95</span>,  <span class="fl">323</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>      end   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">288</span>, <span class="fl">356</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>      name  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"DNA-binding"</span>, <span class="st">"Tetramerization"</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>      color <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"#FF9400"</span>, <span class="st">"#75A025"</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="co">## Use any gene present in the shipped table</span></span></span>
+<span class="r-in"><span>    <span class="va">gene</span> <span class="op">&lt;-</span> <span class="va">gvr</span><span class="op">$</span><span class="va">Hugo_Symbol</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span></span></span>
+<span class="r-in"><span>    <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">gvr</span>, <span class="va">gene</span>, domains <span class="op">=</span> <span class="va">tp53_dom</span>, out_dir <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
+<span class="r-in"><span>                 verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-in"><span>  <span class="op">}</span></span></span>
+<span class="r-plt img"><img src="gvr_lollipop-1.png" alt="" width="700" height="433"></span>
+<span class="r-plt img"><img src="gvr_lollipop-2.png" alt="" width="700" height="433"></span>
+<span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

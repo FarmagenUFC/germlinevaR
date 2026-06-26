@@ -153,9 +153,9 @@ out_dir <- gvr_sum_plots(gvr, out_dir = tempdir(), verbose = FALSE)
 dir.exists(out_dir)
 #> [1] TRUE
 
-if (FALSE) { # \dontrun{
-  gvr <- read.gvr("/path/to/vcf/")
-  gvr_sum_plots(gvr, out_dir = "results", folder_name = "S6_plots",
-                format = "pdf")
-} # }
+# \donttest{
+  ## Write PDF outputs into a named subfolder under tempdir()
+  gvr_sum_plots(gvr, out_dir = tempdir(), folder_name = "S6_plots",
+                format = "pdf", verbose = FALSE)
+# }
 ```

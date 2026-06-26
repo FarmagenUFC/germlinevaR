@@ -228,63 +228,30 @@ names(summ)
 #> [4] "variant_classification" "variant_type"           "clin_sig"              
 #> [7] "impact"                 "top_variants"          
 
-if (FALSE) { # \dontrun{
-gvr <- read.gvr("/path/to/vcf_folder")
+# \donttest{
+  ## Write the XLSX workbook + multi-page PDF + interactive HTML
+  ## dashboard to a temp directory.
+  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+                             package = "germlinevaR"))
+  out_dir <- file.path(tempdir(), "gvr_summary")
+  s <- gvr_summary(gvr, out_dir = out_dir,
+                   save_excel = TRUE, save_pdf = TRUE, save_html = TRUE,
+                   verbose = FALSE)
+  ## Inspect a section table
+  head(s$variant_classification)
+#>    Variant_Classification Sample_01 Total
+#>                    <char>     <int> <num>
+#> 1:                 Intron        14    14
+#> 2:                 Silent         7     7
+#> 3:      Missense_Mutation         5     5
+#> 4:                    RNA         4     4
+#> 5:            Splice_Site         4     4
+#> 6:                  3'UTR         3     3
 
-## ---- Default run -------------------------------------------------------
-## Returns the six section tables AND writes three files into ./gvr_summary/:
-##   * gvr_summary.xlsx         - one sheet per section
-##   * gvr_summary_report.pdf   - the print dashboard report (see below)
-##   * gvr_summary_report.html  - the interactive dashboard (see below)
-s <- gvr_summary(gvr)
-s$variant_classification          # inspect a section
-s$impact                          # HIGH -> MODIFIER, in severity order
-
-## ---- The PDF dashboard -------------------------------------------------
-## gvr_summary_report.pdf is a single A4-portrait dashboard:
-##   Page 1 (hero):  a row of four KPI cards - total variants, number of
-##                   samples, distinct known genes, and HIGH-impact variants -
-##                   above two grouped bar charts: "Top genes (top 10)" and
-##                   "Variant classification (top 10)".
-##   Page 2+ (reference): the six section tables, packed two-per-row when both
-##                   fit the page width and stacked full-width otherwise, plus
-##                   the Functional-impact (VEP IMPACT) bar chart.
-## Distinct-gene / HIGH-impact KPIs and chart values mirror the returned tables.
-s <- gvr_summary(gvr)                       # 2-sample cohort -> ~3 PDF pages
-
-## ---- The interactive HTML dashboard ------------------------------------
-## gvr_summary_report.html is the same dashboard, interactive: the four KPI
-## cards, the three bar charts as plotly (hover for exact counts, click the
-## legend to toggle samples, drag to zoom), and all six section tables as DT
-## widgets (per-column sort, a global search box, and pagination). By default
-## it is a single self-contained file you can email or open offline; if pandoc
-## is unavailable it is written alongside a gvr_summary_report_files/ folder.
-s <- gvr_summary(gvr)                       # writes gvr_summary_report.html
-gvr_summary(gvr, save_html = FALSE)          # opt out of the HTML report
-
-## ---- Multi-sample / cohort behaviour -----------------------------------
-## The same call scales to any number of samples; both reports adapt:
-##   * <= 6 samples : charts are GROUPED bars (one bar per sample).
-##   * >  6 samples : charts switch to small-multiple FACETS (one panel per
-##                    sample) so labels stay legible - in the PDF and, via
-##                    plotly::subplot, in the HTML.
-##   * Wide tables  : in the PDF, when per-sample columns no longer fit the
-##                    page width, reference tables are COLUMN-PAGINATED - the
-##                    category and Total columns repeat on each part, titled
-##                    e.g. "Top genes (samples 1-7 of 8)". The HTML DT tables
-##                    instead keep every sample column and scroll horizontally.
-## No argument controls this; layout is chosen automatically from sample count
-## and measured table widths. A 20-sample cohort typically spans ~8 PDF pages.
-s <- gvr_summary(gvr, sample_col = "Tumor_Sample_Barcode")
-
-## ---- Other modes -------------------------------------------------------
-## Compute only (no files written); still prints a console digest:
-s <- gvr_summary(gvr, save_excel = FALSE, save_pdf = FALSE, save_html = FALSE)
-
-## Summarise filtered hits, writing into results/summary/gvr_summary/:
-gvr_summary(gvr_filter(gvr), out_dir = "results/summary")
-
-## Report more genes and silence the console digest:
-gvr_summary(gvr, top_n_genes = 30, verbose = FALSE)
-} # }
+  ## Compute only, no files (still returns the section tables)
+  s2 <- gvr_summary(gvr, save_excel = FALSE, save_pdf = FALSE,
+                    save_html = FALSE, verbose = FALSE)
+  identical(names(s), names(s2))
+#> [1] TRUE
+# }
 ```

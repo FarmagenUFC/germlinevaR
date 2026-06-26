@@ -78,17 +78,17 @@ missing cache directory simply means there was nothing to clear).
 gvr_domain_cache_clear(gene = "TP53")
 #> gvr_domain_cache_clear: no cache directory found (nothing to clear).
 
-if (FALSE) { # \dontrun{
-  ## Clear everything
+# \donttest{
+  ## Clear everything (all genes, all organisms)
   gvr_domain_cache_clear()
+#> gvr_domain_cache_clear: no cache directory found (nothing to clear).
 
-  ## Clear only TP53 (all organisms)
+  ## Clear only TP53 across all organisms
   gvr_domain_cache_clear(gene = "TP53")
+#> gvr_domain_cache_clear: no cache directory found (nothing to clear).
 
   ## Clear only human TP53
   gvr_domain_cache_clear(gene = "TP53", organism = 9606)
-
-  ## Clear a custom cache directory
-  gvr_domain_cache_clear(cache_dir = "/scratch/$USER/gvr_cache")
-} # }
+#> gvr_domain_cache_clear: no cache directory found (nothing to clear).
+# }
 ```

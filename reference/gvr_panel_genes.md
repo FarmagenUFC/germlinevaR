@@ -67,9 +67,14 @@ gvr_panel_genes("hereditary prostate cancer")
 #>  [9] "MLH1"   "MRE11"  "MSH2"   "MSH6"   "NBN"    "PALB2"  "PMS2"   "PTEN"  
 #> [17] "RAD51C" "RAD51D" "TP53"  
 
-if (FALSE) { # \dontrun{
-## Use in read.gvr()
-gvr <- read.gvr("/path/to/folder",
-                panel = c("breast cancer", "hereditary prostate cancer"))
-} # }
+# \donttest{
+  ## Combine multiple panels at read time using the bundled example VCF
+  vcf_dir <- system.file("extdata", package = "germlinevaR")
+  gvr <- read.gvr(vcf_dir,
+                  panel = c("breast cancer", "hereditary prostate cancer"),
+                  verbose = FALSE)
+#> Warning: read.gvr: ABraOM reference unreadable; 'ABraOM_AF' left blank.
+  nrow(gvr)
+#> [1] 2
+# }
 ```

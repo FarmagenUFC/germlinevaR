@@ -131,8 +131,13 @@ gvr_list_panels()
 #> [14] "men1"                                
 #> [15] "pheochromocytoma"                    
 
-## Use in read.gvr() to keep only breast-cancer genes
-if (FALSE) { # \dontrun{
-gvr <- read.gvr("/path/to/folder", panel = "breast cancer")
-} # }
+# \donttest{
+  ## The returned panel names can be passed to read.gvr() to subset
+  ## the gvr table at read time. Using the bundled example VCF:
+  vcf_dir <- system.file("extdata", package = "germlinevaR")
+  gvr <- read.gvr(vcf_dir, panel = "breast cancer", verbose = FALSE)
+#> Warning: read.gvr: ABraOM reference unreadable; 'ABraOM_AF' left blank.
+  nrow(gvr)
+#> [1] 2
+# }
 ```

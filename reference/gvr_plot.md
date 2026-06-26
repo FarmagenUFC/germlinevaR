@@ -124,8 +124,7 @@ gvr_plot(
 ## Value
 
 Invisibly, the path of the written PNG (character), or `NA_character_`
-if the plot was skipped (ComplexHeatmap not installed, or no known-gene
-variants present).
+if no known-gene variants are present in the table.
 
 ## Details
 
@@ -164,9 +163,7 @@ Data conventions:
 
 ## Dependencies
 
-Requires ComplexHeatmap (a Bioconductor package, listed in `Suggests`).
-If it is not installed the top-genes variant matrix is skipped with a
-warning and `NA_character_` is returned.
+Uses ComplexHeatmap (a Bioconductor package, listed in `Imports`).
 
 ## See also
 
@@ -192,23 +189,20 @@ germlinevaR authors
 ## Examples
 
 ``` r
-if (requireNamespace("ComplexHeatmap", quietly = TRUE)) {
-  ## Load the shipped example table; write plot to a temp directory
-  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                             package = "germlinevaR"))
-  p <- gvr_plot(gvr, out_dir = tempdir(), verbose = FALSE)
-  class(p)
-}
+## Load the shipped example table; write plot to a temp directory
+gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+                           package = "germlinevaR"))
+p <- gvr_plot(gvr, out_dir = tempdir(), verbose = FALSE)
+class(p)
 #> [1] "character"
 
-if (FALSE) { # \dontrun{
-gvr <- read.gvr("/path/to/vcf_folder")
-
-## write a top-20 variant matrix to the current directory
-p <- gvr_plot(gvr)
-p                                  # path to the PNG
-
-## smaller top-genes variant matrix of filtered hits, into a results folder
-gvr_plot(gvr_filter(gvr), top_n = 15, out_dir = "results/plots")
-} # }
+# \donttest{
+  ## Smaller top-genes variant matrix of filtered hits to a temp folder
+  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+                             package = "germlinevaR"))
+  filt <- gvr_filter(gvr, ABraOM_AF = NULL, verbose = FALSE)
+  if (nrow(filt) > 0L) {
+    gvr_plot(filt, top_n = 15, out_dir = tempdir(), verbose = FALSE)
+  }
+# }
 ```

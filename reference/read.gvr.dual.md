@@ -313,33 +313,22 @@ see that function's documentation for the full option reference.
 ## Examples
 
 ``` r
-## read.gvr.dual() handles VCFs with both VEP CSQ and SnpEff ANN fields.
-## The shipped example is VEP-only; confirm the package is loaded:
-gvr_list_panels()
-#>  [1] "acromegaly"                          
-#>  [2] "breast cancer"                       
-#>  [3] "breast cancer somatic"               
-#>  [4] "familial adenomatous polyposis"      
-#>  [5] "gist"                                
-#>  [6] "hereditary breast and ovarian cancer"
-#>  [7] "hereditary cancer"                   
-#>  [8] "hereditary colorectal cancer"        
-#>  [9] "hereditary gastric cancer"           
-#> [10] "hereditary melanoma cancer"          
-#> [11] "hereditary prostate cancer"          
-#> [12] "li-fraumeni syndrome"                
-#> [13] "lynch syndrome"                      
-#> [14] "men1"                                
-#> [15] "pheochromocytoma"                    
+## The function signature is exported and callable:
+is.function(read.gvr.dual)
+#> [1] TRUE
 
 if (FALSE) { # \dontrun{
-  # Auto-route: read.gvr() detects ANN+CSQ and delegates here.
-  gvr <- read.gvr("/path/to/dual-annotated-vcfs/")
-
-  # Or call directly:
+  ## read.gvr.dual() expects VCFs annotated with BOTH VEP (CSQ INFO field)
+  ## AND SnpEff (ANN INFO field) in the same record. The shipped example
+  ## VCF is VEP-only, so a real dual-annotated example needs your own
+  ## VCFs:
   gvr <- read.gvr.dual(folder = "/path/to/dual-annotated-vcfs/")
 
-  # Compare VEP vs SnpEff picks on high-impact variants:
+  ## Or via the auto-router in read.gvr() when the VCF header declares
+  ## both VEP and SnpEff INFO fields:
+  gvr <- read.gvr("/path/to/dual-annotated-vcfs/")
+
+  ## Compare VEP vs SnpEff picks on high-impact variants:
   gvr[IMPACT == "HIGH" & snpeff_impact != "" & IMPACT != snpeff_impact,
       .(Hugo_Symbol, Consequence, IMPACT, snpeff_gene, snpeff_consequence,
         snpeff_impact)]

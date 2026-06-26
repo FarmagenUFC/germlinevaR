@@ -246,66 +246,32 @@ summarising, <code><a href="gvr_plot.html">gvr_plot()</a></code> for a cohort to
 <span class="r-out co"><span class="r-pr">#&gt;</span> [4] "variant_classification" "variant_type"           "clin_sig"              </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [7] "impact"                 "top_variants"          </span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
-<span class="r-in"><span><span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="read.gvr.html">read.gvr</a></span><span class="op">(</span><span class="st">"/path/to/vcf_folder"</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="co"># \donttest{</span></span></span>
+<span class="r-in"><span>  <span class="co">## Write the XLSX workbook + multi-page PDF + interactive HTML</span></span></span>
+<span class="r-in"><span>  <span class="co">## dashboard to a temp directory.</span></span></span>
+<span class="r-in"><span>  <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example_gvr.rds"</span>,</span></span>
+<span class="r-in"><span>                             package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span>  <span class="va">out_dir</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"gvr_summary"</span><span class="op">)</span></span></span>
+<span class="r-in"><span>  <span class="va">s</span> <span class="op">&lt;-</span> <span class="fu">gvr_summary</span><span class="op">(</span><span class="va">gvr</span>, out_dir <span class="op">=</span> <span class="va">out_dir</span>,</span></span>
+<span class="r-in"><span>                   save_excel <span class="op">=</span> <span class="cn">TRUE</span>, save_pdf <span class="op">=</span> <span class="cn">TRUE</span>, save_html <span class="op">=</span> <span class="cn">TRUE</span>,</span></span>
+<span class="r-in"><span>                   verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-in"><span>  <span class="co">## Inspect a section table</span></span></span>
+<span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">s</span><span class="op">$</span><span class="va">variant_classification</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>    Variant_Classification Sample_01 Total</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span>                    &lt;char&gt;     &lt;int&gt; &lt;num&gt;</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 1:                 Intron        14    14</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 2:                 Silent         7     7</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 3:      Missense_Mutation         5     5</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 4:                    RNA         4     4</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 5:            Splice_Site         4     4</span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> 6:                  3'UTR         3     3</span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ---- Default run -------------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Returns the six section tables AND writes three files into ./gvr_summary/:</span></span></span>
-<span class="r-in"><span><span class="co">##   * gvr_summary.xlsx         - one sheet per section</span></span></span>
-<span class="r-in"><span><span class="co">##   * gvr_summary_report.pdf   - the print dashboard report (see below)</span></span></span>
-<span class="r-in"><span><span class="co">##   * gvr_summary_report.html  - the interactive dashboard (see below)</span></span></span>
-<span class="r-in"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu">gvr_summary</span><span class="op">(</span><span class="va">gvr</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">s</span><span class="op">$</span><span class="va">variant_classification</span>          <span class="co"># inspect a section</span></span></span>
-<span class="r-in"><span><span class="va">s</span><span class="op">$</span><span class="va">impact</span>                          <span class="co"># HIGH -&gt; MODIFIER, in severity order</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ---- The PDF dashboard -------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## gvr_summary_report.pdf is a single A4-portrait dashboard:</span></span></span>
-<span class="r-in"><span><span class="co">##   Page 1 (hero):  a row of four KPI cards - total variants, number of</span></span></span>
-<span class="r-in"><span><span class="co">##                   samples, distinct known genes, and HIGH-impact variants -</span></span></span>
-<span class="r-in"><span><span class="co">##                   above two grouped bar charts: "Top genes (top 10)" and</span></span></span>
-<span class="r-in"><span><span class="co">##                   "Variant classification (top 10)".</span></span></span>
-<span class="r-in"><span><span class="co">##   Page 2+ (reference): the six section tables, packed two-per-row when both</span></span></span>
-<span class="r-in"><span><span class="co">##                   fit the page width and stacked full-width otherwise, plus</span></span></span>
-<span class="r-in"><span><span class="co">##                   the Functional-impact (VEP IMPACT) bar chart.</span></span></span>
-<span class="r-in"><span><span class="co">## Distinct-gene / HIGH-impact KPIs and chart values mirror the returned tables.</span></span></span>
-<span class="r-in"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu">gvr_summary</span><span class="op">(</span><span class="va">gvr</span><span class="op">)</span>                       <span class="co"># 2-sample cohort -&gt; ~3 PDF pages</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ---- The interactive HTML dashboard ------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## gvr_summary_report.html is the same dashboard, interactive: the four KPI</span></span></span>
-<span class="r-in"><span><span class="co">## cards, the three bar charts as plotly (hover for exact counts, click the</span></span></span>
-<span class="r-in"><span><span class="co">## legend to toggle samples, drag to zoom), and all six section tables as DT</span></span></span>
-<span class="r-in"><span><span class="co">## widgets (per-column sort, a global search box, and pagination). By default</span></span></span>
-<span class="r-in"><span><span class="co">## it is a single self-contained file you can email or open offline; if pandoc</span></span></span>
-<span class="r-in"><span><span class="co">## is unavailable it is written alongside a gvr_summary_report_files/ folder.</span></span></span>
-<span class="r-in"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu">gvr_summary</span><span class="op">(</span><span class="va">gvr</span><span class="op">)</span>                       <span class="co"># writes gvr_summary_report.html</span></span></span>
-<span class="r-in"><span><span class="fu">gvr_summary</span><span class="op">(</span><span class="va">gvr</span>, save_html <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span>          <span class="co"># opt out of the HTML report</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ---- Multi-sample / cohort behaviour -----------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## The same call scales to any number of samples; both reports adapt:</span></span></span>
-<span class="r-in"><span><span class="co">##   * &lt;= 6 samples : charts are GROUPED bars (one bar per sample).</span></span></span>
-<span class="r-in"><span><span class="co">##   * &gt;  6 samples : charts switch to small-multiple FACETS (one panel per</span></span></span>
-<span class="r-in"><span><span class="co">##                    sample) so labels stay legible - in the PDF and, via</span></span></span>
-<span class="r-in"><span><span class="co">##                    plotly::subplot, in the HTML.</span></span></span>
-<span class="r-in"><span><span class="co">##   * Wide tables  : in the PDF, when per-sample columns no longer fit the</span></span></span>
-<span class="r-in"><span><span class="co">##                    page width, reference tables are COLUMN-PAGINATED - the</span></span></span>
-<span class="r-in"><span><span class="co">##                    category and Total columns repeat on each part, titled</span></span></span>
-<span class="r-in"><span><span class="co">##                    e.g. "Top genes (samples 1-7 of 8)". The HTML DT tables</span></span></span>
-<span class="r-in"><span><span class="co">##                    instead keep every sample column and scroll horizontally.</span></span></span>
-<span class="r-in"><span><span class="co">## No argument controls this; layout is chosen automatically from sample count</span></span></span>
-<span class="r-in"><span><span class="co">## and measured table widths. A 20-sample cohort typically spans ~8 PDF pages.</span></span></span>
-<span class="r-in"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu">gvr_summary</span><span class="op">(</span><span class="va">gvr</span>, sample_col <span class="op">=</span> <span class="st">"Tumor_Sample_Barcode"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## ---- Other modes -------------------------------------------------------</span></span></span>
-<span class="r-in"><span><span class="co">## Compute only (no files written); still prints a console digest:</span></span></span>
-<span class="r-in"><span><span class="va">s</span> <span class="op">&lt;-</span> <span class="fu">gvr_summary</span><span class="op">(</span><span class="va">gvr</span>, save_excel <span class="op">=</span> <span class="cn">FALSE</span>, save_pdf <span class="op">=</span> <span class="cn">FALSE</span>, save_html <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## Summarise filtered hits, writing into results/summary/gvr_summary/:</span></span></span>
-<span class="r-in"><span><span class="fu">gvr_summary</span><span class="op">(</span><span class="fu"><a href="gvr_filter.html">gvr_filter</a></span><span class="op">(</span><span class="va">gvr</span><span class="op">)</span>, out_dir <span class="op">=</span> <span class="st">"results/summary"</span><span class="op">)</span></span></span>
-<span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="co">## Report more genes and silence the console digest:</span></span></span>
-<span class="r-in"><span><span class="fu">gvr_summary</span><span class="op">(</span><span class="va">gvr</span>, top_n_genes <span class="op">=</span> <span class="fl">30</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
-<span class="r-in"><span></span></span>
+<span class="r-in"><span>  <span class="co">## Compute only, no files (still returns the section tables)</span></span></span>
+<span class="r-in"><span>  <span class="va">s2</span> <span class="op">&lt;-</span> <span class="fu">gvr_summary</span><span class="op">(</span><span class="va">gvr</span>, save_excel <span class="op">=</span> <span class="cn">FALSE</span>, save_pdf <span class="op">=</span> <span class="cn">FALSE</span>,</span></span>
+<span class="r-in"><span>                    save_html <span class="op">=</span> <span class="cn">FALSE</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/base/identical.html" class="external-link">identical</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">s</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">s2</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

@@ -371,57 +371,20 @@ germlinevaR authors
 ## Examples
 
 ``` r
-## The shipped example is VEP-annotated; read.gvr.snpeff() is shown here
-## with a minimal demonstration using the auto-router on the VEP example.
-## For SnpEff VCFs, call read.gvr.snpeff() the same way as read.gvr().
-gvr_list_panels()   # confirm package is loaded
-#>  [1] "acromegaly"                          
-#>  [2] "breast cancer"                       
-#>  [3] "breast cancer somatic"               
-#>  [4] "familial adenomatous polyposis"      
-#>  [5] "gist"                                
-#>  [6] "hereditary breast and ovarian cancer"
-#>  [7] "hereditary cancer"                   
-#>  [8] "hereditary colorectal cancer"        
-#>  [9] "hereditary gastric cancer"           
-#> [10] "hereditary melanoma cancer"          
-#> [11] "hereditary prostate cancer"          
-#> [12] "li-fraumeni syndrome"                
-#> [13] "lynch syndrome"                      
-#> [14] "men1"                                
-#> [15] "pheochromocytoma"                    
+## The function signature is exported and callable:
+is.function(read.gvr.snpeff)
+#> [1] TRUE
 
 if (FALSE) { # \dontrun{
-## Folder mode: merge ALL *_NN.snpeff.vcf.gz into one gvr table
-gvr <- read.gvr.snpeff("/path/to/folder")
+  ## read.gvr.snpeff() expects VCFs annotated by SnpEff (ANN/LOF/NMD
+  ## INFO fields). The shipped example VCF is VEP-annotated, so a real
+  ## SnpEff example needs your own VCFs:
+  gvr <- read.gvr.snpeff("/path/to/snpeff-vcfs/")
 
-## Or use read.gvr() to auto-route (SnpEff inputs are dispatched here):
-gvr <- read.gvr("/path/to/folder")
+  ## Or via the auto-router when the VCF header declares SnpEff fields:
+  gvr <- read.gvr("/path/to/snpeff-vcfs/")
 
-## Single-file mode: full path
-gvr <- read.gvr.snpeff(vcf_path = "/path/to/SAMPLE_01.snpeff.vcf.gz")
-
-## Multi-file mode by full path
-gvr <- read.gvr.snpeff(
-  vcf_path = c("/p/S1.snpeff.vcf.gz", "/p/S2.snpeff.vcf.gz"))
-
-## Pick basenames from a folder (merges these two but ignores other .vcf.gz)
-gvr <- read.gvr.snpeff(folder = "/p",
-                       file   = c("S1.snpeff.vcf.gz", "S2.snpeff.vcf.gz"))
-
-## Disable the DP/GQ genotype filter entirely
-gvr <- read.gvr.snpeff("/path/to/folder", min_DP = NULL, min_GQ = NULL)
-
-## Restrict to genes of interest
-gvr <- read.gvr.snpeff("/path/to/folder",
-                       genes = c("MEN1", "RET", "CDKN1B", "CDC73"))
-
-## Or use a curated disease panel:
-gvr_list_panels()
-gvr <- read.gvr.snpeff("/path/to/folder", panel = "breast cancer")
-
-## Multiple panels are unioned (deduplicated):
-gvr <- read.gvr.snpeff("/path/to/folder",
-                       panel = c("breast cancer", "hereditary prostate cancer"))
+  ## Single-file mode: full path
+  gvr <- read.gvr.snpeff(vcf_path = "/path/to/SAMPLE_01.snpeff.vcf.gz")
 } # }
 ```
