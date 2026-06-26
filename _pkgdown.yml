@@ -1,0 +1,71 @@
+url: https://farmagenufc.github.io/germlinevaR/
+
+template:
+  bootstrap: 5
+  bslib:
+    primary: "#0279EE"
+    bg: "#FAF9F3"
+    fg: "#000000"
+
+development:
+  mode: auto
+
+home:
+  title: germlinevaR
+  description: >
+    End-to-end germline VCF analysis, filtering, and visualisation in R.
+
+navbar:
+  structure:
+    left:  [intro, reference, articles, news]
+    right: [search, github]
+  components:
+    articles:
+      text: Vignette
+      menu:
+        - text: germlinevaR walkthrough
+          href: articles/germlinevaR.html
+
+reference:
+  - title: "Readers"
+    desc: >
+      Read VEP-, SnpEff-, or dual-annotated VCFs into an MAF-like data.table.
+    contents:
+      - read.gvr
+      - read.gvr.snpeff
+      - read.gvr.dual
+
+  - title: "Filtering"
+    desc: >
+      Modular filtering and novel-variant subsetting.
+    contents:
+      - gvr_filter
+      - gvr_novel
+
+  - title: "Gene panels"
+    contents:
+      - gvr_panel_genes
+      - gvr_list_panels
+
+  - title: "Cohort summary"
+    contents:
+      - gvr_summary
+      - gvr_sum_plots
+
+  - title: "Per-gene plots"
+    contents:
+      - gvr_plot
+      - gvr_lollipop
+      - gvr_genepos.plot
+
+  - title: "Palette and cache utilities"
+    contents:
+      - gvr_color_palette
+      - gvr_list_palettes
+      - gvr_domain_cache_clear
+
+articles:
+  - title: "Get started"
+    navbar: ~
+    contents:
+      - germlinevaR
