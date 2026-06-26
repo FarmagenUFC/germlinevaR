@@ -86,6 +86,18 @@ around the **germline single-sample** case.
 | Per-gene plots | `gvr_plot` (top-genes variant matrix) `gvr_lollipop` `gvr_genepos.plot` |
 | Palette / cache | `gvr_color_palette` `gvr_list_palettes` `gvr_domain_cache_clear` |
 
+## Top-genes variant matrix
+
+[`gvr_plot()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_plot.md)
+produces a `ComplexHeatmap`-based cohort overview: each row is a gene,
+each column a sample, and each cell is coloured by the most severe
+variant class observed. The top bar shows per-sample variant impact
+(HIGH / MODERATE / LOW / MODIFIER); the right bar shows per-gene total
+burden. The figure below uses illustrative multi-sample data:
+
+![Top-genes variant matrix — illustrative multi-sample
+data](articles/figures/gvr_plot_demo.png)
+
 ## Per-gene plots
 
 Protein-domain lollipop (`gvr_lollipop`) and gene-structure lollipop
