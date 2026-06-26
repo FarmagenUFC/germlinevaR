@@ -336,6 +336,10 @@ gvr_plot <- function(gvr,
   # axis line extends all the way to the topmost tick (not just to the data max).
   ta <- if (has_impact) {
     .imp_at <- pretty(c(0, colSums(imp_mat)), n = 3)
+    .imp_labels <- if (max(.imp_at) >= 1000)
+      paste0(round(.imp_at / 1000), "k")
+    else
+      as.character(as.integer(.imp_at))
     ComplexHeatmap::HeatmapAnnotation(
       `Variant\nimpact` = ComplexHeatmap::anno_barplot(
         t(imp_mat), border = FALSE, beside = FALSE,
@@ -343,7 +347,7 @@ gvr_plot <- function(gvr,
         ylim = c(0, max(.imp_at)),
         axis_param = list(
           at     = .imp_at,
-          labels = paste0(round(.imp_at / 1000), "k"),
+          labels = .imp_labels,
           gp     = grid::gpar(fontsize = axis_tick_size))),
       height = grid::unit(1.6, "cm"),
       annotation_name_gp   = grid::gpar(fontsize = 9),
@@ -352,6 +356,10 @@ gvr_plot <- function(gvr,
   } else {
     # fallback: original total-burden bar
     .bur_at <- pretty(c(0, samp_burden), n = 3)
+    .bur_labels <- if (max(.bur_at) >= 1000)
+      paste0(round(.bur_at / 1000), "k")
+    else
+      as.character(as.integer(.bur_at))
     ComplexHeatmap::HeatmapAnnotation(
       `Burden` = ComplexHeatmap::anno_barplot(
         samp_burden, border = FALSE,
@@ -359,7 +367,7 @@ gvr_plot <- function(gvr,
         ylim = c(0, max(.bur_at)),
         axis_param = list(
           at     = .bur_at,
-          labels = paste0(round(.bur_at / 1000), "k"),
+          labels = .bur_labels,
           gp     = grid::gpar(fontsize = axis_tick_size))),
       height = grid::unit(1.6, "cm"),
       annotation_name_gp = grid::gpar(fontsize = 9))

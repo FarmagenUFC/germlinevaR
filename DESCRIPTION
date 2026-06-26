@@ -2,12 +2,15 @@ Package: germlinevaR
 Title: End-to-End Germline VCF Analysis, Filtering and Visualisation
 Version: 0.99.0
 Date: 2026-06-25
-Authors@R: 
-    person("Thiago", "Loreto Matos", 
-           email = "farmagenufc@gmail.com", 
-           role = c("aut", "cre"),
-           comment = c(ORCID = ""))
-Maintainer: Thiago Loreto Matos <farmagenufc@gmail.com>
+Authors@R:
+    c(person("Thiago", "Loreto Matos",
+             email   = "thiago-loreto@hotmail.com",
+             role    = c("aut", "cre"),
+             comment = c(ORCID = "")),
+      person("Felipe", "Pantoja Mesquita",
+             email   = "felipemesquita05@gmail.com",
+             role    = "aut",
+             comment = c(ORCID = "")))
 Description: 
     A self-contained toolchain for single-sample germline variant calls
     annotated with Ensembl VEP, SnpEff, or both. Converts per-sample VCFs

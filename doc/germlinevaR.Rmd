@@ -237,14 +237,21 @@ resolved via Ensembl REST or a local GTF:
 knitr::include_graphics("figures/genepos_BRCA1.png")
 ```
 
-**Top-genes variant matrix and dashboard** — `gvr_plot(gvr, top_n = 20, out_dir = ".")`
+**Top-genes variant matrix** — `gvr_plot(gvr, top_n = 20, out_dir = ".")`
 writes a `ComplexHeatmap` top-genes variant matrix PNG of the top mutated genes across
-samples, coloured by variant classification.
+samples, coloured by the most severe variant class per cell. The top bar shows
+per-sample variant impact (HIGH / MODERATE / LOW / MODIFIER); the right bar shows
+per-gene total burden. The figure below uses illustrative multi-sample data to
+demonstrate the layout:
+
+```{r gvr-plot-demo, echo=FALSE, out.width="100%", fig.cap="Top-genes variant matrix from gvr_plot() — illustrative multi-sample data (8 samples, 20 cancer genes). In a real cohort, replace with your own gvr table."}
+knitr::include_graphics("figures/gvr_plot_demo.png")
+```
+
 `gvr_sum_plots()` writes the same panels that
 `gvr_summary(save_html = TRUE)` embeds in its interactive dashboard
 (top genes, variant classification, IMPACT, top variants) as
-standalone PNGs. Both call sites need a real cohort with several
-samples to render usefully, so they are not shown in this vignette.
+standalone PNGs.
 
 # Where to next
 

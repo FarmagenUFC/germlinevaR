@@ -67,6 +67,9 @@ knitr::include_graphics("figures/lollipop_TP53.png")
 ## ----genepos, echo=FALSE, out.width="100%", fig.cap="Gene-structure track for BRCA1 from gvr_genepos.plot() — exons/UTRs from Ensembl REST"----
 knitr::include_graphics("figures/genepos_BRCA1.png")
 
+## ----gvr-plot-demo, echo=FALSE, out.width="100%", fig.cap="Top-genes variant matrix from gvr_plot() — illustrative multi-sample data (8 samples, 20 cancer genes). In a real cohort, replace with your own gvr table."----
+knitr::include_graphics("figures/gvr_plot_demo.png")
+
 ## ----session-info, echo=FALSE-------------------------------------------------
 sessionInfo()
 

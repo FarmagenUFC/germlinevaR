@@ -16,6 +16,15 @@ with Ensembl VEP, SnpEff, or both — from on-disk VCF to filtered gvr
 table, candidate novel variants, cohort summary, a top-genes variant
 matrix, and per-gene protein-domain lollipops, all in one R session.
 
+## Documentation
+
+- **Full vignette (HTML):** [germlinevaR vignette](https://farmagenufc.github.io/germlinevaR/articles/germlinevaR.html)
+  *(rendered version available once the pkgdown site is deployed)*
+- After installing the package, open the vignette locally with:
+  ``` r
+  vignette("germlinevaR", package = "germlinevaR")
+  ```
+
 ## Hero example
 
 ``` r
@@ -94,6 +103,20 @@ around the **germline single-sample** case.
 | Per-gene plots | `gvr_plot` (top-genes variant matrix) `gvr_lollipop` `gvr_genepos.plot` |
 | Palette / cache | `gvr_color_palette` `gvr_list_palettes` `gvr_domain_cache_clear` |
 
+## Top-genes variant matrix
+
+`gvr_plot()` produces a `ComplexHeatmap`-based cohort overview: each row
+is a gene, each column a sample, and each cell is coloured by the most
+severe variant class observed. The top bar shows per-sample variant
+impact (HIGH / MODERATE / LOW / MODIFIER); the right bar shows per-gene
+total burden. The figure below uses illustrative multi-sample data:
+
+<p>
+<img src="vignettes/figures/gvr_plot_demo.png"
+     alt="Top-genes variant matrix — illustrative multi-sample data"
+     width="90%" />
+</p>
+
 ## Per-gene plots
 
 Protein-domain lollipop (`gvr_lollipop`) and gene-structure lollipop
@@ -124,4 +147,4 @@ up-to-date record.
 
 ## License
 
-MIT (c) 2025 Thiago Loreto Matos. See `LICENSE`.
+MIT (c) 2025 Thiago Loreto Matos, Felipe Pantoja Mesquita. See `LICENSE`.
