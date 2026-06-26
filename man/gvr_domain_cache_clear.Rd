@@ -54,6 +54,9 @@ with a \code{verbose} message and no files deleted (this is not an error;
 a missing cache directory simply means there was nothing to clear).
 }
 \examples{
+## Clear the cache for a specific gene (safe to run; no-op if cache is empty)
+gvr_domain_cache_clear(gene = "TP53")
+
 \dontrun{
   ## Clear everything
   gvr_domain_cache_clear()

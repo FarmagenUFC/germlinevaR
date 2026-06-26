@@ -52,6 +52,12 @@ The input is never modified: filtering operates on an internal \code{data.table}
 copy and the output has the same column set and order as the input.
 }
 \examples{
+## Load the shipped example table and find candidate novel variants
+gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+                           package = "germlinevaR"))
+nov <- gvr_novel(gvr, verbose = FALSE)
+dim(nov)
+
 \dontrun{
   gvr <- read.gvr("vcf_dir/", pattern = "\\\\.vep\\\\.vcf\\\\.gz$")
   f   <- gvr_filter(gvr)

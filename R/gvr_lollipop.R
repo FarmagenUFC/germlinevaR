@@ -392,6 +392,16 @@
 #'   [gvr_plot()], [gvr_domain_cache_clear()]
 #'
 #' @examples
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   ## Load the shipped example table; suppress file output and network call
+#'   gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+#'                              package = "germlinevaR"))
+#'   ## OR4F5 is the first gene in the example; use domains=NULL to skip REST
+#'   p <- gvr_lollipop(gvr, gene = "OR4F5", domains = NULL,
+#'                     out_dir = NULL, verbose = FALSE)
+#'   class(p)
+#' }
+#'
 #' \dontrun{
 #'   gvr <- read.gvr("vcf_dir/", pattern = "\\.vep\\.vcf\\.gz$")
 #'   f   <- gvr_filter(gvr)

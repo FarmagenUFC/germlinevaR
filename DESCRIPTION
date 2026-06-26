@@ -1,10 +1,12 @@
 Package: germlinevaR
 Title: End-to-End Germline VCF Analysis, Filtering and Visualisation
-Version: 0.1.0
+Version: 0.99.0
+Date: 2026-06-25
 Authors@R: 
     person("Thiago", "Loreto Matos", 
            email = "farmagenufc@gmail.com", 
-           role = c("aut", "cre"))
+           role = c("aut", "cre"),
+           comment = c(ORCID = ""))
 Maintainer: Thiago Loreto Matos <farmagenufc@gmail.com>
 Description: 
     A self-contained toolchain for single-sample germline variant calls
@@ -30,7 +32,9 @@ Description:
 License: MIT + file LICENSE
 URL: https://github.com/FarmagenUFC/germlinevaR
 BugReports: https://github.com/FarmagenUFC/germlinevaR/issues
-Depends: R (>= 4.1.0)
+biocViews: Software, Genetics, VariantAnnotation, Sequencing,
+    WholeGenome, Visualization, DataImport, ReportWriting
+Depends: R (>= 4.4.0)
 Imports: 
     data.table,
     ggplot2,
@@ -42,6 +46,7 @@ Imports:
     stats,
     utils
 Suggests: 
+    BiocStyle,
     ComplexHeatmap,
     DT,
     ggrepel,

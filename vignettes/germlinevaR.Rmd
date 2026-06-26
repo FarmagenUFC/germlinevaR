@@ -1,6 +1,14 @@
 ---
 title: "germlinevaR walkthrough"
-output: rmarkdown::html_vignette
+author:
+  - name: Thiago Loreto Matos
+    affiliation: FarmagenUFC
+date: "`r Sys.Date()`"
+output:
+  BiocStyle::html_document:
+    toc: true
+    toc_float: true
+    number_sections: true
 vignette: >
   %\VignetteIndexEntry{germlinevaR walkthrough}
   %\VignetteEngine{knitr::rmarkdown}
@@ -15,7 +23,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-## Introduction
+# Introduction
 
 **germlinevaR** is a self-contained R toolchain for single-sample
 germline VCFs annotated with Ensembl VEP, SnpEff, or both. It turns
@@ -23,6 +31,48 @@ on-disk VCFs into an MAF-like `data.table`, filters them with
 a modular set of toggles, isolates candidate novel variants, summarises
 a cohort, and renders publication-ready per-gene plots — all inside one
 R session, without an external pipeline.
+
+## Motivation for Bioconductor
+
+Germline variant analysis sits at the intersection of clinical genetics
+and bioinformatics: researchers need to go from annotated VCFs to
+filtered, interpretable variant tables and publication-ready figures
+without stitching together multiple unrelated tools. germlinevaR fills
+this gap by providing a single, cohesive workflow that handles the full
+journey from VCF to cohort summary and per-gene visualisation, with
+built-in support for the two most widely used annotators (Ensembl VEP
+and SnpEff) and optional Brazilian population frequency annotation
+(ABraOM SABE-609). Inclusion in Bioconductor makes the package
+discoverable to the clinical genomics community and ensures long-term
+maintenance through the Bioconductor release cycle.
+
+## Comparison with related packages
+
+Several Bioconductor and CRAN packages address parts of the germline
+variant analysis workflow:
+
+- **`VariantAnnotation`** (Bioconductor): provides low-level VCF
+  parsing and annotation infrastructure. germlinevaR builds on top of
+  this conceptual layer but targets a higher-level workflow: it reads
+  VEP/SnpEff-annotated VCFs directly, applies opinionated filtering,
+  and produces cohort summaries and plots without requiring users to
+  manipulate `VCF` or `GRanges` objects.
+- **`maftools`** (Bioconductor): a comprehensive somatic mutation
+  analysis toolkit centred on the MAF format. germlinevaR is
+  complementary: it targets the **germline** single-sample case,
+  produces an MAF-like table for compatibility, and adds VEP/SnpEff
+  multi-annotator support and population-frequency filtering that
+  maftools does not provide.
+- **`vcfR`** (CRAN): focuses on VCF import and manipulation.
+  germlinevaR goes further downstream: after reading the VCF it
+  applies clinical-significance and population-frequency filters,
+  generates a cohort summary, and renders per-gene lollipop plots.
+
+germlinevaR's unique combination is the auto-routing multi-annotator
+reader + modular clinical filter + cohort summary + per-gene
+visualisation, all in one package with no external pipeline dependency.
+
+## Vignette scope
 
 This vignette walks through the package on the **tiny example VCF
 shipped with the package**: a single anonymised sample with 62 variants
@@ -34,18 +84,36 @@ What this vignette does **not** cover: variant calling, VCF annotation
 (do it upstream with VEP or SnpEff), and somatic tumour/normal pipelines.
 germlinevaR is built for germline single-sample analyses.
 
+# Installation
+
+```{r install, eval=FALSE}
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("germlinevaR")
+```
+
+For the development version from GitHub:
+
+```{r install-dev, eval=FALSE}
+# install.packages("remotes")
+remotes::install_github("FarmagenUFC/germlinevaR")
+```
+
+# Quick start
+
 ```{r setup}
 library(germlinevaR)
 library(data.table)
 ```
 
-## 1. Reading a VCF into an MAF-like table
+# Reading a VCF into an MAF-like table
 
 `read.gvr()` is the auto-routing entry point: it inspects the VCF header,
 detects whether annotations come from VEP, SnpEff, or both, and dispatches
 to the correct sibling reader (`read.gvr`, `read.gvr.snpeff`, or
 `read.gvr.dual`). When you read your own data, point `read.gvr()` at the
-folder containing your VCF file(s) -- the function discovers every
+folder containing your VCF file(s) — the function discovers every
 `*.vcf.gz` in that directory, auto-detects the annotator on each file,
 and returns one MAF-like row per ALT allele. All files in a batch must share
 the same annotator; mixed VEP/SnpEff folders are rejected. For this
@@ -72,7 +140,7 @@ head(gvr[, .(Hugo_Symbol, Variant_Classification, IMPACT,
              Tumor_Sample_Barcode)])
 ```
 
-## 2. Filtering: `gvr_filter()`
+# Filtering: `gvr_filter()`
 
 `gvr_filter()` exposes population-frequency, clinical-significance,
 biotype, variant-classification, genotype, and panel filters as
@@ -103,7 +171,7 @@ The one BC-panel survivor — BRCA2 p.G1376A — is a missense with no rsID
 and no allele frequency in any catalogue, which is exactly the profile
 that motivates the next section.
 
-## 3. Candidate novel variants: `gvr_novel()`
+# Candidate novel variants: `gvr_novel()`
 
 `gvr_novel()` is a dedicated subsetter that returns rows with no
 dbSNP rsID **and** no allele frequency in gnomAD, 1000 Genomes, or
@@ -118,7 +186,7 @@ novel[, .(Hugo_Symbol, HGVSp_Short, Variant_Classification, IMPACT)]
 Note that the BRCA2 p.G1376A row from the panel filter above also
 appears here — a single variant can satisfy several criteria at once.
 
-## 4. Cohort summary: `gvr_summary()`
+# Cohort summary: `gvr_summary()`
 
 `gvr_summary()` returns an 8-section list-of-`data.table`s ready for
 direct inspection or downstream tabulation. It can also write the same
@@ -139,7 +207,7 @@ summ$top_genes
 For the full HTML dashboard call `gvr_summary(..., save_html = TRUE,
 out_dir = ".")`.
 
-## 5. Static plots
+# Static plots
 
 germlinevaR produces several families of plots: per-gene
 **protein-domain lollipops** (`gvr_lollipop`), per-gene
@@ -178,7 +246,7 @@ samples, coloured by variant classification.
 standalone PNGs. Both call sites need a real cohort with several
 samples to render usefully, so they are not shown in this vignette.
 
-## 6. Where to next
+# Where to next
 
 - `?read.gvr` — every reader option (parallel cohort folders, ABraOM
   joining, custom output paths)
@@ -188,7 +256,7 @@ samples to render usefully, so they are not shown in this vignette.
 - `?gvr_lollipop` and `?gvr_genepos.plot` — per-gene plotting
 - GitHub: <https://github.com/FarmagenUFC/germlinevaR>
 
-## Session info
+# Session info
 
 ```{r session-info, echo=FALSE}
 sessionInfo()

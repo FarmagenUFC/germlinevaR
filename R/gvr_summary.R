@@ -125,6 +125,13 @@
 #' @author germlinevaR authors
 #'
 #' @examples
+#' ## Load the shipped example table and run summary (no file output)
+#' gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+#'                            package = "germlinevaR"))
+#' summ <- gvr_summary(gvr, save_excel = FALSE, save_pdf = FALSE,
+#'                     save_html = FALSE, verbose = FALSE)
+#' names(summ)
+#'
 #' \dontrun{
 #' gvr <- read.gvr("/path/to/vcf_folder")
 #'

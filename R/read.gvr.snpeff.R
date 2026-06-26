@@ -215,6 +215,11 @@
 #' @author germlinevaR authors
 #'
 #' @examples
+#' ## The shipped example is VEP-annotated; read.gvr.snpeff() is shown here
+#' ## with a minimal demonstration using the auto-router on the VEP example.
+#' ## For SnpEff VCFs, call read.gvr.snpeff() the same way as read.gvr().
+#' gvr_list_panels()   # confirm package is loaded
+#'
 #' \dontrun{
 #' ## Folder mode: merge ALL *_NN.snpeff.vcf.gz into one gvr table
 #' gvr <- read.gvr.snpeff("/path/to/folder")

@@ -97,6 +97,12 @@ All files are written under \verb{out_dir/folder_name/}. Existing files of the
 same name are overwritten; other files in the folder are left alone.
 }
 \examples{
+## Load the shipped example table and write plots to a temp directory
+gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+                           package = "germlinevaR"))
+out_dir <- gvr_sum_plots(gvr, out_dir = tempdir(), verbose = FALSE)
+dir.exists(out_dir)
+
 \dontrun{
   gvr <- read.gvr("/path/to/vcf/")
   gvr_sum_plots(gvr, out_dir = "results", folder_name = "S6_plots",

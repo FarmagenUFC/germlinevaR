@@ -228,6 +228,16 @@ case-insensitive).
 }
 }
 \examples{
+## Use the example VCF shipped with the package
+vcf_dir <- tempfile("gvr_ex_")
+dir.create(vcf_dir)
+file.copy(
+  system.file("extdata", "example.vep.vcf.gz", package = "germlinevaR"),
+  file.path(vcf_dir, "example.vep.vcf.gz")
+)
+gvr <- read.gvr(vcf_dir, verbose = FALSE)
+dim(gvr)
+
 \dontrun{
 ## Folder mode: merge ALL *_NN.vcf.gz into one gvr table
 gvr <- read.gvr("/path/to/folder")

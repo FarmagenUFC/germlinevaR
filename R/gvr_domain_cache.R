@@ -40,6 +40,9 @@
 #' @seealso [gvr_lollipop()]
 #'
 #' @examples
+#' ## Clear the cache for a specific gene (safe to run; no-op if cache is empty)
+#' gvr_domain_cache_clear(gene = "TP53")
+#'
 #' \dontrun{
 #'   ## Clear everything
 #'   gvr_domain_cache_clear()
@@ -87,7 +90,7 @@ gvr_domain_cache_clear <- function(gene      = NULL,
   }
 
   # ---- Build glob pattern based on gene/organism args ----
-  gene_part <- if (is.null(gene)) ".*" else gsub("([.\\\\+*?\\[\\^\\]$(){}=!<>|:\\-#])",
+  gene_part <- if (is.null(gene)) ".*" else gsub("([.+*?\\[\\^\\]$()=!<>|:\\-#])",
                                                   "\\\\\\1", gene)
   org_part  <- if (is.null(organism)) ".*" else as.character(organism)
   pattern   <- sprintf("^domains_interpro_%s_%s\\.rds$", gene_part, org_part)

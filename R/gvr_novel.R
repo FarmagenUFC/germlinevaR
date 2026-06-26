@@ -45,6 +45,12 @@
 #' @seealso [read.gvr()], [gvr_filter()], [gvr_summary()]
 #'
 #' @examples
+#' ## Load the shipped example table and find candidate novel variants
+#' gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+#'                            package = "germlinevaR"))
+#' nov <- gvr_novel(gvr, verbose = FALSE)
+#' dim(nov)
+#'
 #' \dontrun{
 #'   gvr <- read.gvr("vcf_dir/", pattern = "\\.vep\\.vcf\\.gz$")
 #'   f   <- gvr_filter(gvr)

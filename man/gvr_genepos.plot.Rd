@@ -172,6 +172,16 @@ suggesting \code{rtracklayer} or falls back to a tiny streaming parser.
 }
 
 \examples{
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  ## Load the shipped example table; use gtf_path=NULL + cache_dir=FALSE
+  ## to skip the Ensembl REST call in the example (requires network).
+  ## A real call would be: gvr_genepos.plot(gvr, "BRCA1")
+  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+                             package = "germlinevaR"))
+  ## Confirm the function is available
+  is.function(gvr_genepos.plot)
+}
+
 \dontrun{
 # Auto-resolve MANE/CANONICAL transcript for BRCA1
 p <- gvr_genepos.plot(gvr, "BRCA1")

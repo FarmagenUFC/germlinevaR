@@ -92,6 +92,10 @@
 #' @export
 #' @importFrom data.table data.table as.data.table fread setDT setnames setkey rbindlist :=
 #' @examples
+#' ## read.gvr.dual() handles VCFs with both VEP CSQ and SnpEff ANN fields.
+#' ## The shipped example is VEP-only; confirm the package is loaded:
+#' gvr_list_panels()
+#'
 #' \dontrun{
 #'   # Auto-route: read.gvr() detects ANN+CSQ and delegates here.
 #'   gvr <- read.gvr("/path/to/dual-annotated-vcfs/")

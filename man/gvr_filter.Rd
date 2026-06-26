@@ -155,6 +155,13 @@ retained for portability to data that does carry \code{"0"}/\code{"0/0"}.
 The input is never modified: filtering operates on an internal \code{data.table} copy.
 }
 \examples{
+## Load the shipped example table
+gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+                           package = "germlinevaR"))
+## Default filter (rare + clinically relevant + called genotypes)
+filt <- gvr_filter(gvr, verbose = FALSE)
+dim(filt)
+
 \dontrun{
 gvr <- read.gvr("/path/to/vcf_folder")
 

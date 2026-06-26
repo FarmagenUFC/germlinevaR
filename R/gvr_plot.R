@@ -94,6 +94,14 @@
 #' @author germlinevaR authors
 #'
 #' @examples
+#' if (requireNamespace("ComplexHeatmap", quietly = TRUE)) {
+#'   ## Load the shipped example table; write plot to a temp directory
+#'   gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+#'                              package = "germlinevaR"))
+#'   p <- gvr_plot(gvr, out_dir = tempdir(), verbose = FALSE)
+#'   class(p)
+#' }
+#'
 #' \dontrun{
 #' gvr <- read.gvr("/path/to/vcf_folder")
 #'

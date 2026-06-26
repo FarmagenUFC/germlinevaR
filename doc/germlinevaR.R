@@ -5,6 +5,16 @@ knitr::opts_chunk$set(
   fig.align = "center"
 )
 
+## ----install, eval=FALSE------------------------------------------------------
+# if (!requireNamespace("BiocManager", quietly = TRUE))
+#     install.packages("BiocManager")
+# 
+# BiocManager::install("germlinevaR")
+
+## ----install-dev, eval=FALSE--------------------------------------------------
+# # install.packages("remotes")
+# remotes::install_github("FarmagenUFC/germlinevaR")
+
 ## ----setup--------------------------------------------------------------------
 library(germlinevaR)
 library(data.table)
@@ -17,15 +27,15 @@ file.copy(
   file.path(vcf_dir, "example.vep.vcf.gz")
 )
 
-maf <- read.gvr(vcf_dir, verbose = FALSE)
-dim(maf)
+gvr <- read.gvr(vcf_dir, verbose = FALSE)
+dim(gvr)
 
-## ----show-maf-----------------------------------------------------------------
-head(maf[, .(Hugo_Symbol, Variant_Classification, IMPACT,
+## ----show-gvr-----------------------------------------------------------------
+head(gvr[, .(Hugo_Symbol, Variant_Classification, IMPACT,
              Tumor_Sample_Barcode)])
 
 ## ----filter-default-----------------------------------------------------------
-filt <- gvr_filter(maf, verbose = FALSE)
+filt <- gvr_filter(gvr, verbose = FALSE)
 dim(filt)
 table(filt$Variant_Classification)
 
@@ -34,17 +44,17 @@ gvr_list_panels()                    # registered panels
 panel <- gvr_panel_genes("breast cancer")
 panel
 
-filt_bc <- gvr_filter(maf, genes = panel, verbose = FALSE)
+filt_bc <- gvr_filter(gvr, genes = panel, verbose = FALSE)
 filt_bc[, .(Hugo_Symbol, HGVSp_Short, Variant_Classification, IMPACT)]
 
 ## ----novel--------------------------------------------------------------------
-novel <- gvr_novel(maf, verbose = FALSE)
+novel <- gvr_novel(gvr, verbose = FALSE)
 dim(novel)
 novel[, .(Hugo_Symbol, HGVSp_Short, Variant_Classification, IMPACT)]
 
 ## ----summary------------------------------------------------------------------
 summ <- gvr_summary(
-  maf,
+  gvr,
   save_excel = FALSE, save_pdf = FALSE, save_html = FALSE,
   verbose    = FALSE
 )

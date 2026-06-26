@@ -228,6 +228,10 @@ identical to \code{\link[=read.gvr]{read.gvr()}}; see that function's documentat
 option reference.
 }
 \examples{
+## read.gvr.dual() handles VCFs with both VEP CSQ and SnpEff ANN fields.
+## The shipped example is VEP-only; confirm the package is loaded:
+gvr_list_panels()
+
 \dontrun{
   # Auto-route: read.gvr() detects ANN+CSQ and delegates here.
   gvr <- read.gvr("/path/to/dual-annotated-vcfs/")

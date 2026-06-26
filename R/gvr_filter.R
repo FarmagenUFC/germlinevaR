@@ -116,6 +116,13 @@
 #' @author germlinevaR authors
 #'
 #' @examples
+#' ## Load the shipped example table
+#' gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+#'                            package = "germlinevaR"))
+#' ## Default filter (rare + clinically relevant + called genotypes)
+#' filt <- gvr_filter(gvr, verbose = FALSE)
+#' dim(filt)
+#'
 #' \dontrun{
 #' gvr <- read.gvr("/path/to/vcf_folder")
 #'
