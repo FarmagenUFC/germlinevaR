@@ -216,11 +216,13 @@
 #' @examples
 #' gvr_list_panels()
 #'
-#' ## Use in read.gvr() to keep only breast-cancer genes
-#' \dontrun{
-#' gvr <- read.gvr("/path/to/folder", panel = "breast cancer")
+#' \donttest{
+#'   ## The returned panel names can be passed to read.gvr() to subset
+#'   ## the gvr table at read time. Using the bundled example VCF:
+#'   vcf_dir <- system.file("extdata", package = "germlinevaR")
+#'   gvr <- read.gvr(vcf_dir, panel = "breast cancer", verbose = FALSE)
+#'   nrow(gvr)
 #' }
-#'
 #' @seealso [gvr_panel_genes()], [read.gvr()].
 #' @family germlinevaR
 #' @author germlinevaR authors
@@ -255,12 +257,14 @@ gvr_list_panels <- function() {
 #' gvr_panel_genes("gastrointestinal stromal tumor")  # alias of "gist"
 #' gvr_panel_genes("hereditary prostate cancer")
 #'
-#' \dontrun{
-#' ## Use in read.gvr()
-#' gvr <- read.gvr("/path/to/folder",
-#'                 panel = c("breast cancer", "hereditary prostate cancer"))
+#' \donttest{
+#'   ## Combine multiple panels at read time using the bundled example VCF
+#'   vcf_dir <- system.file("extdata", package = "germlinevaR")
+#'   gvr <- read.gvr(vcf_dir,
+#'                   panel = c("breast cancer", "hereditary prostate cancer"),
+#'                   verbose = FALSE)
+#'   nrow(gvr)
 #' }
-#'
 #' @seealso [gvr_list_panels()], [read.gvr()].
 #' @family germlinevaR
 #' @author germlinevaR authors

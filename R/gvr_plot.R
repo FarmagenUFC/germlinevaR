@@ -80,13 +80,10 @@
 #' @param verbose Logical; if `TRUE` (default) print the path of the file written.
 #'
 #' @return Invisibly, the path of the written PNG (character), or `NA_character_` if
-#'   the plot was skipped (\pkg{ComplexHeatmap} not installed, or no known-gene
-#'   variants present).
+#'   no known-gene variants are present in the table.
 #'
 #' @section Dependencies:
-#' Requires \pkg{ComplexHeatmap} (a \pkg{Bioconductor} package, listed in `Suggests`).
-#' If it is not installed the top-genes variant matrix is skipped with a warning and `NA_character_`
-#' is returned.
+#' Uses \pkg{ComplexHeatmap} (a \pkg{Bioconductor} package, listed in `Imports`).
 #'
 #' @seealso [gvr_summary()] for the tabular summary, [read.gvr()] to build the table,
 #'   [gvr_filter()] to filter it before plotting.
@@ -94,25 +91,22 @@
 #' @author germlinevaR authors
 #'
 #' @examples
-#' if (requireNamespace("ComplexHeatmap", quietly = TRUE)) {
-#'   ## Load the shipped example table; write plot to a temp directory
+#' ## Load the shipped example table; write plot to a temp directory
+#' gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+#'                            package = "germlinevaR"))
+#' p <- gvr_plot(gvr, out_dir = tempdir(), verbose = FALSE)
+#' class(p)
+#'
+#' \donttest{
+#'   ## Smaller top-genes variant matrix of filtered hits to a temp folder
 #'   gvr <- readRDS(system.file("extdata", "example_gvr.rds",
 #'                              package = "germlinevaR"))
-#'   p <- gvr_plot(gvr, out_dir = tempdir(), verbose = FALSE)
-#'   class(p)
+#'   filt <- gvr_filter(gvr, ABraOM_AF = NULL, verbose = FALSE)
+#'   if (nrow(filt) > 0L) {
+#'     gvr_plot(filt, top_n = 15, out_dir = tempdir(), verbose = FALSE)
+#'   }
 #' }
-#'
-#' \dontrun{
-#' gvr <- read.gvr("/path/to/vcf_folder")
-#'
-#' ## write a top-20 variant matrix to the current directory
-#' p <- gvr_plot(gvr)
-#' p                                  # path to the PNG
-#'
-#' ## smaller top-genes variant matrix of filtered hits, into a results folder
-#' gvr_plot(gvr_filter(gvr), top_n = 15, out_dir = "results/plots")
-#' }
-#'
+#' @importFrom ComplexHeatmap rowAnnotation anno_barplot HeatmapAnnotation Heatmap Legend packLegend draw
 #' @importFrom data.table as.data.table data.table setorder uniqueN :=
 #' @importFrom grDevices png dev.off
 #' @importFrom grid gpar grid.rect unit
@@ -275,9 +269,8 @@ gvr_plot <- function(gvr,
 
   # --- Top-genes variant matrix builder (ComplexHeatmap): top-N genes x samples, each cell the ---
   #     single MOST-SEVERE Variant_Classification. Returns final path or NA.
-  if (!requireNamespace("ComplexHeatmap", quietly = TRUE)) {
-    warning("gvr_plot: 'ComplexHeatmap' not installed; skipping plot."); return(invisible(NA_character_))
-  }
+  # ComplexHeatmap is a hard dependency (declared in DESCRIPTION Imports), so no
+  # runtime presence check is needed; users always have it installed via Bioconductor.
   m <- dt[!(Hugo_Symbol %in% UNKNOWN_GENE)]
   if (nrow(m) == 0L) { warning("gvr_plot: no known-gene variants; skipping plot."); return(invisible(NA_character_)) }
   gstat <- m[, .(n_var = .N, n_samp = data.table::uniqueN(.__sample__)), by = Hugo_Symbol]

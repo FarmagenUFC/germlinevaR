@@ -92,18 +92,21 @@
 #' @export
 #' @importFrom data.table data.table as.data.table fread setDT setnames setkey rbindlist :=
 #' @examples
-#' ## read.gvr.dual() handles VCFs with both VEP CSQ and SnpEff ANN fields.
-#' ## The shipped example is VEP-only; confirm the package is loaded:
-#' gvr_list_panels()
+#' ## The function signature is exported and callable:
+#' is.function(read.gvr.dual)
 #'
 #' \dontrun{
-#'   # Auto-route: read.gvr() detects ANN+CSQ and delegates here.
-#'   gvr <- read.gvr("/path/to/dual-annotated-vcfs/")
-#'
-#'   # Or call directly:
+#'   ## read.gvr.dual() expects VCFs annotated with BOTH VEP (CSQ INFO field)
+#'   ## AND SnpEff (ANN INFO field) in the same record. The shipped example
+#'   ## VCF is VEP-only, so a real dual-annotated example needs your own
+#'   ## VCFs:
 #'   gvr <- read.gvr.dual(folder = "/path/to/dual-annotated-vcfs/")
 #'
-#'   # Compare VEP vs SnpEff picks on high-impact variants:
+#'   ## Or via the auto-router in read.gvr() when the VCF header declares
+#'   ## both VEP and SnpEff INFO fields:
+#'   gvr <- read.gvr("/path/to/dual-annotated-vcfs/")
+#'
+#'   ## Compare VEP vs SnpEff picks on high-impact variants:
 #'   gvr[IMPACT == "HIGH" & snpeff_impact != "" & IMPACT != snpeff_impact,
 #'       .(Hugo_Symbol, Consequence, IMPACT, snpeff_gene, snpeff_consequence,
 #'         snpeff_impact)]
@@ -211,7 +214,7 @@ read.gvr.dual <- function(folder = ".",
 
   if (is.null(snpeff_tab) || nrow(snpeff_tab) == 0L) {
     if (isTRUE(verbose))
-      message("  Warning: no SnpEff ANN/LOF/NMD records extracted. snpeff_* and LOF_*/NMD_* columns will be empty.")
+      message("  No SnpEff ANN/LOF/NMD records extracted; snpeff_*/LOF_*/NMD_* columns will be empty.")
     snpeff_tab <- data.table::data.table(
       Tumor_Sample_Barcode = character(0),
       Chromosome           = character(0),

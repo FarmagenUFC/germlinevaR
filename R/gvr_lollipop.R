@@ -393,97 +393,38 @@
 #'
 #' @examples
 #' if (requireNamespace("ggplot2", quietly = TRUE)) {
-#'   ## Load the shipped example table; suppress file output and network call
+#'   ## Load the shipped example table; pass domains = NULL to skip the
+#'   ## InterPro REST call (needs network), and out_dir = NULL to return
+#'   ## the ggplot object instead of writing files.
 #'   gvr <- readRDS(system.file("extdata", "example_gvr.rds",
 #'                              package = "germlinevaR"))
-#'   ## OR4F5 is the first gene in the example; use domains=NULL to skip REST
+#'   ## OR4F5 is the first gene in the example
 #'   p <- gvr_lollipop(gvr, gene = "OR4F5", domains = NULL,
 #'                     out_dir = NULL, verbose = FALSE)
 #'   class(p)
 #' }
 #'
-#' \dontrun{
-#'   gvr <- read.gvr("vcf_dir/", pattern = "\\.vep\\.vcf\\.gz$")
-#'   f   <- gvr_filter(gvr)
+#' \donttest{
+#'   gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+#'                              package = "germlinevaR"))
+#'   if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'     ## Plain bar plot, no domain rectangles, returning the ggplot
+#'     gvr_lollipop(gvr, "OR4F5", domains = NULL, out_dir = NULL,
+#'                  verbose = FALSE)
 #'
-#'   ## default: auto-fetches InterPro domains, auto-saves to "."
-#'   p <- gvr_lollipop(f, "TP53")
-#'
-#'   ## second call uses cache, no network
-#'   gvr_lollipop(f, "TP53")
-#'
-#'   ## plain bar, no domain rectangles
-#'   gvr_lollipop(f, "TP53", domains = NULL)
-#'
-#'   ## with user-supplied domains (TP53 example - canonical UniProt P04637)
-#'   tp53_dom <- data.frame(
-#'     start = c(95,   323),
-#'     end   = c(288,  356),
-#'     name  = c("DNA-binding", "Tetramerization"),
-#'     color = c("#FF9400", "#75A025")
-#'   )
-#'   gvr_lollipop(f, "TP53", domains = tp53_dom)
-#'
-#'   ## non-human cohort: pass the NCBI taxonomy id
-#'   gvr_lollipop(f, "Trp53", organism = 10090) # mouse
-#'
-#'   ## HPC: send the cache to scratch
-#'   Sys.setenv(GVR_CACHE_DIR = "/scratch/$USER/germlinevaR_cache")
-#'   gvr_lollipop(f, "MUC16")
-#'
-#'   ## disable on-disk caching entirely (CI / shared scratch)
-#'   gvr_lollipop(f, "BRCA1", cache_dir = FALSE)
-#'
-#'   ## suppress file output, return ggplot2 only
-#'   p <- gvr_lollipop(f, "BRCA1", out_dir = NULL)
-#'   print(p)
-#'
-#'   ## Long protein, two label strategies side-by-side
-#'   ## MUC19 has 9-12 InterPro domains clustered in aa 470-1604, so
-#'   ## name-mode labels overlap. Number-mode keeps the in-plot annotation
-#'   ## compact and routes domain names into a side legend.
-#'   gvr_lollipop(f, "MUC19", domain_label_mode = "name")
-#'   gvr_lollipop(f, "MUC19", domain_label_mode = "number")
-#'
-#'   ## Opt-in heuristic chooses between "name" and "number" automatically
-#'   ## (uses "number" when protein > 2000 aa AND >= 5 InterPro domains).
-#'   gvr_lollipop(f, "MUC19", domain_label_mode = "auto")
-#'
-#'   ## Highlight hotspots: clusters of >= 4 variants within 20 aa
-#'   ## (the default; set hotspot_min_n = Inf to disable).
-#'   gvr_lollipop(f, "TP53", hotspot_window = 20, hotspot_min_n = 4)
-#'
-#'   ## Inside-rectangle domain labels (new default in Phase J)
-#'   gvr_lollipop(f, "TP53", domain_label_position = "inside")
-#'
-#'   ## Legacy below-rectangle labels with leader lines
-#'   gvr_lollipop(f, "TP53", domain_label_position = "below")
-#'
-#'   ## Sibling-package publication defaults for axes
-#'   gvr_lollipop(f, "TP53",
-#'                axis_text_size = 12, axis_title_size = 14,
-#'                axis_text_color = "black", axis_title_color = "black",
-#'                axis_line_color = "black", axis_line_width = 0.8)
-#'
-#'   ## Colour-blind-safe variant palette (positional, not semantic)
-#'   gvr_lollipop(f, "TP53", variant_palette = "okabe_ito")
-#'
-#'   ## Override Missense colour only; rest stay GVR semantic
-#'   gvr_lollipop(f, "TP53",
-#'                variant_palette = c(Missense_Mutation = "#FF00FF"))
-#'
-#'   ## Override Missense + use Nature palette for the remaining classes
-#'   gvr_lollipop(f, "TP53",
-#'                variant_palette = c(Missense_Mutation = "#FF00FF", "nature"))
-#'
-#'   ## Domain rectangles coloured along the viridis gradient
-#'   gvr_lollipop(f, "MUC19", domain_palette = "viridis")
-#'
-#'   ## List available palettes / inspect colours
-#'   gvr_list_palettes()
-#'   gvr_color_palette("nature", n = 5)
+#'     ## User-supplied domains (canonical TP53 / UniProt P04637)
+#'     tp53_dom <- data.frame(
+#'       start = c(95,  323),
+#'       end   = c(288, 356),
+#'       name  = c("DNA-binding", "Tetramerization"),
+#'       color = c("#FF9400", "#75A025")
+#'     )
+#'     ## Use any gene present in the shipped table
+#'     gene <- gvr$Hugo_Symbol[1]
+#'     gvr_lollipop(gvr, gene, domains = tp53_dom, out_dir = NULL,
+#'                  verbose = FALSE)
+#'   }
 #' }
-#'
 #' @importFrom data.table as.data.table copy is.data.table setDT :=
 #' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_rect geom_text annotate scale_color_manual scale_fill_identity scale_x_continuous scale_y_continuous labs theme_classic theme element_text element_blank ggsave
 #' @importFrom grDevices svg dev.off
@@ -1939,7 +1880,7 @@ gvr_lollipop <- function(gvr, gene,
 
     svg_written <- .fuse_save(svg_path, function(tmp) {
       grDevices::svg(tmp, width = width, height = height)
-      print(p)
+      methods::show(p)
       grDevices::dev.off()
     })
     png_written <- .fuse_save(png_path, function(tmp) {

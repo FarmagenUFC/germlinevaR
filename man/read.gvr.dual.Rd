@@ -228,18 +228,21 @@ identical to \code{\link[=read.gvr]{read.gvr()}}; see that function's documentat
 option reference.
 }
 \examples{
-## read.gvr.dual() handles VCFs with both VEP CSQ and SnpEff ANN fields.
-## The shipped example is VEP-only; confirm the package is loaded:
-gvr_list_panels()
+## The function signature is exported and callable:
+is.function(read.gvr.dual)
 
 \dontrun{
-  # Auto-route: read.gvr() detects ANN+CSQ and delegates here.
-  gvr <- read.gvr("/path/to/dual-annotated-vcfs/")
-
-  # Or call directly:
+  ## read.gvr.dual() expects VCFs annotated with BOTH VEP (CSQ INFO field)
+  ## AND SnpEff (ANN INFO field) in the same record. The shipped example
+  ## VCF is VEP-only, so a real dual-annotated example needs your own
+  ## VCFs:
   gvr <- read.gvr.dual(folder = "/path/to/dual-annotated-vcfs/")
 
-  # Compare VEP vs SnpEff picks on high-impact variants:
+  ## Or via the auto-router in read.gvr() when the VCF header declares
+  ## both VEP and SnpEff INFO fields:
+  gvr <- read.gvr("/path/to/dual-annotated-vcfs/")
+
+  ## Compare VEP vs SnpEff picks on high-impact variants:
   gvr[IMPACT == "HIGH" & snpeff_impact != "" & IMPACT != snpeff_impact,
       .(Hugo_Symbol, Consequence, IMPACT, snpeff_gene, snpeff_consequence,
         snpeff_impact)]

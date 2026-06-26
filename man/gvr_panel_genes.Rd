@@ -32,12 +32,14 @@ gvr_panel_genes("Breast_Cancer")            # case + underscore alias
 gvr_panel_genes("gastrointestinal stromal tumor")  # alias of "gist"
 gvr_panel_genes("hereditary prostate cancer")
 
-\dontrun{
-## Use in read.gvr()
-gvr <- read.gvr("/path/to/folder",
-                panel = c("breast cancer", "hereditary prostate cancer"))
+\donttest{
+  ## Combine multiple panels at read time using the bundled example VCF
+  vcf_dir <- system.file("extdata", package = "germlinevaR")
+  gvr <- read.gvr(vcf_dir,
+                  panel = c("breast cancer", "hereditary prostate cancer"),
+                  verbose = FALSE)
+  nrow(gvr)
 }
-
 }
 \seealso{
 \code{\link[=gvr_list_panels]{gvr_list_panels()}}, \code{\link[=read.gvr]{read.gvr()}}.

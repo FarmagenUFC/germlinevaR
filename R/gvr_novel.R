@@ -51,15 +51,16 @@
 #' nov <- gvr_novel(gvr, verbose = FALSE)
 #' dim(nov)
 #'
-#' \dontrun{
-#'   gvr <- read.gvr("vcf_dir/", pattern = "\\.vep\\.vcf\\.gz$")
-#'   f   <- gvr_filter(gvr)
-#'   nov <- gvr_novel(f)
-#'   ## quick sanity: every kept row really is novel
+#' \donttest{
+#'   ## Sanity-check: every kept row really is novel
 #'   stopifnot(all(is.na(nov$dbSNP_RS)   | nov$dbSNP_RS   == ""))
 #'   stopifnot(all(is.na(nov$gnomADe_AF) | nov$gnomADe_AF == ""))
-#' }
 #'
+#'   ## Combine with gvr_filter() to restrict to filtered novel variants
+#'   filt <- gvr_filter(gvr, ABraOM_AF = NULL, verbose = FALSE)
+#'   nov_filt <- gvr_novel(filt, verbose = FALSE)
+#'   dim(nov_filt)
+#' }
 #' @importFrom data.table as.data.table copy setDT is.data.table
 #' @export
 gvr_novel <- function(gvr, verbose = TRUE) {

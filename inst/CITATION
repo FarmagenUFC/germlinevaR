@@ -9,15 +9,21 @@ bibentry(
   bibtype  = "Manual",
   title    = paste0("{germlinevaR}: End-to-End Germline VCF Analysis, ",
                     "Filtering and Visualisation"),
-  author   = person("Thiago", "Loreto Matos",
-                    email = "farmagenufc@gmail.com",
-                    role  = c("aut", "cre")),
+  author   = c(
+    person("Thiago", "Loreto Matos",
+           email = "thiago-loreto@hotmail.com",
+           role  = c("aut", "cre")),
+    person("Felipe", "Pantoja Mesquita",
+           email = "felipemesquita05@gmail.com",
+           role  = "aut")
+  ),
   year     = year,
   note     = paste0("R package version ", version),
   url      = "https://github.com/FarmagenUFC/germlinevaR",
   textVersion = paste0(
-    "Loreto Matos T (", year, "). germlinevaR: End-to-End Germline VCF ",
-    "Analysis, Filtering and Visualisation. R package version ", version,
+    "Loreto Matos T, Pantoja Mesquita F (", year,
+    "). germlinevaR: End-to-End Germline VCF Analysis, Filtering and ",
+    "Visualisation. R package version ", version,
     ". https://github.com/FarmagenUFC/germlinevaR"
   )
 )

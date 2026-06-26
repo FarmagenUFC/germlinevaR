@@ -48,11 +48,13 @@ disease, or pass the panel name (or vector of names) to
 \examples{
 gvr_list_panels()
 
-## Use in read.gvr() to keep only breast-cancer genes
-\dontrun{
-gvr <- read.gvr("/path/to/folder", panel = "breast cancer")
+\donttest{
+  ## The returned panel names can be passed to read.gvr() to subset
+  ## the gvr table at read time. Using the bundled example VCF:
+  vcf_dir <- system.file("extdata", package = "germlinevaR")
+  gvr <- read.gvr(vcf_dir, panel = "breast cancer", verbose = FALSE)
+  nrow(gvr)
 }
-
 }
 \seealso{
 \code{\link[=gvr_panel_genes]{gvr_panel_genes()}}, \code{\link[=read.gvr]{read.gvr()}}.

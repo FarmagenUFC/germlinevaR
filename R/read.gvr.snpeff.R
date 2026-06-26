@@ -215,43 +215,20 @@
 #' @author germlinevaR authors
 #'
 #' @examples
-#' ## The shipped example is VEP-annotated; read.gvr.snpeff() is shown here
-#' ## with a minimal demonstration using the auto-router on the VEP example.
-#' ## For SnpEff VCFs, call read.gvr.snpeff() the same way as read.gvr().
-#' gvr_list_panels()   # confirm package is loaded
+#' ## The function signature is exported and callable:
+#' is.function(read.gvr.snpeff)
 #'
 #' \dontrun{
-#' ## Folder mode: merge ALL *_NN.snpeff.vcf.gz into one gvr table
-#' gvr <- read.gvr.snpeff("/path/to/folder")
+#'   ## read.gvr.snpeff() expects VCFs annotated by SnpEff (ANN/LOF/NMD
+#'   ## INFO fields). The shipped example VCF is VEP-annotated, so a real
+#'   ## SnpEff example needs your own VCFs:
+#'   gvr <- read.gvr.snpeff("/path/to/snpeff-vcfs/")
 #'
-#' ## Or use read.gvr() to auto-route (SnpEff inputs are dispatched here):
-#' gvr <- read.gvr("/path/to/folder")
+#'   ## Or via the auto-router when the VCF header declares SnpEff fields:
+#'   gvr <- read.gvr("/path/to/snpeff-vcfs/")
 #'
-#' ## Single-file mode: full path
-#' gvr <- read.gvr.snpeff(vcf_path = "/path/to/SAMPLE_01.snpeff.vcf.gz")
-#'
-#' ## Multi-file mode by full path
-#' gvr <- read.gvr.snpeff(
-#'   vcf_path = c("/p/S1.snpeff.vcf.gz", "/p/S2.snpeff.vcf.gz"))
-#'
-#' ## Pick basenames from a folder (merges these two but ignores other .vcf.gz)
-#' gvr <- read.gvr.snpeff(folder = "/p",
-#'                        file   = c("S1.snpeff.vcf.gz", "S2.snpeff.vcf.gz"))
-#'
-#' ## Disable the DP/GQ genotype filter entirely
-#' gvr <- read.gvr.snpeff("/path/to/folder", min_DP = NULL, min_GQ = NULL)
-#'
-#' ## Restrict to genes of interest
-#' gvr <- read.gvr.snpeff("/path/to/folder",
-#'                        genes = c("MEN1", "RET", "CDKN1B", "CDC73"))
-#'
-#' ## Or use a curated disease panel:
-#' gvr_list_panels()
-#' gvr <- read.gvr.snpeff("/path/to/folder", panel = "breast cancer")
-#'
-#' ## Multiple panels are unioned (deduplicated):
-#' gvr <- read.gvr.snpeff("/path/to/folder",
-#'                        panel = c("breast cancer", "hereditary prostate cancer"))
+#'   ## Single-file mode: full path
+#'   gvr <- read.gvr.snpeff(vcf_path = "/path/to/SAMPLE_01.snpeff.vcf.gz")
 #' }
 #'
 #' @importFrom data.table data.table as.data.table rbindlist fread fwrite setnames setcolorder setDT set setattr tstrsplit setkey :=
@@ -1399,14 +1376,14 @@ read.gvr.snpeff <- function(folder = ".",
       chunks[[ci2]] <- ck
       total_in <- total_in + nrow(dtc)
       file_done <- file_done + nrow(dtc)
-      global_done <<- global_done + nrow(dtc)
+      .progress$global_done <- .progress$global_done + nrow(dtc)
       if (verbose) {
         el <- as.numeric(difftime(Sys.time(), t_global, units = "secs"))
         if (!is.na(file_total_records) && !is.na(grand_total) && grand_total > 0L) {
           message(sprintf("    %s/%s (%.0f%%) | %.0fs",
                           format(file_done, big.mark = ","),
                           format(file_total_records, big.mark = ","),
-                          100 * global_done / grand_total, el))
+                          100 * .progress$global_done / grand_total, el))
         } else {
           message(sprintf("    %s records | %.0fs",
                           format(file_done, big.mark = ","), el))
@@ -1457,8 +1434,11 @@ read.gvr.snpeff <- function(folder = ".",
   if (verbose)
     message(sprintf("Converting %d file(s).", length(vcf_paths)))
 
-  # global running counter + timer shared with convert_one_vcf (via <<-)
-  global_done <- 0L
+  # global running counter + timer shared with convert_one_vcf via an explicit
+  # environment (was: <<- on a parent-scope variable; BiocCheck-preferred idiom).
+  # Fork-local in parallel mode (each mclapply child gets its own copy).
+  .progress <- new.env(parent = emptyenv())
+  .progress$global_done <- 0L
   t_global    <- t_all
 
   # v6 (PERF): optional multi-core conversion ACROSS FILES. Each VCF is converted
@@ -1467,8 +1447,8 @@ read.gvr.snpeff <- function(folder = ".",
   # mclapply preserves input order, so `per_file` (and thus the combined gvr table) is
   # byte-identical to the sequential path regardless of ncores. Only effective with
   # >1 file and a fork-capable OS; otherwise we run the original sequential loop.
-  # Default ncores=1L => exactly the previous behaviour. The shared global_done<<-
-  # progress counter is fork-local (per child), so per-chunk % lines are suppressed
+  # Default ncores=1L => exactly the previous behaviour. The shared .progress env
+  # is fork-local (per child), so per-chunk % lines are suppressed
   # in workers to avoid garbled interleaved output; a clean per-file summary prints
   # on collection. parallel is base R (no new dependency).
   n_files  <- length(vcf_paths)

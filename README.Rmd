@@ -16,8 +16,7 @@ knitr::opts_chunk$set(
 # germlinevaR <img src="man/figures/logo.png" align="right" height="120" alt="" />
 
 <!-- badges: start -->
-[![Lifecycle: stable](https://img.shields.io/badge/lifecycle-stable-brightgreen.svg)](https://lifecycle.r-lib.org/articles/stages.html#stable)
-[![CRAN status](https://img.shields.io/badge/CRAN-not%20yet-orange.svg)](https://CRAN.R-project.org/package=germlinevaR)
+[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 <!-- badges: end -->
 
 A self-contained toolchain for single-sample germline VCFs annotated with
@@ -40,14 +39,23 @@ gvr_plot(filt, top_n = 20, out_dir = tempdir())    # top-genes variant matrix (P
 
 ## Installation
 
-germlinevaR is on its way to CRAN. For now, install from GitHub:
+germlinevaR is submitted to Bioconductor. Once accepted, install the release
+version with:
 
-```{r install, eval = FALSE}
+```{r install-bioc, eval = FALSE}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("germlinevaR")
+```
+
+The in-development version on GitHub:
+
+```{r install-github, eval = FALSE}
 # install.packages("remotes")
 remotes::install_github("FarmagenUFC/germlinevaR")
 ```
 
-System requirements: R (>= 4.1.0). Optional: `bgzip` from
+System requirements: R (>= 4.4.0). Optional: `bgzip` from
 [HTSlib](https://www.htslib.org/) is convenient for re-bgzipping VCFs but is
 not required to read them.
 
@@ -122,4 +130,4 @@ record.
 
 ## License
 
-MIT (c) 2025 Thiago Loreto Matos. See `LICENSE`.
+MIT (c) 2026 Thiago Loreto Matos, Felipe Pantoja Mesquita. See `LICENSE`.

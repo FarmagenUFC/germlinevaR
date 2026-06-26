@@ -81,14 +81,16 @@ gvr_color_palette(n = 6)
 # List all available palette names
 gvr_list_palettes()
 
-\dontrun{
-# Use directly in a ggplot2 plot
-library(ggplot2)
-ggplot(iris, aes(Sepal.Length, Sepal.Width, color = Species)) +
-  geom_point() +
-  scale_color_manual(values = gvr_color_palette("viridis", 3))
+\donttest{
+  if (requireNamespace("ggplot2", quietly = TRUE)) {
+    # Use directly in a ggplot2 plot
+    ggplot2::ggplot(iris,
+        ggplot2::aes(Sepal.Length, Sepal.Width, color = Species)) +
+      ggplot2::geom_point() +
+      ggplot2::scale_color_manual(
+        values = gvr_color_palette("viridis", 3))
+  }
 }
-
 }
 \seealso{
 \code{\link[=gvr_list_palettes]{gvr_list_palettes()}}, \code{\link[=gvr_lollipop]{gvr_lollipop()}}.

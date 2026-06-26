@@ -684,29 +684,30 @@ GVR_CLASS_COLORS <- c(
 #'
 #' @examples
 #' if (requireNamespace("ggplot2", quietly = TRUE)) {
-#'   ## Load the shipped example table; use gtf_path=NULL + cache_dir=FALSE
-#'   ## to skip the Ensembl REST call in the example (requires network).
-#'   ## A real call would be: gvr_genepos.plot(gvr, "BRCA1")
+#'   ## Load the shipped example table; we only confirm the function is
+#'   ## available. A real call to gvr_genepos.plot(gvr, "BRCA1") needs
+#'   ## either network access (Ensembl REST) or a local GTF file.
 #'   gvr <- readRDS(system.file("extdata", "example_gvr.rds",
 #'                              package = "germlinevaR"))
-#'   ## Confirm the function is available
 #'   is.function(gvr_genepos.plot)
 #' }
 #'
 #' \dontrun{
-#' # Auto-resolve MANE/CANONICAL transcript for BRCA1
-#' p <- gvr_genepos.plot(gvr, "BRCA1")
+#'   ## Auto-resolve the MANE / canonical transcript for BRCA1 via the
+#'   ## Ensembl REST API (requires internet access).
+#'   gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+#'                              package = "germlinevaR"))
+#'   p <- gvr_genepos.plot(gvr, "BRCA1")
 #'
-#' # Pin transcript and use proportional intron scaling
-#' gvr_genepos.plot(gvr, "BRCA1",
-#'                  transcript_id = "ENST00000357654",
-#'                  intron_scale  = "proportional")
+#'   ## Pin transcript and use proportional intron scaling
+#'   gvr_genepos.plot(gvr, "BRCA1",
+#'                    transcript_id = "ENST00000357654",
+#'                    intron_scale  = "proportional")
 #'
-#' # Fully offline using a local GTF
-#' gvr_genepos.plot(gvr, "BRCA1",
-#'                  gtf_path = "gencode.v44.annotation.gtf.gz")
+#'   ## Fully offline using a local GTF (path supplied by the user)
+#'   gvr_genepos.plot(gvr, "BRCA1",
+#'                    gtf_path = "gencode.v44.annotation.gtf.gz")
 #' }
-#'
 #' @export
 gvr_genepos.plot <- function(gvr,
                              gene,
@@ -1268,7 +1269,7 @@ gvr_genepos.plot <- function(gvr,
           !requireNamespace("svglite", quietly = TRUE)) {
         # Fall back to base grDevices::svg
         grDevices::svg(tmp, width = width, height = height)
-        print(p); grDevices::dev.off()
+        methods::show(p); grDevices::dev.off()
         return(invisible(NULL))
       }
       if (identical(format, "tiff")) args$compression <- "lzw"
