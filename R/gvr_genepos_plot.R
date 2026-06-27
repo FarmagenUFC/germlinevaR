@@ -83,12 +83,15 @@
 # being in scope from another file's nested closure.
 .gvr_genepos_http_get_retry <- function(url, timeout_s = 30, tries = 3) {
   delays <- c(0.5, 1.5, 3.0)
-  last_err <- NULL
+  # BiocCheck-preferred idiom: use a local environment slot in place of a
+  # super-assignment to surface the tryCatch-captured error to the parent scope.
+  err_env <- new.env(parent = emptyenv())
+  err_env$last_err <- NULL
   resp <- NULL
   for (i in seq_len(tries)) {
     resp <- tryCatch(
       httr::GET(url, httr::timeout(timeout_s)),
-      error = function(e) { last_err <<- e; NULL }
+      error = function(e) { err_env$last_err <- e; NULL }
     )
     if (!is.null(resp)) {
       sc <- httr::status_code(resp)
@@ -97,7 +100,7 @@
     if (i < tries) Sys.sleep(delays[i])
   }
   if (!is.null(resp)) return(resp)
-  stop(last_err)
+  stop(err_env$last_err)
 }
 
 # Parse the Ensembl REST /lookup/id response into the lean internal
@@ -347,8 +350,11 @@
   is_cds <- grepl("^\\d+", s) & !is_splice & !is_utr5 & !is_utr3
 
   # Extract leading integer (preserving sign for utr5, dropping '*' for utr3).
+  # why: as.integer() on regex-extracted cDNA UTR5 token; non-matching strings yield NA and warn 'NAs introduced by coercion' — NA is the intended sentinel.
   utr5_pos <- suppressWarnings(as.integer(sub("^(-\\d+).*$", "\\1", s)))
+  # why: as.integer() on regex-extracted UTR3 token; non-matching strings yield NA and warn — NA is the intended sentinel.
   utr3_pos <- suppressWarnings(as.integer(sub("^\\*(\\d+).*$", "\\1", s)))
+  # why: as.integer() on regex-extracted CDS token; non-matching strings yield NA and warn — NA is the intended sentinel.
   cds_pos  <- suppressWarnings(as.integer(sub("^(\\d+).*$", "\\1", s)))
 
   out[is_splice, `:=`(kind = "splice", valid = FALSE)]
@@ -692,21 +698,27 @@ GVR_CLASS_COLORS <- c(
 #'   is.function(gvr_genepos.plot)
 #' }
 #'
-#' \dontrun{
+#' \donttest{
 #'   ## Auto-resolve the MANE / canonical transcript for BRCA1 via the
-#'   ## Ensembl REST API (requires internet access).
+#'   ## Ensembl REST API (requires internet access). out_dir = NULL
+#'   ## returns the ggplot object only — no file is written.
 #'   gvr <- readRDS(system.file("extdata", "example_gvr.rds",
 #'                              package = "germlinevaR"))
-#'   p <- gvr_genepos.plot(gvr, "BRCA1")
+#'   p <- gvr_genepos.plot(gvr, "BRCA1", out_dir = NULL)
 #'
-#'   ## Pin transcript and use proportional intron scaling
+#'   ## Pin transcript and use proportional intron scaling, still in-memory.
 #'   gvr_genepos.plot(gvr, "BRCA1",
 #'                    transcript_id = "ENST00000357654",
-#'                    intron_scale  = "proportional")
+#'                    intron_scale  = "proportional",
+#'                    out_dir       = NULL)
 #'
-#'   ## Fully offline using a local GTF (path supplied by the user)
+#'   ## Demonstrate file output by writing the PNG to a temp directory.
+#'   out_dir <- file.path(tempdir(), "gvr_genepos_demo")
 #'   gvr_genepos.plot(gvr, "BRCA1",
-#'                    gtf_path = "gencode.v44.annotation.gtf.gz")
+#'                    transcript_id = "ENST00000357654",
+#'                    out_dir       = out_dir,
+#'                    verbose       = FALSE)
+#'   list.files(file.path(out_dir, "gvr_genepos"), pattern = "\\.png$")
 #' }
 #' @export
 gvr_genepos.plot <- function(gvr,
@@ -1022,7 +1034,9 @@ gvr_genepos.plot <- function(gvr,
   y_lower <- -dom_half - 0.20
 
   # ---- Hotspot detection (mirrors gvr_lollipop logic; on cDNA axis) --------
+  # why: as.numeric() on user-supplied hotspot_window; non-numeric input yields NA which disables hotspots safely via the is.finite() guard below.
   .hw <- suppressWarnings(as.numeric(hotspot_window))
+  # why: as.numeric() on user-supplied hotspot_min_n; non-numeric input yields NA which disables hotspots safely via the is.finite() guard below.
   .hm <- suppressWarnings(as.numeric(hotspot_min_n))
   .hotspots_enabled <- isTRUE(is.finite(.hw) && .hw > 0) &&
                        isTRUE(!is.na(.hm) && .hm > 0)

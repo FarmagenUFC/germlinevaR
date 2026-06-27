@@ -514,6 +514,7 @@ gvr_summary <- function(gvr,
       if (dir.exists(final_path)) unlink(final_path, recursive = TRUE)
       ok <- FALSE
       if (.Platform$OS.type == "unix") {
+        # why: system2('cp') can emit a 'command not found' warning on minimal Unix shells; the ok-flag fallback below detects success regardless.
         rc <- suppressWarnings(system2("cp", c("-r", shQuote(tmp_path), shQuote(final_path))))
         ok <- isTRUE(rc == 0L) && dir.exists(final_path)
       }
@@ -545,6 +546,7 @@ gvr_summary <- function(gvr,
     # File copy (XLSX/PDF/HTML main file).
     ok <- FALSE
     if (.Platform$OS.type == "unix") {
+      # why: same as above — silence the system2('cp') warning; success is detected via rc==0 && file.exists() below.
       rc <- suppressWarnings(system2("cp", c("-f", shQuote(tmp_path), shQuote(final_path))))
       ok <- isTRUE(rc == 0L) && file.exists(final_path) && file.info(final_path)$size > 0
     }
@@ -726,9 +728,11 @@ gvr_summary <- function(gvr,
       .gvr_rank_xl <- function(d) {
         ir <- .gvr_impact_rank_xl(d$IMPACT)
         nsamp <- if (".__nsamp__" %in% names(d)) d$.__nsamp__ else rep(0L, nrow(d))
+        # why: as.numeric() on gnomADe_AF (character column with '' for missing); 'NAs introduced by coercion' is the intended path — NAs propagate as 'no AF available'.
         gaf <- if ("gnomADe_AF" %in% names(d)) suppressWarnings(as.numeric(d$gnomADe_AF))
                 else rep(NA_real_, nrow(d))
         chr <- if ("Chromosome" %in% names(d)) as.character(d$Chromosome) else rep("", nrow(d))
+        # why: as.integer() on Start_Position (character in pre-MAF stage); non-numeric rows become NA and are tolerated downstream.
         pos <- if ("Start_Position" %in% names(d)) suppressWarnings(as.integer(d$Start_Position))
                 else rep(0L, nrow(d))
         order(ir, -nsamp, gaf, chr, pos, na.last = TRUE)
@@ -773,8 +777,10 @@ gvr_summary <- function(gvr,
         ord <- c("HIGH"=1L,"MODERATE"=2L,"LOW"=3L,"MODIFIER"=4L)
         r <- ord[as.character(IMPACT)]; r[is.na(r)] <- 5L; as.integer(r)
       }]
+      # why: as.numeric() on gnomADe_AF inside a data.table set-by-reference; '' becomes NA which is the intended missing sentinel.
       .xl_proj[, .__gaf__ := if ("gnomADe_AF" %in% names(.xl_proj)) suppressWarnings(as.numeric(gnomADe_AF)) else NA_real_]
       .xl_proj[, .__chr__ := if ("Chromosome" %in% names(.xl_proj)) as.character(Chromosome) else ""]
+      # why: as.integer() on Start_Position inside a set-by-reference; non-numeric becomes NA which is tolerated downstream.
       .xl_proj[, .__pos__ := if ("Start_Position" %in% names(.xl_proj)) suppressWarnings(as.integer(Start_Position)) else 0L]
       # vN+10: global rank-of-row precomputed ONCE so the per-token write loop
       # in .gvr_write_combined_sheet can sort each pool with a single integer-key
@@ -1086,9 +1092,13 @@ gvr_summary <- function(gvr,
         }
 
         # ---- cairo_pdf blank-first-page guard --------------------------------------------
+        # BiocCheck-preferred idiom: env slot in place of super-assigned closure state.
         .make_new_page <- function() {
-          first <- TRUE
-          function() { if (first) first <<- FALSE else grid::grid.newpage() }
+          state <- new.env(parent = emptyenv())
+          state$first <- TRUE
+          function() {
+            if (state$first) state$first <- FALSE else grid::grid.newpage()
+          }
         }
 
         # ============================ HERO PAGE ===========================================
@@ -1524,6 +1534,7 @@ gvr_summary <- function(gvr,
                             shell_cols),
             stringsAsFactors = FALSE)
 
+          # why: DT::datatable() can warn about extra columnDefs targets when the rendered table has fewer columns than the spec; harmless.
           detail_dtbl <- suppressWarnings(DT::datatable(
             shell_df, rownames = FALSE,
             class = "stripe hover compact", filter = "none",
@@ -1740,9 +1751,11 @@ gvr_summary <- function(gvr,
         .gvr_rank_variants <- function(d) {
           ir <- .impact_rank(d$IMPACT)
           nsamp <- if (".__nsamp__" %in% names(d)) d$.__nsamp__ else rep(0L, nrow(d))
+          # why: as.numeric() on gnomADe_AF (character with '' for missing); coercion warnings are the intended path — NAs propagate as 'no AF available'.
           gaf <- if ("gnomADe_AF" %in% names(d)) suppressWarnings(as.numeric(d$gnomADe_AF))
                   else rep(NA_real_, nrow(d))
           chr <- if ("Chromosome" %in% names(d)) as.character(d$Chromosome) else rep("", nrow(d))
+          # why: as.integer() on Start_Position (character pre-MAF); non-numeric becomes NA which is tolerated downstream.
           pos <- if ("Start_Position" %in% names(d)) suppressWarnings(as.integer(d$Start_Position))
                   else rep(0L, nrow(d))
           order(ir, -nsamp, gaf, chr, pos, na.last = TRUE)

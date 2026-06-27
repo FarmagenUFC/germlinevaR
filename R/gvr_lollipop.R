@@ -12,11 +12,14 @@
 # `httr::status_code()` so non-retryable 4xx responses surface as before.
 .gvr_http_get_retry <- function(url, timeout_s = 30, tries = 3) {
   delays <- c(0.5, 1.5, 3.0)  # seconds between attempts
-  last_err <- NULL
+  # BiocCheck-preferred idiom: use a local environment slot in place of a
+  # super-assignment to surface the tryCatch-captured error to the parent scope.
+  err_env <- new.env(parent = emptyenv())
+  err_env$last_err <- NULL
   for (i in seq_len(tries)) {
     resp <- tryCatch(
       httr::GET(url, httr::timeout(timeout_s)),
-      error = function(e) { last_err <<- e; NULL }
+      error = function(e) { err_env$last_err <- e; NULL }
     )
     if (!is.null(resp)) {
       sc <- httr::status_code(resp)
@@ -27,7 +30,7 @@
   }
   if (!is.null(resp)) return(resp)
   # All attempts errored out; re-throw the last error for the caller's tryCatch
-  stop(last_err)
+  stop(err_env$last_err)
 }
 
 # Internal: abbreviate verbose InterPro domain names for plot readability.
@@ -753,6 +756,7 @@ gvr_lollipop <- function(gvr, gene,
       }
       # Phase L: capture canonical sequence length for the precedence resolver
       raw_len <- js$results[[1]]$sequence$length
+      # why: as.integer() on UniProt JSON 'length' field; if it is missing or unparsable we want NA and rely on the validity check below, not a coercion warning.
       parsed_len <- if (!is.null(raw_len)) suppressWarnings(as.integer(raw_len)) else NA_integer_
       if (length(parsed_len) != 1L || is.na(parsed_len) || parsed_len <= 0L)
         parsed_len <- NA_integer_
@@ -820,7 +824,9 @@ gvr_lollipop <- function(gvr, gene,
       for (loc in protein_locs) {
         if (is.null(loc$fragments) || length(loc$fragments) == 0L) next
         for (frag in loc$fragments) {
+          # why: as.integer() on JSON fragment$start; missing values become NA and are skipped by the is.na(s)||is.na(e) guard below.
           s <- suppressWarnings(as.integer(frag$start))
+          # why: as.integer() on JSON fragment$end; missing values become NA and are skipped by the is.na(s)||is.na(e) guard below.
           e <- suppressWarnings(as.integer(frag$end))
           if (is.na(s) || is.na(e)) next
           rows[[length(rows) + 1L]] <- list(
@@ -892,6 +898,7 @@ gvr_lollipop <- function(gvr, gene,
     if (!is.na(cache_file) && file.exists(cache_file)) {
       cached <- tryCatch(readRDS(cache_file), error = function(e) NULL)
       if (is.data.frame(cached)) {
+        # why: as.integer() on a cached 'uniprot_length' attribute that may be NULL or non-numeric from older cache files; NA is filtered immediately below.
         cached_len <- suppressWarnings(as.integer(attr(cached, "uniprot_length")))
         if (length(cached_len) == 1L && !is.na(cached_len) && cached_len > 0L) {
           if (isTRUE(verbose))
@@ -998,6 +1005,7 @@ gvr_lollipop <- function(gvr, gene,
     domains <- .gvr_interpro_get(gene, organism, cache_dir, verbose)
     # Phase L: snatch the length attribute before any NULL replacement.
     if (is.data.frame(domains)) {
+      # why: as.integer() on the same 'uniprot_length' attribute as above; reading it may return NULL for old cache entries — coerce silently.
       .__uniprot_length_capture__ <- suppressWarnings(
         as.integer(attr(domains, "uniprot_length")))
       if (length(.__uniprot_length_capture__) != 1L ||
@@ -1036,6 +1044,7 @@ gvr_lollipop <- function(gvr, gene,
   if (isTRUE(verbose)) message(sprintf("gvr_lollipop: '%s' - %d rows after VC filter", gene, nrow(dt)))
 
   # ---- Parse amino-acid position from HGVSp_Short (^p\.[A-Z*]([0-9]+)) ----
+  # why: as.integer() on regex-extracted HGVSp position; rows with no parseable position become NA and are filtered out in the next step.
   aa_pos <- suppressWarnings(as.integer(sub("^p\\.[A-Z*]([0-9]+).*", "\\1", dt$HGVSp_Short)))
   # rows with no parseable HGVSp_Short position
   bad_idx <- is.na(aa_pos) | !grepl("^p\\.[A-Z*][0-9]+", dt$HGVSp_Short)
@@ -1060,6 +1069,7 @@ gvr_lollipop <- function(gvr, gene,
   if (is.null(protein_length)) {
     pp <- as.character(dt$Protein_position)
     with_slash <- grepl("/", pp, fixed = TRUE)
+    # why: as.integer() on regex-extracted Protein_position total; non-conforming entries become NA and are filtered by the !is.na() & >0 test below.
     totals <- suppressWarnings(as.integer(sub("^[^/]*/", "", pp[with_slash])))
     totals <- totals[!is.na(totals) & totals > 0]
     if (length(totals) > 0L) {
@@ -1197,7 +1207,9 @@ gvr_lollipop <- function(gvr, gene,
       stop(sprintf("gvr_lollipop: 'domains' missing required column(s): %s",
                    paste(miss_dom, collapse = ", ")))
     }
+    # why: as.numeric() on a domain-table 'start' column that may carry character values from JSON; the drop-invalid-intervals step below removes NAs.
     dom$start <- suppressWarnings(as.numeric(dom$start))
+    # why: as.numeric() on domain 'end' (same as 'start' above); NAs are dropped by the invalid-intervals filter below.
     dom$end   <- suppressWarnings(as.numeric(dom$end))
     # drop invalid intervals
     bad_iv <- is.na(dom$start) | is.na(dom$end) | dom$end < dom$start
@@ -1484,7 +1496,9 @@ gvr_lollipop <- function(gvr, gene,
 
   # ---- Hotspot detection (clusters of >= hotspot_min_n positions within hotspot_window aa) ----
   # Validate inputs: any non-finite / <=0 value disables hotspots safely.
+  # why: as.numeric() on user-supplied hotspot_window; non-numeric input yields NA which disables hotspots safely via the is.finite() guard below.
   .hw <- suppressWarnings(as.numeric(hotspot_window))
+  # why: as.numeric() on user-supplied hotspot_min_n; non-numeric input yields NA which disables hotspots safely via the is.finite() guard below.
   .hm <- suppressWarnings(as.numeric(hotspot_min_n))
   .hotspots_enabled <- isTRUE(is.finite(.hw) && .hw > 0) &&
                        isTRUE(!is.na(.hm) && .hm > 0)  # Inf passes >0 test

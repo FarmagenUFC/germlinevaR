@@ -95,21 +95,25 @@
 #' ## The function signature is exported and callable:
 #' is.function(read.gvr.dual)
 #'
-#' \dontrun{
+#' \donttest{
 #'   ## read.gvr.dual() expects VCFs annotated with BOTH VEP (CSQ INFO field)
 #'   ## AND SnpEff (ANN INFO field) in the same record. The shipped example
 #'   ## VCF is VEP-only, so a real dual-annotated example needs your own
-#'   ## VCFs:
-#'   gvr <- read.gvr.dual(folder = "/path/to/dual-annotated-vcfs/")
+#'   ## VCFs; we therefore guard the call on the directory existing, so the
+#'   ## example skips cleanly on machines without the data.
+#'   dual_dir <- "/path/to/dual-annotated-vcfs/"
+#'   if (dir.exists(dual_dir)) {
+#'     gvr <- read.gvr.dual(folder = dual_dir)
 #'
-#'   ## Or via the auto-router in read.gvr() when the VCF header declares
-#'   ## both VEP and SnpEff INFO fields:
-#'   gvr <- read.gvr("/path/to/dual-annotated-vcfs/")
+#'     ## Or via the auto-router in read.gvr() when the VCF header declares
+#'     ## both VEP and SnpEff INFO fields:
+#'     gvr <- read.gvr(dual_dir)
 #'
-#'   ## Compare VEP vs SnpEff picks on high-impact variants:
-#'   gvr[IMPACT == "HIGH" & snpeff_impact != "" & IMPACT != snpeff_impact,
-#'       .(Hugo_Symbol, Consequence, IMPACT, snpeff_gene, snpeff_consequence,
-#'         snpeff_impact)]
+#'     ## Compare VEP vs SnpEff picks on high-impact variants:
+#'     gvr[IMPACT == "HIGH" & snpeff_impact != "" & IMPACT != snpeff_impact,
+#'         .(Hugo_Symbol, Consequence, IMPACT, snpeff_gene, snpeff_consequence,
+#'           snpeff_impact)]
+#'   }
 #' }
 read.gvr.dual <- function(folder = ".",
                           vcf_path   = NULL,
@@ -462,6 +466,7 @@ read.gvr.dual <- function(folder = ".",
   for (i in seq_along(tuples)) {
     parts <- strsplit(tuples[i], "|", fixed = TRUE)[[1L]]
     genes[i] <- if (length(parts) >= 1L) parts[1L] else ""
+    # why: as.numeric() on the 4th '|'-separated token of an LOF/NMD ANN entry which can be empty or non-numeric in older SnpEff outputs; NA is the intended missing sentinel.
     pcts[i]  <- if (length(parts) >= 4L) suppressWarnings(as.numeric(parts[4L])) else NA_real_
   }
   list(gene = genes, pct = pcts)

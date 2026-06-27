@@ -923,6 +923,7 @@ read.gvr <- function(folder = ".",
   ## 1g. Zygosity-aware genotype allele CODES for a split row (Allele2 = this ALT)
   gt_codes_for_alt <- function(gt, ai) {
     ai <- as.integer(ai)
+    # why: as.integer() on a split genotype string; '.' and other non-numeric tokens become NA and are dropped by !is.na() below.
     gidx <- suppressWarnings(as.integer(strsplit(gt, "[/|]")[[1]]))
     gidx <- gidx[!is.na(gidx)]
     if (length(gidx) == 0L) return(list(c1 = NA_integer_, c2 = ai))
@@ -1026,10 +1027,12 @@ read.gvr <- function(folder = ".",
       if (fmt_constant) {
         # Fast path: DP/GQ already extracted as chunk-level vectors
         if (filter_dp && !is.null(DP_col)) {
+          # why: as.numeric() on the DP field which may contain '' for missing; NAs are passed through the keep filter via is.na(dp_num)|dp_num>min_DP.
           dp_num <- suppressWarnings(as.numeric(DP_col))
           keep <- keep & (is.na(dp_num) | dp_num > min_DP)
         }
         if (filter_gq && !is.null(GQ_col)) {
+          # why: as.numeric() on the GQ field which may contain ''; NAs propagated by the same is.na()|>thr pattern.
           gq_num <- suppressWarnings(as.numeric(GQ_col))
           keep <- keep & (is.na(gq_num) | gq_num > min_GQ)
         }
@@ -1041,11 +1044,13 @@ read.gvr <- function(folder = ".",
           names(smp_vals) <- fmt_keys[seq_along(smp_vals)]
           if (filter_dp) {
             sdp <- if ("DP" %in% names(smp_vals)) smp_vals[["DP"]] else NA_character_
+            # why: as.numeric() on per-sample DP when it is read row-by-row in fallback mode; non-numeric becomes NA and the row is kept.
             dp_num <- suppressWarnings(as.numeric(sdp))
             if (!is.na(dp_num) && dp_num <= min_DP) keep[r] <- FALSE
           }
           if (filter_gq) {
             sgq <- if ("GQ" %in% names(smp_vals)) smp_vals[["GQ"]] else NA_character_
+            # why: as.numeric() on per-sample GQ in fallback mode; same NA-keep semantics as DP.
             gq_num <- suppressWarnings(as.numeric(sgq))
             if (!is.na(gq_num) && gq_num <= min_GQ) keep[r] <- FALSE
           }
@@ -1534,6 +1539,7 @@ read.gvr <- function(folder = ".",
     per_file <- tryCatch(
       parallel::mclapply(
         seq_along(vcf_paths),
+        # why: suppressMessages on the worker call so per-chunk progress lines from convert_one_vcf() do not interleave with the parent heartbeat output.
         function(i) suppressMessages(
           convert_one_vcf(vcf_paths[i], i, n_files, per_file_total[i])),
         mc.cores = use_cores, mc.preschedule = FALSE),
@@ -1542,6 +1548,7 @@ read.gvr <- function(folder = ".",
         # ("1 parallel job did not deliver a result") since we just killed it.
         if (!is.null(hb_job)) {
           try(tools::pskill(hb_job$pid), silent = TRUE)
+          # why: parallel::mccollect on an already-dead heartbeat fork can warn about missing children; the try() makes the cleanup best-effort.
           suppressWarnings(try(
             parallel::mccollect(hb_job, wait = FALSE, timeout = 1), silent = TRUE))
         }
@@ -1743,6 +1750,7 @@ read.gvr <- function(folder = ".",
     }
 
     if (ok) {
+      # why: data.table::fread() may warn about ragged ABraOM rows or quoted whitespace; we tolerate that, and a fatal error is caught by tryCatch.
       ab <- tryCatch(suppressWarnings(data.table::fread(apath, sep = "\t", header = TRUE, quote = "",
                            showProgress = FALSE)), error = function(e) NULL)
       if (is.null(ab)) {
@@ -1930,6 +1938,7 @@ read.gvr <- function(folder = ".",
       tmp_rds   <- file.path(tempdir(), paste0(out_prefix, ".rds"))
       saveRDS(gvr, tmp_rds, compress = TRUE)
       system2("cp", c(shQuote(tmp_rds), shQuote(rds_final)))   # always shell-cp
+      # why: file.info()$size may warn / return NA right after a shell cp on S3 FUSE; the is.na()||size==0 check below handles that.
       sz <- suppressWarnings(file.info(rds_final)$size)
       if (is.na(sz) || sz == 0)
         warning(sprintf("RDS write may have failed (0 bytes): %s", rds_final))
@@ -1966,6 +1975,7 @@ read.gvr <- function(folder = ".",
                                warning(sprintf("read.gvr: Excel write failed: %s", conditionMessage(e))); FALSE })
         if (wrote_ok) {
           system2("cp", c(shQuote(tmp_xlsx), shQuote(xlsx_final)))
+          # why: same as above — file.info()$size on a freshly-copied XLSX on a slow FS may warn; the is.na()||size==0 fallback below handles it.
           sz <- suppressWarnings(file.info(xlsx_final)$size)
           if (is.na(sz) || sz == 0) {
             warning(sprintf("read.gvr: copy to '%s' may have failed; Excel left at '%s'.",

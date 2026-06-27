@@ -258,6 +258,7 @@ gvr_filter <- function(gvr,
     before <- nrow(dt)
     raw  <- dt[[s$col]]
     miss <- .is_missing(raw)
+    # why: as.numeric() on a character AF column that may be '' (missing); 'NAs introduced by coercion' is expected and handled by the !is.na(x) test below.
     x    <- suppressWarnings(as.numeric(raw))
     below <- !is.na(x) & x < thr
     if (s$keep_miss) {
@@ -403,6 +404,7 @@ gvr_filter <- function(gvr,
                              warning(sprintf("gvr_filter: Excel write failed: %s", conditionMessage(e))); FALSE })
       if (wrote_ok) {
         system2("cp", c(shQuote(tmp_xlsx), shQuote(final_xlsx)))
+        # why: file.info() can warn / return NA size if the just-copied file is not yet visible to the FS; the is.na() / size==0 test below handles that.
         sz <- suppressWarnings(file.info(final_xlsx)$size)
         if (is.na(sz) || sz == 0) {
           warning(sprintf("gvr_filter: copy to '%s' may have failed; Excel left at '%s'.",

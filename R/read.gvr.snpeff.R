@@ -218,17 +218,25 @@
 #' ## The function signature is exported and callable:
 #' is.function(read.gvr.snpeff)
 #'
-#' \dontrun{
+#' \donttest{
 #'   ## read.gvr.snpeff() expects VCFs annotated by SnpEff (ANN/LOF/NMD
 #'   ## INFO fields). The shipped example VCF is VEP-annotated, so a real
-#'   ## SnpEff example needs your own VCFs:
-#'   gvr <- read.gvr.snpeff("/path/to/snpeff-vcfs/")
+#'   ## SnpEff example needs your own VCFs; we therefore guard each call on
+#'   ## the path existing, so the example skips cleanly on machines without
+#'   ## the data.
+#'   snpeff_dir <- "/path/to/snpeff-vcfs/"
+#'   if (dir.exists(snpeff_dir)) {
+#'     gvr <- read.gvr.snpeff(snpeff_dir)
 #'
-#'   ## Or via the auto-router when the VCF header declares SnpEff fields:
-#'   gvr <- read.gvr("/path/to/snpeff-vcfs/")
+#'     ## Or via the auto-router when the VCF header declares SnpEff fields:
+#'     gvr <- read.gvr(snpeff_dir)
+#'   }
 #'
 #'   ## Single-file mode: full path
-#'   gvr <- read.gvr.snpeff(vcf_path = "/path/to/SAMPLE_01.snpeff.vcf.gz")
+#'   snpeff_vcf <- "/path/to/SAMPLE_01.snpeff.vcf.gz"
+#'   if (file.exists(snpeff_vcf)) {
+#'     gvr <- read.gvr.snpeff(vcf_path = snpeff_vcf)
+#'   }
 #' }
 #'
 #' @importFrom data.table data.table as.data.table rbindlist fread fwrite setnames setcolorder setDT set setattr tstrsplit setkey :=
@@ -663,7 +671,9 @@ read.gvr.snpeff <- function(folder = ".",
           gq_chr[r] <- if ("GQ" %in% names(sv)) sv[["GQ"]] else NA_character_
         }
       }
+      # why: as.integer() on the DP character field which may contain '' for missing; NAs are tolerated by the is.na() | dp_num>=dp_min filter.
       dp_num <- suppressWarnings(as.integer(dp_chr))
+      # why: as.integer() on the GQ character field which may contain ''; NAs handled by the same is.na()|>=gq_min pattern.
       gq_num <- suppressWarnings(as.integer(gq_chr))
       pass_dp <- is.na(dp_num) | dp_num >= dp_min
       pass_gq <- is.na(gq_num) | gq_num >= gq_min
@@ -1299,6 +1309,7 @@ read.gvr.snpeff <- function(folder = ".",
   ## 1g. Zygosity-aware genotype allele CODES for a split row (Allele2 = this ALT)
   gt_codes_for_alt <- function(gt, ai) {
     ai <- as.integer(ai)
+    # why: as.integer() on a split genotype string; '.' and other non-numeric tokens become NA and are dropped by !is.na() below.
     gidx <- suppressWarnings(as.integer(strsplit(gt, "[/|]")[[1]]))
     gidx <- gidx[!is.na(gidx)]
     if (length(gidx) == 0L) return(list(c1 = NA_integer_, c2 = ai))
@@ -1466,6 +1477,7 @@ read.gvr.snpeff <- function(folder = ".",
                       use_cores, n_files))
     per_file <- parallel::mclapply(
       seq_along(vcf_paths),
+      # why: suppressMessages on the worker call so per-chunk progress lines from convert_one_vcf() do not interleave with the parent heartbeat output.
       function(i) suppressMessages(
         convert_one_vcf(vcf_paths[i], i, n_files, per_file_total[i])),
       mc.cores = use_cores, mc.preschedule = FALSE)
@@ -1650,6 +1662,7 @@ read.gvr.snpeff <- function(folder = ".",
     }
 
     if (ok) {
+      # why: data.table::fread() may warn about ragged ABraOM rows or quoted whitespace; we tolerate that, and a fatal error is caught by tryCatch.
       ab <- tryCatch(suppressWarnings(data.table::fread(apath, sep = "\t", header = TRUE, quote = "",
                            showProgress = FALSE)), error = function(e) NULL)
       if (is.null(ab)) {
@@ -1837,6 +1850,7 @@ read.gvr.snpeff <- function(folder = ".",
       tmp_rds   <- file.path(tempdir(), paste0(out_prefix, ".rds"))
       saveRDS(gvr, tmp_rds, compress = TRUE)
       system2("cp", c(shQuote(tmp_rds), shQuote(rds_final)))   # always shell-cp
+      # why: file.info()$size may warn / return NA right after a shell cp on S3 FUSE; the is.na()||size==0 check below handles that.
       sz <- suppressWarnings(file.info(rds_final)$size)
       if (is.na(sz) || sz == 0)
         warning(sprintf("RDS write may have failed (0 bytes): %s", rds_final))
@@ -1873,6 +1887,7 @@ read.gvr.snpeff <- function(folder = ".",
                                warning(sprintf("read.gvr: Excel write failed: %s", conditionMessage(e))); FALSE })
         if (wrote_ok) {
           system2("cp", c(shQuote(tmp_xlsx), shQuote(xlsx_final)))
+          # why: same as above — file.info()$size on a freshly-copied XLSX on a slow FS may warn; the is.na()||size==0 fallback below handles it.
           sz <- suppressWarnings(file.info(xlsx_final)$size)
           if (is.na(sz) || sz == 0) {
             warning(sprintf("read.gvr: copy to '%s' may have failed; Excel left at '%s'.",

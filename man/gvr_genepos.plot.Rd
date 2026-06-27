@@ -181,20 +181,26 @@ if (requireNamespace("ggplot2", quietly = TRUE)) {
   is.function(gvr_genepos.plot)
 }
 
-\dontrun{
+\donttest{
   ## Auto-resolve the MANE / canonical transcript for BRCA1 via the
-  ## Ensembl REST API (requires internet access).
+  ## Ensembl REST API (requires internet access). out_dir = NULL
+  ## returns the ggplot object only — no file is written.
   gvr <- readRDS(system.file("extdata", "example_gvr.rds",
                              package = "germlinevaR"))
-  p <- gvr_genepos.plot(gvr, "BRCA1")
+  p <- gvr_genepos.plot(gvr, "BRCA1", out_dir = NULL)
 
-  ## Pin transcript and use proportional intron scaling
+  ## Pin transcript and use proportional intron scaling, still in-memory.
   gvr_genepos.plot(gvr, "BRCA1",
                    transcript_id = "ENST00000357654",
-                   intron_scale  = "proportional")
+                   intron_scale  = "proportional",
+                   out_dir       = NULL)
 
-  ## Fully offline using a local GTF (path supplied by the user)
+  ## Demonstrate file output by writing the PNG to a temp directory.
+  out_dir <- file.path(tempdir(), "gvr_genepos_demo")
   gvr_genepos.plot(gvr, "BRCA1",
-                   gtf_path = "gencode.v44.annotation.gtf.gz")
+                   transcript_id = "ENST00000357654",
+                   out_dir       = out_dir,
+                   verbose       = FALSE)
+  list.files(file.path(out_dir, "gvr_genepos"), pattern = "\\\\.png$")
 }
 }

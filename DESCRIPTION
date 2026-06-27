@@ -2,15 +2,14 @@ Package: germlinevaR
 Title: End-to-End Germline VCF Analysis, Filtering and Visualisation
 Version: 0.99.0
 Date: 2026-06-25
-Authors@R: 
+Authors@R:
     c(person("Thiago", "Loreto Matos",
              email   = "thiago-loreto@hotmail.com",
              role    = c("aut", "cre"),
-             comment = c(ORCID = "")),
+             comment = c(ORCID = "0000-0003-4531-9616")),
       person("Felipe", "Pantoja Mesquita",
              email   = "felipemesquita05@gmail.com",
-             role    = "aut",
-             comment = c(ORCID = "")))
+             role    = "aut"))
 Description: 
     A self-contained toolchain for single-sample germline variant calls
     annotated with Ensembl VEP, SnpEff, or both. Converts per-sample VCFs
@@ -36,21 +35,41 @@ License: MIT + file LICENSE
 URL: https://github.com/FarmagenUFC/germlinevaR
 BugReports: https://github.com/FarmagenUFC/germlinevaR/issues
 biocViews: Software, Genetics, VariantAnnotation, Sequencing,
-        WholeGenome, Visualization, DataImport, ReportWriting
+    WholeGenome, Visualization, DataImport, ReportWriting
 Depends: R (>= 4.4.0)
-Imports: ComplexHeatmap, data.table, ggplot2, grDevices, grid,
-        jsonlite, methods, openxlsx, parallel, stats, utils
-Suggests: BiocStyle, DT, ggrepel, ggnewscale, gridExtra, htmltools,
-        htmlwidgets, httr, knitr, patchwork, plotly, RColorBrewer,
-        rmarkdown, rtracklayer, scales, svglite, testthat (>= 3.0.0),
-        viridisLite
+Imports: 
+    ComplexHeatmap,
+    data.table,
+    ggplot2,
+    grDevices,
+    grid,
+    jsonlite,
+    methods,
+    openxlsx,
+    parallel,
+    stats,
+    utils
+Suggests: 
+    BiocStyle,
+    DT,
+    ggrepel,
+    ggnewscale,
+    gridExtra,
+    htmltools,
+    htmlwidgets,
+    httr,
+    knitr,
+    patchwork,
+    plotly,
+    RColorBrewer,
+    rmarkdown,
+    rtracklayer,
+    scales,
+    svglite,
+    testthat (>= 3.0.0),
+    viridisLite
 VignetteBuilder: knitr
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.0.0
 RoxygenNote: 7.3.3
-NeedsCompilation: no
-Packaged: 2026-06-26 23:03:05 UTC; root
-Author: Thiago Loreto Matos [aut, cre],
-  Felipe Pantoja Mesquita [aut]
-Maintainer: Thiago Loreto Matos <thiago-loreto@hotmail.com>
