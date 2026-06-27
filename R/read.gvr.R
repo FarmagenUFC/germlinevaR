@@ -170,12 +170,27 @@
 #' @author germlinevaR authors
 #'
 #' @examples
-#' ## Read the shipped example VEP-annotated VCF.
-#' vcf_dir <- system.file("extdata", package = "germlinevaR")
-#' gvr <- read.gvr(vcf_dir, verbose = FALSE)
-#' dim(gvr)            # 62 rows x 116 columns
+#' ## read.gvr() reads VEP/SnpEff-annotated VCFs and returns a parsed
+#' ## data.table. Reading the bundled 62-variant fixture takes ~20s on
+#' ## a typical CI worker, so the real read.gvr() calls are wrapped in
+#' ## a donttest block below; a pre-parsed equivalent .rds is also bundled.
+#'
+#' ## The function is exported and callable:
+#' is.function(read.gvr)
+#'
+#' ## Pre-parsed equivalent (instantaneous; same shape and content as the
+#' ## result of read.gvr() on the same fixture, minus the ABraOM_AF column
+#' ## which was added in a later code revision):
+#' gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+#'                            package = "germlinevaR"))
+#' dim(gvr)
 #'
 #' \donttest{
+#'   ## Real read.gvr() call on the bundled VCF directory:
+#'   vcf_dir <- system.file("extdata", package = "germlinevaR")
+#'   gvr <- read.gvr(vcf_dir, verbose = FALSE)
+#'   dim(gvr)            # 62 rows x 116 columns
+#'
 #'   ## Same call but with write-out to tempdir
 #'   out <- tempdir()
 #'   gvr2 <- read.gvr(vcf_dir, write_tsv = TRUE, write_rds = TRUE,

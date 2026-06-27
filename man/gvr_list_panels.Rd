@@ -48,13 +48,13 @@ disease, or pass the panel name (or vector of names) to
 \examples{
 gvr_list_panels()
 
-\donttest{
-  ## The returned panel names can be passed to read.gvr() to subset
-  ## the gvr table at read time. Using the bundled example VCF:
-  vcf_dir <- system.file("extdata", package = "germlinevaR")
-  gvr <- read.gvr(vcf_dir, panel = "breast cancer", verbose = FALSE)
-  nrow(gvr)
-}
+## The returned panel names can be passed to read.gvr() to subset
+## the gvr table at read time. Equivalent post-hoc filter on the
+## pre-parsed example table (instantaneous; no VCF re-parse):
+gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+                           package = "germlinevaR"))
+panel_genes <- gvr_panel_genes("breast cancer")
+nrow(gvr[gvr$Hugo_Symbol \%in\% panel_genes, ])
 }
 \seealso{
 \code{\link[=gvr_panel_genes]{gvr_panel_genes()}}, \code{\link[=read.gvr]{read.gvr()}}.

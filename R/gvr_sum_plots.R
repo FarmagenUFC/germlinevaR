@@ -91,11 +91,9 @@
 #' out_dir <- gvr_sum_plots(gvr, out_dir = tempdir(), verbose = FALSE)
 #' dir.exists(out_dir)
 #'
-#' \donttest{
-#'   ## Write PDF outputs into a named subfolder under tempdir()
-#'   gvr_sum_plots(gvr, out_dir = tempdir(), folder_name = "S6_plots",
-#'                 format = "pdf", verbose = FALSE)
-#' }
+#' ## Write PDF outputs into a named subfolder under tempdir()
+#' gvr_sum_plots(gvr, out_dir = tempdir(), folder_name = "S6_plots",
+#'               format = "pdf", verbose = FALSE)
 #' @importFrom ggplot2 ggplot aes geom_col coord_flip scale_fill_manual labs theme_minimal theme element_text element_blank facet_wrap as_labeller scale_y_continuous position_dodge ggsave
 #' @importFrom data.table as.data.table data.table setorder
 #' @export

@@ -32,14 +32,13 @@ gvr_panel_genes("Breast_Cancer")            # case + underscore alias
 gvr_panel_genes("gastrointestinal stromal tumor")  # alias of "gist"
 gvr_panel_genes("hereditary prostate cancer")
 
-\donttest{
-  ## Combine multiple panels at read time using the bundled example VCF
-  vcf_dir <- system.file("extdata", package = "germlinevaR")
-  gvr <- read.gvr(vcf_dir,
-                  panel = c("breast cancer", "hereditary prostate cancer"),
-                  verbose = FALSE)
-  nrow(gvr)
-}
+## Combine multiple panels and post-hoc filter the pre-parsed example
+## table (equivalent to read.gvr(..., panel = c(...)) but instantaneous):
+gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+                           package = "germlinevaR"))
+multi_panel <- unique(c(gvr_panel_genes("breast cancer"),
+                        gvr_panel_genes("hereditary prostate cancer")))
+nrow(gvr[gvr$Hugo_Symbol \%in\% multi_panel, ])
 }
 \seealso{
 \code{\link[=gvr_list_panels]{gvr_list_panels()}}, \code{\link[=read.gvr]{read.gvr()}}.

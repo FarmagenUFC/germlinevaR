@@ -164,7 +164,6 @@ gvr <- readRDS(system.file("extdata", "example_gvr.rds",
 filt <- gvr_filter(gvr, ABraOM_AF = NULL, verbose = FALSE)
 dim(filt)
 
-\donttest{
 ## Variations on the default pipeline using the shipped example table
 
 ## Add protein-coding biotype filter:
@@ -188,7 +187,6 @@ gvr_filter(gvr, ABraOM_AF = NULL, remove_benign = TRUE, verbose = FALSE)
 ## Keep only protein-altering variants and a gene panel:
 gvr_filter(gvr, ABraOM_AF = NULL, vc_nonSyn = TRUE,
            genes = c("TP53", "BRCA1", "BRCA2"), verbose = FALSE)
-}
 }
 \seealso{
 \code{\link[=read.gvr]{read.gvr()}} to build the table, \code{\link[=gvr_summary]{gvr_summary()}} to summarise the filtered

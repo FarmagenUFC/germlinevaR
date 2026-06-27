@@ -84,15 +84,13 @@
 #' # List all available palette names
 #' gvr_list_palettes()
 #'
-#' \donttest{
-#'   if (requireNamespace("ggplot2", quietly = TRUE)) {
-#'     # Use directly in a ggplot2 plot
-#'     ggplot2::ggplot(iris,
-#'         ggplot2::aes(Sepal.Length, Sepal.Width, color = Species)) +
-#'       ggplot2::geom_point() +
-#'       ggplot2::scale_color_manual(
-#'         values = gvr_color_palette("viridis", 3))
-#'   }
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
+#'   # Use directly in a ggplot2 plot
+#'   ggplot2::ggplot(iris,
+#'       ggplot2::aes(Sepal.Length, Sepal.Width, color = Species)) +
+#'     ggplot2::geom_point() +
+#'     ggplot2::scale_color_manual(
+#'       values = gvr_color_palette("viridis", 3))
 #' }
 #' @seealso [gvr_list_palettes()], [gvr_lollipop()].
 #' @export
@@ -519,9 +517,7 @@ gvr_color_palette <- function(palette = "okabe_ito", n = 8L) {
 #' @examples
 #' gvr_list_palettes()
 #' # Generate a 5-color sample of every palette
-#' \donttest{
-#'   lapply(gvr_list_palettes(), gvr_color_palette, n = 5)
-#' }
+#' lapply(gvr_list_palettes(), gvr_color_palette, n = 5)
 #' @seealso [gvr_color_palette()], [gvr_lollipop()].
 #' @export
 gvr_list_palettes <- function() {

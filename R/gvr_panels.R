@@ -216,13 +216,13 @@
 #' @examples
 #' gvr_list_panels()
 #'
-#' \donttest{
-#'   ## The returned panel names can be passed to read.gvr() to subset
-#'   ## the gvr table at read time. Using the bundled example VCF:
-#'   vcf_dir <- system.file("extdata", package = "germlinevaR")
-#'   gvr <- read.gvr(vcf_dir, panel = "breast cancer", verbose = FALSE)
-#'   nrow(gvr)
-#' }
+#' ## The returned panel names can be passed to read.gvr() to subset
+#' ## the gvr table at read time. Equivalent post-hoc filter on the
+#' ## pre-parsed example table (instantaneous; no VCF re-parse):
+#' gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+#'                            package = "germlinevaR"))
+#' panel_genes <- gvr_panel_genes("breast cancer")
+#' nrow(gvr[gvr$Hugo_Symbol %in% panel_genes, ])
 #' @seealso [gvr_panel_genes()], [read.gvr()].
 #' @family germlinevaR
 #' @author germlinevaR authors
@@ -257,14 +257,13 @@ gvr_list_panels <- function() {
 #' gvr_panel_genes("gastrointestinal stromal tumor")  # alias of "gist"
 #' gvr_panel_genes("hereditary prostate cancer")
 #'
-#' \donttest{
-#'   ## Combine multiple panels at read time using the bundled example VCF
-#'   vcf_dir <- system.file("extdata", package = "germlinevaR")
-#'   gvr <- read.gvr(vcf_dir,
-#'                   panel = c("breast cancer", "hereditary prostate cancer"),
-#'                   verbose = FALSE)
-#'   nrow(gvr)
-#' }
+#' ## Combine multiple panels and post-hoc filter the pre-parsed example
+#' ## table (equivalent to read.gvr(..., panel = c(...)) but instantaneous):
+#' gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+#'                            package = "germlinevaR"))
+#' multi_panel <- unique(c(gvr_panel_genes("breast cancer"),
+#'                         gvr_panel_genes("hereditary prostate cancer")))
+#' nrow(gvr[gvr$Hugo_Symbol %in% multi_panel, ])
 #' @seealso [gvr_list_panels()], [read.gvr()].
 #' @family germlinevaR
 #' @author germlinevaR authors

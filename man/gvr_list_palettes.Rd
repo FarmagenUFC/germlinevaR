@@ -57,9 +57,7 @@ See \code{\link[=gvr_color_palette]{gvr_color_palette()}} for example hex codes 
 \examples{
 gvr_list_palettes()
 # Generate a 5-color sample of every palette
-\donttest{
-  lapply(gvr_list_palettes(), gvr_color_palette, n = 5)
-}
+lapply(gvr_list_palettes(), gvr_color_palette, n = 5)
 }
 \seealso{
 \code{\link[=gvr_color_palette]{gvr_color_palette()}}, \code{\link[=gvr_lollipop]{gvr_lollipop()}}.

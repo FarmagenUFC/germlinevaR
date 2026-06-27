@@ -57,16 +57,14 @@ a missing cache directory simply means there was nothing to clear).
 ## Clear the cache for a specific gene (safe to run; no-op if cache is empty)
 gvr_domain_cache_clear(gene = "TP53")
 
-\donttest{
-  ## Clear everything (all genes, all organisms)
-  gvr_domain_cache_clear()
+## Clear everything (all genes, all organisms)
+gvr_domain_cache_clear()
 
-  ## Clear only TP53 across all organisms
-  gvr_domain_cache_clear(gene = "TP53")
+## Clear only TP53 across all organisms
+gvr_domain_cache_clear(gene = "TP53")
 
-  ## Clear only human TP53
-  gvr_domain_cache_clear(gene = "TP53", organism = 9606)
-}
+## Clear only human TP53
+gvr_domain_cache_clear(gene = "TP53", organism = 9606)
 }
 \seealso{
 \code{\link[=gvr_lollipop]{gvr_lollipop()}}

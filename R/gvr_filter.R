@@ -125,7 +125,6 @@
 #' filt <- gvr_filter(gvr, ABraOM_AF = NULL, verbose = FALSE)
 #' dim(filt)
 #'
-#' \donttest{
 #' ## Variations on the default pipeline using the shipped example table
 #'
 #' ## Add protein-coding biotype filter:
@@ -149,7 +148,6 @@
 #' ## Keep only protein-altering variants and a gene panel:
 #' gvr_filter(gvr, ABraOM_AF = NULL, vc_nonSyn = TRUE,
 #'            genes = c("TP53", "BRCA1", "BRCA2"), verbose = FALSE)
-#' }
 #' @importFrom data.table as.data.table
 #' @importFrom openxlsx createWorkbook
 #' @export

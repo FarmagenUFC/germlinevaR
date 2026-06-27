@@ -103,11 +103,9 @@ gvr <- readRDS(system.file("extdata", "example_gvr.rds",
 out_dir <- gvr_sum_plots(gvr, out_dir = tempdir(), verbose = FALSE)
 dir.exists(out_dir)
 
-\donttest{
-  ## Write PDF outputs into a named subfolder under tempdir()
-  gvr_sum_plots(gvr, out_dir = tempdir(), folder_name = "S6_plots",
-                format = "pdf", verbose = FALSE)
-}
+## Write PDF outputs into a named subfolder under tempdir()
+gvr_sum_plots(gvr, out_dir = tempdir(), folder_name = "S6_plots",
+              format = "pdf", verbose = FALSE)
 }
 \seealso{
 \code{\link[=gvr_summary]{gvr_summary()}} for the dashboard view, \code{\link[=read.gvr]{read.gvr()}} for the

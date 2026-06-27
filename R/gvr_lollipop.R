@@ -407,26 +407,24 @@
 #'   class(p)
 #' }
 #'
-#' \donttest{
+#' if (requireNamespace("ggplot2", quietly = TRUE)) {
 #'   gvr <- readRDS(system.file("extdata", "example_gvr.rds",
 #'                              package = "germlinevaR"))
-#'   if (requireNamespace("ggplot2", quietly = TRUE)) {
-#'     ## Plain bar plot, no domain rectangles, returning the ggplot
-#'     gvr_lollipop(gvr, "OR4F5", domains = NULL, out_dir = NULL,
-#'                  verbose = FALSE)
+#'   ## Plain bar plot, no domain rectangles, returning the ggplot
+#'   gvr_lollipop(gvr, "OR4F5", domains = NULL, out_dir = NULL,
+#'                verbose = FALSE)
 #'
-#'     ## User-supplied domains (canonical TP53 / UniProt P04637)
-#'     tp53_dom <- data.frame(
-#'       start = c(95,  323),
-#'       end   = c(288, 356),
-#'       name  = c("DNA-binding", "Tetramerization"),
-#'       color = c("#FF9400", "#75A025")
-#'     )
-#'     ## Use any gene present in the shipped table
-#'     gene <- gvr$Hugo_Symbol[1]
-#'     gvr_lollipop(gvr, gene, domains = tp53_dom, out_dir = NULL,
-#'                  verbose = FALSE)
-#'   }
+#'   ## User-supplied domains (canonical TP53 / UniProt P04637)
+#'   tp53_dom <- data.frame(
+#'     start = c(95,  323),
+#'     end   = c(288, 356),
+#'     name  = c("DNA-binding", "Tetramerization"),
+#'     color = c("#FF9400", "#75A025")
+#'   )
+#'   ## Use any gene present in the shipped table
+#'   gene <- gvr$Hugo_Symbol[1]
+#'   gvr_lollipop(gvr, gene, domains = tp53_dom, out_dir = NULL,
+#'                verbose = FALSE)
 #' }
 #' @importFrom data.table as.data.table copy is.data.table setDT :=
 #' @importFrom ggplot2 ggplot aes geom_segment geom_point geom_rect geom_text annotate scale_color_manual scale_fill_identity scale_x_continuous scale_y_continuous labs theme_classic theme element_text element_blank ggsave

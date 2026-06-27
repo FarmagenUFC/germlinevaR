@@ -157,23 +157,14 @@ summ <- gvr_summary(gvr, save_excel = FALSE, save_pdf = FALSE,
                     save_html = FALSE, verbose = FALSE)
 names(summ)
 
-\donttest{
-  ## Write the XLSX workbook + multi-page PDF + interactive HTML
-  ## dashboard to a temp directory.
-  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                             package = "germlinevaR"))
-  out_dir <- file.path(tempdir(), "gvr_summary")
-  s <- gvr_summary(gvr, out_dir = out_dir,
-                   save_excel = TRUE, save_pdf = TRUE, save_html = TRUE,
-                   verbose = FALSE)
-  ## Inspect a section table
-  head(s$variant_classification)
-
-  ## Compute only, no files (still returns the section tables)
-  s2 <- gvr_summary(gvr, save_excel = FALSE, save_pdf = FALSE,
-                    save_html = FALSE, verbose = FALSE)
-  identical(names(s), names(s2))
-}
+## Write the XLSX workbook + multi-page PDF + interactive HTML
+## dashboard to a temp directory.
+out_dir <- file.path(tempdir(), "gvr_summary")
+s <- gvr_summary(gvr, out_dir = out_dir,
+                 save_excel = TRUE, save_pdf = TRUE, save_html = TRUE,
+                 verbose = FALSE)
+## Inspect a section table
+head(s$variant_classification)
 }
 \seealso{
 \code{\link[=read.gvr]{read.gvr()}} to build the table, \code{\link[=gvr_filter]{gvr_filter()}} to filter it before
