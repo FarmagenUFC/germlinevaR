@@ -1930,8 +1930,8 @@ read it from there:</p>
 <pre class="r"><code>vcf_dir &lt;- tempfile(&quot;gvr_vig_&quot;)
 dir.create(vcf_dir)
 file.copy(
-  system.file(&quot;extdata&quot;, &quot;example.vep.vcf.gz&quot;, package = &quot;germlinevaR&quot;),
-  file.path(vcf_dir, &quot;example.vep.vcf.gz&quot;)
+    system.file(&quot;extdata&quot;, &quot;example.vep.vcf.gz&quot;, package = &quot;germlinevaR&quot;),
+    file.path(vcf_dir, &quot;example.vep.vcf.gz&quot;)
 )
 #&gt; [1] TRUE
 
@@ -1941,7 +1941,7 @@ dim(gvr)
 <p>The returned <code>data.table</code> carries one row per ALT allele on the
 most-severe transcript, with a canonical 116-column schema:</p>
 <pre class="r"><code>head(gvr[, .(Hugo_Symbol, Variant_Classification, IMPACT,
-             Tumor_Sample_Barcode)])
+    Tumor_Sample_Barcode)])
 #&gt;    Hugo_Symbol Variant_Classification   IMPACT Tumor_Sample_Barcode
 #&gt;         &lt;char&gt;                 &lt;char&gt;   &lt;char&gt;               &lt;char&gt;
 #&gt; 1:       OR4F5                 Silent      LOW            Sample_01
@@ -2028,9 +2028,9 @@ content as an Excel workbook, a multi-page PDF, and a self-contained
 interactive HTML dashboard with plotly drill-downs and DT tables; we
 disable those side effects here to keep the vignette fast:</p>
 <pre class="r"><code>summ &lt;- gvr_summary(
-  gvr,
-  save_excel = FALSE, save_pdf = FALSE, save_html = FALSE,
-  verbose    = FALSE
+    gvr,
+    save_excel = FALSE, save_pdf = FALSE, save_html = FALSE,
+    verbose    = FALSE
 )
 names(summ)
 #&gt; [1] &quot;overview&quot;               &quot;top_genes&quot;              &quot;top_genes_per_sample&quot;  

@@ -52,7 +52,7 @@ gvr_list_panels()
 ## the gvr table at read time. Equivalent post-hoc filter on the
 ## pre-parsed example table (instantaneous; no VCF re-parse):
 gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                           package = "germlinevaR"))
+    package = "germlinevaR"))
 panel_genes <- gvr_panel_genes("breast cancer")
 nrow(gvr[gvr$Hugo_Symbol \%in\% panel_genes, ])
 }

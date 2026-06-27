@@ -118,7 +118,7 @@
 #' @examples
 #' ## Load the shipped example table
 #' gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-#'                            package = "germlinevaR"))
+#'     package = "germlinevaR"))
 #' ## Default filter (rare + clinically relevant + called genotypes).
 #' ## The example table was built without ABraOM annotation, so we
 #' ## disable the ABraOM_AF filter to avoid a "column not found" warning.
@@ -129,25 +129,25 @@
 #'
 #' ## Add protein-coding biotype filter:
 #' gvr_filter(gvr, ABraOM_AF = NULL,
-#'            biotype_keep = c("protein_coding", "protein_coding_LoF"),
-#'            verbose = FALSE)
+#'     biotype_keep = c("protein_coding", "protein_coding_LoF"),
+#'     verbose = FALSE)
 #'
 #' ## Only the rarity filter on gnomAD exome AF, nothing else:
 #' gvr_filter(gvr, gnomADe_AF = 0.001, AF = NULL, ABraOM_AF = NULL,
-#'            clin_sig_terms = NULL, gt_exclude = NULL,
-#'            vc_nonSyn = FALSE, genes = NULL, verbose = FALSE)
+#'     clin_sig_terms = NULL, gt_exclude = NULL,
+#'     vc_nonSyn = FALSE, genes = NULL, verbose = FALSE)
 #'
 #' ## Pathogenic-only, protein-coding:
 #' gvr_filter(gvr, ABraOM_AF = NULL,
-#'            clin_sig_terms = c("pathogenic", "likely_pathogenic"),
-#'            biotype_keep = "protein_coding", verbose = FALSE)
+#'     clin_sig_terms = c("pathogenic", "likely_pathogenic"),
+#'     biotype_keep = "protein_coding", verbose = FALSE)
 #'
 #' ## Remove benign annotations (including likely_benign and compound entries):
 #' gvr_filter(gvr, ABraOM_AF = NULL, remove_benign = TRUE, verbose = FALSE)
 #'
 #' ## Keep only protein-altering variants and a gene panel:
 #' gvr_filter(gvr, ABraOM_AF = NULL, vc_nonSyn = TRUE,
-#'            genes = c("TP53", "BRCA1", "BRCA2"), verbose = FALSE)
+#'     genes = c("TP53", "BRCA1", "BRCA2"), verbose = FALSE)
 #' @importFrom data.table as.data.table
 #' @importFrom openxlsx createWorkbook
 #' @export
@@ -159,8 +159,8 @@ gvr_filter <- function(gvr,
                        AF_keep_missing = TRUE,
                        ABraOM_AF_keep_missing = TRUE,
                        clin_sig_terms = c("likely_pathogenic",
-                                          "pathogenic",
-                                          "uncertain_significance"),
+                           "pathogenic",
+                           "uncertain_significance"),
                        clin_sig_keep_missing = TRUE,
                        remove_benign = FALSE,
                        biotype_keep = NULL,
@@ -173,246 +173,252 @@ gvr_filter <- function(gvr,
                        file_prefix = "gvr_filter",
                        verbose = TRUE) {
 
-  if (!requireNamespace("data.table", quietly = TRUE)) {
-    stop("gvr_filter requires the 'data.table' package.")
-  }
-  `%notin%` <- function(x, table) !(x %in% table)
-
-  # --- Work on a copy; never mutate the caller's object -----------------------
-  dt <- data.table::as.data.table(gvr)   # copies if input is a data.frame/data.table
-  n_in_total <- nrow(dt)
-
-  # --- Helper: detect missing (NA OR empty string) ----------------------------
-  .is_missing <- function(v) is.na(v) | v == ""
-
-  # --- Helper: verbose per-step logger ----------------------------------------
-  .log_step <- function(label, before, after) {
-    if (isTRUE(verbose)) {
-      removed <- before - after
-      pct <- if (before > 0) 100 * removed / before else 0
-      message(sprintf("  [%-26s] %8d -> %8d   (removed %7d, %5.1f%%)",
-                      label, before, after, removed, pct))
+    if (!requireNamespace("data.table", quietly = TRUE)) {
+        stop("gvr_filter requires the 'data.table' package.")
     }
-  }
+    `%notin%` <- function(x, table) !(x %in% table)
 
-  # --- Standard vc_nonSyn classes (same as read.gvr) --------------------------
-  .vc_nonSyn_default <- c("Frame_Shift_Del", "Frame_Shift_Ins", "Splice_Site",
-                           "Translation_Start_Site", "Nonsense_Mutation",
-                           "Nonstop_Mutation", "In_Frame_Del", "In_Frame_Ins",
-                           "Missense_Mutation")
+    # --- Work on a copy; never mutate the caller's object -----------------------
+    dt <- data.table::as.data.table(gvr)   # copies if input is a data.frame/data.table
+    n_in_total <- nrow(dt)
 
-  # --- AF filter specs: each is an independent, NULL-disabled argument --------
-  #     (kept in one table so all three columns share identical logic) ---------
-  af_specs <- list(
-    list(col = "gnomADe_AF",        thr = gnomADe_AF,        keep_miss = isTRUE(gnomADe_AF_keep_missing)),
-    list(col = "AF",                thr = AF,                keep_miss = isTRUE(AF_keep_missing)),
-    list(col = "ABraOM_AF",         thr = ABraOM_AF,         keep_miss = isTRUE(ABraOM_AF_keep_missing))
-  )
-  af_active <- Filter(function(s) !is.null(s$thr), af_specs)
+    # --- Helper: detect missing (NA OR empty string) ----------------------------
+    .is_missing <- function(v) is.na(v) | v == ""
 
-  # --- Column-existence guard: only require columns for ACTIVE filters ---------
-  # For AF columns (gnomADe_AF, AF, ABraOM_AF), if the column is missing we
-  # auto-disable that filter with a warning (the column may be absent because
-  # e.g. add_abraom = FALSE was passed to read.gvr). For all other filter
-  # columns, a missing column is a hard error (the user explicitly asked for
-  # that filter but the data cannot support it).
-  needed <- character(0)
-  if (!is.null(clin_sig_terms) && length(clin_sig_terms) > 0) needed <- c(needed, "CLIN_SIG")
-  if (isTRUE(remove_benign))                                  needed <- c(needed, "CLIN_SIG")
-  if (!is.null(biotype_keep)   && length(biotype_keep)   > 0) needed <- c(needed, "BIOTYPE")
-  if (!is.null(gt_exclude)     && length(gt_exclude)     > 0) needed <- c(needed, "GT")
-  if (!identical(vc_nonSyn, FALSE))                            needed <- c(needed, "Variant_Classification")
-  if (isTRUE(missense_only))                                   needed <- c(needed, "Variant_Classification")
-  if (!is.null(genes)         && length(genes)          > 0) needed <- c(needed, "Hugo_Symbol")
-  needed <- unique(needed)
-  missing_cols <- needed[needed %notin% names(dt)]
-  if (length(missing_cols) > 0) {
-    stop(sprintf("gvr_filter: required column(s) not found for the requested filters: %s",
-                 paste(missing_cols, collapse = ", ")))
-  }
-
-  # Auto-disable AF filters whose columns are absent (e.g. ABraOM_AF when
-  # add_abraom = FALSE was used in read.gvr). Warn so the user knows.
-  af_active <- Filter(function(s) {
-    if (s$col %notin% names(dt)) {
-      warning(sprintf("gvr_filter: column '%s' not found in data; skipping %s filter. Set %s = NULL to suppress.",
-                       s$col, s$col, s$col))
-      FALSE
-    } else TRUE
-  }, af_active)
-
-  if (isTRUE(verbose)) {
-    message(sprintf("gvr_filter: %d rows in", n_in_total))
-  }
-
-  # ============================================================================
-  # 1-3. Allele-frequency (rare-variant) filters (gnomADe_AF, AF, ABraOM)
-  # ============================================================================
-  for (s in af_active) {
-    thr <- s$thr
-    if (!is.numeric(thr) || length(thr) != 1L) {
-      stop(sprintf("gvr_filter: '%s' must be a single numeric threshold (or NULL to disable).", s$col))
-    }
-    before <- nrow(dt)
-    raw  <- dt[[s$col]]
-    miss <- .is_missing(raw)
-    # why: as.numeric() on a character AF column that may be '' (missing); 'NAs introduced by coercion' is expected and handled by the !is.na(x) test below.
-    x    <- suppressWarnings(as.numeric(raw))
-    below <- !is.na(x) & x < thr
-    if (s$keep_miss) {
-      keep <- miss | below
-    } else {
-      keep <- !miss & below
-    }
-    dt <- dt[keep]
-    .log_step(sprintf("AF %s<%g%s", s$col, thr, if (s$keep_miss) " (keep NA)" else ""),
-              before, nrow(dt))
-  }
-
-  # ============================================================================
-  # 4. Clinical significance (substring, case-insensitive, optional keep-missing)
-  # ============================================================================
-  if (!is.null(clin_sig_terms) && length(clin_sig_terms) > 0) {
-    before <- nrow(dt)
-    cs   <- dt[["CLIN_SIG"]]
-    miss <- .is_missing(cs)
-    pat  <- paste(clin_sig_terms, collapse = "|")
-    hit  <- grepl(pat, cs, ignore.case = TRUE) & !miss
-    keep <- hit | (isTRUE(clin_sig_keep_missing) & miss)
-    dt <- dt[keep]
-    .log_step(sprintf("CLIN_SIG match%s", if (isTRUE(clin_sig_keep_missing)) "|NA" else ""),
-              before, nrow(dt))
-  }
-
-  # ============================================================================
-  # 5. Remove benign (substring match on CLIN_SIG, after clin_sig_terms filter)
-  # ============================================================================
-  if (isTRUE(remove_benign)) {
-    before <- nrow(dt)
-    cs <- dt[["CLIN_SIG"]]
-    # Remove any row whose CLIN_SIG contains "benign" (case-insensitive).
-    # This catches: benign, likely_benign, uncertain_significance&likely_benign, etc.
-    # Missing/blank CLIN_SIG is NOT removed (benign is absent, so keep).
-    has_benign <- grepl("benign", cs, ignore.case = TRUE) & !.is_missing(cs)
-    dt <- dt[!has_benign]
-    .log_step("CLIN_SIG remove benign", before, nrow(dt))
-  }
-
-  # ============================================================================
-  # 6. Biotype keep-set
-  # ============================================================================
-  if (!is.null(biotype_keep) && length(biotype_keep) > 0) {
-    before <- nrow(dt)
-    keep <- dt[["BIOTYPE"]] %in% biotype_keep
-    dt <- dt[keep]
-    .log_step("BIOTYPE keep-set", before, nrow(dt))
-  }
-
-  # ============================================================================
-  # 7. Genotype exclusion
-  # ============================================================================
-  if (!is.null(gt_exclude) && length(gt_exclude) > 0) {
-    before <- nrow(dt)
-    keep <- dt[["GT"]] %notin% gt_exclude
-    dt <- dt[keep]
-    .log_step("GT exclude", before, nrow(dt))
-  }
-
-  # ============================================================================
-  # 8. Variant classification (vc_nonSyn)
-  # ============================================================================
-  if (!identical(vc_nonSyn, FALSE)) {
-    vc_keep <- if (isTRUE(vc_nonSyn)) .vc_nonSyn_default else as.character(vc_nonSyn)
-    vc_keep <- vc_keep[!is.na(vc_keep) & nzchar(vc_keep)]
-    if (length(vc_keep) > 0L) {
-      before <- nrow(dt)
-      vc <- dt[["Variant_Classification"]]
-      # Remove rows with missing/blank Variant_Classification when filter is active
-      keep <- !.is_missing(vc) & vc %in% vc_keep
-      dt <- dt[keep]
-      .log_step("Variant_Classification keep", before, nrow(dt))
-    }
-  }
-
-  # ============================================================================
-  # 8b. vN+5: strict missense-only filter
-  # ============================================================================
-  # Independent of `vc_nonSyn`. When TRUE, keeps ONLY rows whose
-  # Variant_Classification is "Missense_Mutation" (a strict subset of the 9
-  # protein-altering classes that `vc_nonSyn = TRUE` keeps). The two filters
-  # compose: TRUE+TRUE yields the same result as missense_only alone.
-  if (isTRUE(missense_only)) {
-    before <- nrow(dt)
-    vc <- dt[["Variant_Classification"]]
-    if (is.null(vc)) {
-      stop("gvr_filter: missense_only=TRUE but 'Variant_Classification' ",
-           "column is missing.", call. = FALSE)
-    }
-    keep <- !.is_missing(vc) & vc == "Missense_Mutation"
-    dt <- dt[keep]
-    .log_step("missense_only", before, nrow(dt))
-  }
-
-  # ============================================================================
-  # 9. Gene subset (exact, case-insensitive)
-  # ============================================================================
-  if (!is.null(genes) && length(genes) > 0L) {
-    genes_chr <- as.character(genes)
-    genes_chr <- genes_chr[!is.na(genes_chr) & nzchar(genes_chr)]
-    if (length(genes_chr) > 0L) {
-      before <- nrow(dt)
-      keep <- toupper(trimws(as.character(dt[["Hugo_Symbol"]]))) %in% toupper(genes_chr)
-      dt <- dt[keep]
-      .log_step("Hugo_Symbol gene subset", before, nrow(dt))
-    }
-  }
-
-  if (isTRUE(verbose)) {
-    kept <- nrow(dt)
-    message(sprintf("gvr_filter: %d rows out (%.1f%% of input, %d removed total)",
-                    kept, if (n_in_total > 0) 100 * kept / n_in_total else 0,
-                    n_in_total - kept))
-  }
-
-  # ============================================================================
-  # 10. Optional Excel export of the FILTERED table  ->  <out_dir>/<file_prefix>.xlsx
-  # ============================================================================
-  if (isTRUE(save_excel)) {
-    if (!requireNamespace("openxlsx", quietly = TRUE)) {
-      warning("gvr_filter: 'openxlsx' not installed; skipping Excel export.")
-    } else {
-      if (is.null(out_dir)) out_dir <- "."
-      if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
-      xlsx_name  <- sprintf("%s.xlsx", file_prefix)
-      final_xlsx <- file.path(out_dir, xlsx_name)
-      if (file.exists(final_xlsx) && isTRUE(verbose))
-        message(sprintf("  Overwriting existing Excel: %s", final_xlsx))
-      if (nrow(dt) > 1000000L)
-        warning(sprintf("gvr_filter: filtered table has %d rows; Excel's per-sheet limit is 1,048,576 rows.",
-                        nrow(dt)))
-      wb <- openxlsx::createWorkbook()
-      hs <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
-      openxlsx::addWorksheet(wb, "Filtered")
-      openxlsx::writeData(wb, "Filtered", as.data.frame(dt), headerStyle = hs)
-      openxlsx::freezePane(wb, "Filtered", firstRow = TRUE)
-      openxlsx::setColWidths(wb, "Filtered", cols = seq_len(ncol(dt)), widths = "auto")
-      tmp_xlsx <- file.path(tempdir(), xlsx_name)
-      wrote_ok <- tryCatch({ openxlsx::saveWorkbook(wb, tmp_xlsx, overwrite = TRUE); TRUE },
-                           error = function(e) {
-                             warning(sprintf("gvr_filter: Excel write failed: %s", conditionMessage(e))); FALSE })
-      if (wrote_ok) {
-        system2("cp", c(shQuote(tmp_xlsx), shQuote(final_xlsx)))
-        # why: file.info() can warn / return NA size if the just-copied file is not yet visible to the FS; the is.na() / size==0 test below handles that.
-        sz <- suppressWarnings(file.info(final_xlsx)$size)
-        if (is.na(sz) || sz == 0) {
-          warning(sprintf("gvr_filter: copy to '%s' may have failed; Excel left at '%s'.",
-                          final_xlsx, tmp_xlsx))
-          final_xlsx <- tmp_xlsx
+    # --- Helper: verbose per-step logger ----------------------------------------
+    .log_step <- function(label, before, after) {
+        if (isTRUE(verbose)) {
+            removed <- before - after
+            pct <- if (before > 0) 100 * removed / before else 0
+            message(sprintf("  [%-26s] %8d -> %8d   (removed %7d, %5.1f%%)",
+                label, before, after, removed, pct))
         }
-        if (isTRUE(verbose)) message(sprintf("  Excel written: %s", final_xlsx))
-      }
     }
-  }
 
-  dt[]
+    # --- Standard vc_nonSyn classes (same as read.gvr) --------------------------
+    .vc_nonSyn_default <- c("Frame_Shift_Del", "Frame_Shift_Ins", "Splice_Site",
+        "Translation_Start_Site", "Nonsense_Mutation",
+        "Nonstop_Mutation", "In_Frame_Del", "In_Frame_Ins",
+        "Missense_Mutation")
+
+    # --- AF filter specs: each is an independent, NULL-disabled argument --------
+    #     (kept in one table so all three columns share identical logic) ---------
+    af_specs <- list(
+        list(col = "gnomADe_AF",        thr = gnomADe_AF,        keep_miss = isTRUE(gnomADe_AF_keep_missing)),
+        list(col = "AF",                thr = AF,                keep_miss = isTRUE(AF_keep_missing)),
+        list(col = "ABraOM_AF",         thr = ABraOM_AF,         keep_miss = isTRUE(ABraOM_AF_keep_missing))
+    )
+    af_active <- Filter(function(s) !is.null(s$thr), af_specs)
+
+    # --- Column-existence guard: only require columns for ACTIVE filters ---------
+    # For AF columns (gnomADe_AF, AF, ABraOM_AF), if the column is missing we
+    # auto-disable that filter with a warning (the column may be absent because
+    # e.g. add_abraom = FALSE was passed to read.gvr). For all other filter
+    # columns, a missing column is a hard error (the user explicitly asked for
+    # that filter but the data cannot support it).
+    needed <- character(0)
+    if (!is.null(clin_sig_terms) && length(clin_sig_terms) > 0) needed <- c(needed, "CLIN_SIG")
+    if (isTRUE(remove_benign)) needed <- c(needed, "CLIN_SIG")
+    if (!is.null(biotype_keep)   && length(biotype_keep)   > 0) needed <- c(needed, "BIOTYPE")
+    if (!is.null(gt_exclude)     && length(gt_exclude)     > 0) needed <- c(needed, "GT")
+    if (!identical(vc_nonSyn, FALSE)) needed <- c(needed, "Variant_Classification")
+    if (isTRUE(missense_only)) needed <- c(needed, "Variant_Classification")
+    if (!is.null(genes)         && length(genes)          > 0) needed <- c(needed, "Hugo_Symbol")
+    needed <- unique(needed)
+    missing_cols <- needed[needed %notin% names(dt)]
+    if (length(missing_cols) > 0) {
+        stop(sprintf("gvr_filter: required column(s) not found for the requested filters: %s",
+            paste(missing_cols, collapse = ", ")))
+    }
+
+    # Auto-disable AF filters whose columns are absent (e.g. ABraOM_AF when
+    # add_abraom = FALSE was used in read.gvr). Warn so the user knows.
+    af_active <- Filter(function(s) {
+        if (s$col %notin% names(dt)) {
+            warning(sprintf("gvr_filter: column '%s' not found in data; skipping %s filter. Set %s = NULL to suppress.",
+                s$col, s$col, s$col))
+            FALSE
+        } else TRUE
+    }, af_active)
+
+    if (isTRUE(verbose)) {
+        message(sprintf("gvr_filter: %d rows in", n_in_total))
+    }
+
+    # ============================================================================
+    # 1-3. Allele-frequency (rare-variant) filters (gnomADe_AF, AF, ABraOM)
+    # ============================================================================
+    for (s in af_active) {
+        thr <- s$thr
+        if (!is.numeric(thr) || length(thr) != 1L) {
+            stop(sprintf("gvr_filter: '%s' must be a single numeric threshold (or NULL to disable).", s$col))
+        }
+        before <- nrow(dt)
+        raw  <- dt[[s$col]]
+        miss <- .is_missing(raw)
+        # why: as.numeric() on a character AF column that may be '' (missing); 'NAs introduced by coercion' is expected and handled by the !is.na(x) test below.
+        x    <- suppressWarnings(as.numeric(raw))
+        below <- !is.na(x) & x < thr
+        if (s$keep_miss) {
+            keep <- miss | below
+        } else {
+            keep <- !miss & below
+        }
+        dt <- dt[keep]
+        .log_step(sprintf("AF %s<%g%s", s$col, thr, if (s$keep_miss) " (keep NA)" else ""),
+            before, nrow(dt))
+    }
+
+    # ============================================================================
+    # 4. Clinical significance (substring, case-insensitive, optional keep-missing)
+    # ============================================================================
+    if (!is.null(clin_sig_terms) && length(clin_sig_terms) > 0) {
+        before <- nrow(dt)
+        cs   <- dt[["CLIN_SIG"]]
+        miss <- .is_missing(cs)
+        pat  <- paste(clin_sig_terms, collapse = "|")
+        hit  <- grepl(pat, cs, ignore.case = TRUE) & !miss
+        keep <- hit | (isTRUE(clin_sig_keep_missing) & miss)
+        dt <- dt[keep]
+        .log_step(sprintf("CLIN_SIG match%s", if (isTRUE(clin_sig_keep_missing)) "|NA" else ""),
+            before, nrow(dt))
+    }
+
+    # ============================================================================
+    # 5. Remove benign (substring match on CLIN_SIG, after clin_sig_terms filter)
+    # ============================================================================
+    if (isTRUE(remove_benign)) {
+        before <- nrow(dt)
+        cs <- dt[["CLIN_SIG"]]
+        # Remove any row whose CLIN_SIG contains "benign" (case-insensitive).
+        # This catches: benign, likely_benign, uncertain_significance&likely_benign, etc.
+        # Missing/blank CLIN_SIG is NOT removed (benign is absent, so keep).
+        has_benign <- grepl("benign", cs, ignore.case = TRUE) & !.is_missing(cs)
+        dt <- dt[!has_benign]
+        .log_step("CLIN_SIG remove benign", before, nrow(dt))
+    }
+
+    # ============================================================================
+    # 6. Biotype keep-set
+    # ============================================================================
+    if (!is.null(biotype_keep) && length(biotype_keep) > 0) {
+        before <- nrow(dt)
+        keep <- dt[["BIOTYPE"]] %in% biotype_keep
+        dt <- dt[keep]
+        .log_step("BIOTYPE keep-set", before, nrow(dt))
+    }
+
+    # ============================================================================
+    # 7. Genotype exclusion
+    # ============================================================================
+    if (!is.null(gt_exclude) && length(gt_exclude) > 0) {
+        before <- nrow(dt)
+        keep <- dt[["GT"]] %notin% gt_exclude
+        dt <- dt[keep]
+        .log_step("GT exclude", before, nrow(dt))
+    }
+
+    # ============================================================================
+    # 8. Variant classification (vc_nonSyn)
+    # ============================================================================
+    if (!identical(vc_nonSyn, FALSE)) {
+        vc_keep <- if (isTRUE(vc_nonSyn)) .vc_nonSyn_default else as.character(vc_nonSyn)
+        vc_keep <- vc_keep[!is.na(vc_keep) & nzchar(vc_keep)]
+        if (length(vc_keep) > 0L) {
+            before <- nrow(dt)
+            vc <- dt[["Variant_Classification"]]
+            # Remove rows with missing/blank Variant_Classification when filter is active
+            keep <- !.is_missing(vc) & vc %in% vc_keep
+            dt <- dt[keep]
+            .log_step("Variant_Classification keep", before, nrow(dt))
+        }
+    }
+
+    # ============================================================================
+    # 8b. vN+5: strict missense-only filter
+    # ============================================================================
+    # Independent of `vc_nonSyn`. When TRUE, keeps ONLY rows whose
+    # Variant_Classification is "Missense_Mutation" (a strict subset of the 9
+    # protein-altering classes that `vc_nonSyn = TRUE` keeps). The two filters
+    # compose: TRUE+TRUE yields the same result as missense_only alone.
+    if (isTRUE(missense_only)) {
+        before <- nrow(dt)
+        vc <- dt[["Variant_Classification"]]
+        if (is.null(vc)) {
+            stop("gvr_filter: missense_only=TRUE but 'Variant_Classification' ",
+                "column is missing.", call. = FALSE)
+        }
+        keep <- !.is_missing(vc) & vc == "Missense_Mutation"
+        dt <- dt[keep]
+        .log_step("missense_only", before, nrow(dt))
+    }
+
+    # ============================================================================
+    # 9. Gene subset (exact, case-insensitive)
+    # ============================================================================
+    if (!is.null(genes) && length(genes) > 0L) {
+        genes_chr <- as.character(genes)
+        genes_chr <- genes_chr[!is.na(genes_chr) & nzchar(genes_chr)]
+        if (length(genes_chr) > 0L) {
+            before <- nrow(dt)
+            keep <- toupper(trimws(as.character(dt[["Hugo_Symbol"]]))) %in% toupper(genes_chr)
+            dt <- dt[keep]
+            .log_step("Hugo_Symbol gene subset", before, nrow(dt))
+        }
+    }
+
+    if (isTRUE(verbose)) {
+        kept <- nrow(dt)
+        message(sprintf("gvr_filter: %d rows out (%.1f%% of input, %d removed total)",
+            kept, if (n_in_total > 0) 100 * kept / n_in_total else 0,
+            n_in_total - kept))
+    }
+
+    # ============================================================================
+    # 10. Optional Excel export of the FILTERED table  ->  <out_dir>/<file_prefix>.xlsx
+    # ============================================================================
+    if (isTRUE(save_excel)) {
+        if (!requireNamespace("openxlsx", quietly = TRUE)) {
+            warning("gvr_filter: 'openxlsx' not installed; skipping Excel export.")
+        } else {
+            if (is.null(out_dir)) out_dir <- "."
+            if (!dir.exists(out_dir)) dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+            xlsx_name  <- sprintf("%s.xlsx", file_prefix)
+            final_xlsx <- file.path(out_dir, xlsx_name)
+            if (file.exists(final_xlsx) && isTRUE(verbose))
+                message(sprintf("  Overwriting existing Excel: %s", final_xlsx))
+            if (nrow(dt) > 1000000L)
+                warning(sprintf("gvr_filter: filtered table has %d rows; Excel's per-sheet limit is 1,048,576 rows.",
+                    nrow(dt)))
+            wb <- openxlsx::createWorkbook()
+            hs <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
+            openxlsx::addWorksheet(wb, "Filtered")
+            openxlsx::writeData(wb, "Filtered", as.data.frame(dt), headerStyle = hs)
+            openxlsx::freezePane(wb, "Filtered", firstRow = TRUE)
+            openxlsx::setColWidths(wb, "Filtered", cols = seq_len(ncol(dt)), widths = "auto")
+            tmp_xlsx <- file.path(tempdir(), xlsx_name)
+            wrote_ok <- tryCatch(
+                {
+                    openxlsx::saveWorkbook(wb, tmp_xlsx, overwrite = TRUE)
+                    TRUE
+                },
+                error = function(e) {
+                    warning(sprintf("gvr_filter: Excel write failed: %s", conditionMessage(e)))
+                    FALSE
+                })
+            if (wrote_ok) {
+                system2("cp", c(shQuote(tmp_xlsx), shQuote(final_xlsx)))
+                # why: file.info() can warn / return NA size if the just-copied file is not yet visible to the FS; the is.na() / size==0 test below handles that.
+                sz <- suppressWarnings(file.info(final_xlsx)$size)
+                if (is.na(sz) || sz == 0) {
+                    warning(sprintf("gvr_filter: copy to '%s' may have failed; Excel left at '%s'.",
+                        final_xlsx, tmp_xlsx))
+                    final_xlsx <- tmp_xlsx
+                }
+                if (isTRUE(verbose)) message(sprintf("  Excel written: %s", final_xlsx))
+            }
+        }
+    }
+
+    dt[]
 }

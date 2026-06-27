@@ -173,34 +173,34 @@ suggesting \code{rtracklayer} or falls back to a tiny streaming parser.
 
 \examples{
 if (requireNamespace("ggplot2", quietly = TRUE)) {
-  ## Load the shipped example table; we only confirm the function is
-  ## available. A real call to gvr_genepos.plot(gvr, "BRCA1") needs
-  ## either network access (Ensembl REST) or a local GTF file.
-  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                             package = "germlinevaR"))
-  is.function(gvr_genepos.plot)
+    ## Load the shipped example table; we only confirm the function is
+    ## available. A real call to gvr_genepos.plot(gvr, "BRCA1") needs
+    ## either network access (Ensembl REST) or a local GTF file.
+    gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+        package = "germlinevaR"))
+    is.function(gvr_genepos.plot)
 }
 
 \donttest{
-  ## Auto-resolve the MANE / canonical transcript for BRCA1 via the
-  ## Ensembl REST API (requires internet access). out_dir = NULL
-  ## returns the ggplot object only — no file is written.
-  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                             package = "germlinevaR"))
-  p <- gvr_genepos.plot(gvr, "BRCA1", out_dir = NULL)
+## Auto-resolve the MANE / canonical transcript for BRCA1 via the
+## Ensembl REST API (requires internet access). out_dir = NULL
+## returns the ggplot object only — no file is written.
+gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+    package = "germlinevaR"))
+p <- gvr_genepos.plot(gvr, "BRCA1", out_dir = NULL)
 
-  ## Pin transcript and use proportional intron scaling, still in-memory.
-  gvr_genepos.plot(gvr, "BRCA1",
-                   transcript_id = "ENST00000357654",
-                   intron_scale  = "proportional",
-                   out_dir       = NULL)
+## Pin transcript and use proportional intron scaling, still in-memory.
+gvr_genepos.plot(gvr, "BRCA1",
+    transcript_id = "ENST00000357654",
+    intron_scale  = "proportional",
+    out_dir       = NULL)
 
-  ## Demonstrate file output by writing the PNG to a temp directory.
-  out_dir <- file.path(tempdir(), "gvr_genepos_demo")
-  gvr_genepos.plot(gvr, "BRCA1",
-                   transcript_id = "ENST00000357654",
-                   out_dir       = out_dir,
-                   verbose       = FALSE)
-  list.files(file.path(out_dir, "gvr_genepos"), pattern = "\\\\.png$")
+## Demonstrate file output by writing the PNG to a temp directory.
+out_dir <- file.path(tempdir(), "gvr_genepos_demo")
+gvr_genepos.plot(gvr, "BRCA1",
+    transcript_id = "ENST00000357654",
+    out_dir       = out_dir,
+    verbose       = FALSE)
+list.files(file.path(out_dir, "gvr_genepos"), pattern = "\\\\.png$")
 }
 }

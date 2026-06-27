@@ -127,17 +127,17 @@
 #' @examples
 #' ## Load the shipped example table and run summary (no file output)
 #' gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-#'                            package = "germlinevaR"))
+#'     package = "germlinevaR"))
 #' summ <- gvr_summary(gvr, save_excel = FALSE, save_pdf = FALSE,
-#'                     save_html = FALSE, verbose = FALSE)
+#'     save_html = FALSE, verbose = FALSE)
 #' names(summ)
 #'
 #' ## Write the XLSX workbook + multi-page PDF + interactive HTML
 #' ## dashboard to a temp directory.
 #' out_dir <- file.path(tempdir(), "gvr_summary")
 #' s <- gvr_summary(gvr, out_dir = out_dir,
-#'                  save_excel = TRUE, save_pdf = TRUE, save_html = TRUE,
-#'                  verbose = FALSE)
+#'     save_excel = TRUE, save_pdf = TRUE, save_html = TRUE,
+#'     verbose = FALSE)
 #' ## Inspect a section table
 #' head(s$variant_classification)
 #' @importFrom data.table as.data.table data.table setnames setcolorder setorder uniqueN copy melt :=
@@ -158,1928 +158,2016 @@ gvr_summary <- function(gvr,
                         file_prefix    = "gvr_summary",
                         verbose        = TRUE) {
 
-  if (!requireNamespace("data.table", quietly = TRUE)) {
-    stop("gvr_summary requires the 'data.table' package.")
-  }
-  dt <- data.table::as.data.table(gvr)
-  n_total <- nrow(dt)
-
-  .is_missing <- function(v) is.na(v) | v == ""
-  UNKNOWN_GENE <- c(".", "", "Unknown")
-  # --- Resolve sample column ---------------------------------------------------
-  if (!sample_col %in% names(dt)) {
-    warning(sprintf("gvr_summary: sample column '%s' not found; pooling all rows into 'All'.",
-                    sample_col))
-    dt[, .__sample__ := "All"]
-  } else {
-    dt[, .__sample__ := as.character(get(sample_col))]
-    dt[.is_missing(.__sample__), .__sample__ := "NA_sample"]
-  }
-  samples <- sort(unique(dt$.__sample__))
-
-  # --- Column-existence guard for the analytic columns -------------------------
-  req <- c("Hugo_Symbol", "Variant_Classification", "Variant_Type", "IMPACT", "CLIN_SIG")
-  miss_req <- req[!req %in% names(dt)]
-  if (length(miss_req) > 0) {
-    stop(sprintf("gvr_summary: required column(s) not found: %s",
-                 paste(miss_req, collapse = ", ")))
-  }
-
-  # --- Helper: counts of `valuevec` x sample as a wide data.table --------------
-  #     rows = categories, cols = samples + Total. `order_levels` optionally fixes
-  #     row order; otherwise sorted by Total desc.
-  .count_by_sample <- function(valuevec, samplevec, category_name,
-                               order_levels = NULL, drop_values = NULL) {
-    keep <- rep(TRUE, length(valuevec))
-    if (!is.null(drop_values)) keep <- !(valuevec %in% drop_values)
-    v <- valuevec[keep]; s <- samplevec[keep]
-    if (length(v) == 0L) {
-      out <- data.table::data.table(X = character(0))
-      data.table::setnames(out, "X", category_name)
-      for (sm in samples) out[, (sm) := integer(0)]
-      out[, Total := integer(0)]
-      return(out[])
+    if (!requireNamespace("data.table", quietly = TRUE)) {
+        stop("gvr_summary requires the 'data.table' package.")
     }
-    tab <- table(factor(v), factor(s, levels = samples))
-    m <- data.table::as.data.table(unclass(tab), keep.rownames = TRUE)
-    data.table::setnames(m, "rn", category_name)
-    # ensure all sample columns exist (table drops empty factor combos only if level absent)
-    for (sm in samples) if (!sm %in% names(m)) m[, (sm) := 0L]
-    data.table::setcolorder(m, c(category_name, samples))
-    m[, Total := rowSums(as.matrix(.SD)), .SDcols = samples]
-    if (!is.null(order_levels)) {
-      m <- m[match(order_levels, m[[category_name]])]
-      m <- m[!is.na(m[[category_name]])]
+    dt <- data.table::as.data.table(gvr)
+    n_total <- nrow(dt)
+
+    .is_missing <- function(v) is.na(v) | v == ""
+    UNKNOWN_GENE <- c(".", "", "Unknown")
+    # --- Resolve sample column ---------------------------------------------------
+    if (!sample_col %in% names(dt)) {
+        warning(sprintf("gvr_summary: sample column '%s' not found; pooling all rows into 'All'.",
+            sample_col))
+        dt[, .__sample__ := "All"]
     } else {
-      data.table::setorder(m, -Total)
+        dt[, .__sample__ := as.character(get(sample_col))]
+        dt[.is_missing(.__sample__), .__sample__ := "NA_sample"]
     }
-    m[]
-  }
-  # ============================================================================
-  # SECTION 1: overview (variants & genes)
-  # ============================================================================
-  is_known_gene <- !(dt$Hugo_Symbol %in% UNKNOWN_GENE)
-  ov_rows <- list()
-  # total variants
-  per_sample_var <- vapply(samples, function(sm) sum(dt$.__sample__ == sm), integer(1))
-  ov_rows[["Total variants"]] <- c(per_sample_var, Total = n_total)
-  # distinct genes (known only)
-  per_sample_genes <- vapply(samples, function(sm)
-    data.table::uniqueN(dt$Hugo_Symbol[dt$.__sample__ == sm & is_known_gene]), integer(1))
-  ov_rows[["Distinct genes (known)"]] <- c(per_sample_genes,
-                                           Total = data.table::uniqueN(dt$Hugo_Symbol[is_known_gene]))
-  # variants with no gene symbol
-  per_sample_nogene <- vapply(samples, function(sm)
-    sum(dt$.__sample__ == sm & !is_known_gene), integer(1))
-  ov_rows[["Variants with no gene symbol"]] <- c(per_sample_nogene, Total = sum(!is_known_gene))
+    samples <- sort(unique(dt$.__sample__))
 
-  overview <- data.table::data.table(Metric = names(ov_rows))
-  for (sm in c(samples, "Total")) {
-    overview[, (sm) := vapply(ov_rows, function(r) r[[sm]], numeric(1))]
-  }
-
-  # ============================================================================
-  # SECTION 1b: top genes (known only), by Total variant count
-  # ============================================================================
-  gene_tab <- .count_by_sample(dt$Hugo_Symbol, dt$.__sample__, "Hugo_Symbol",
-                               drop_values = UNKNOWN_GENE)
-  top_genes <- utils::head(gene_tab, top_n_genes)
-
-  # ============================================================================
-  # SECTION 1c: per-sample top genes (known only), one table per sample
-  # ============================================================================
-  top_genes_per_sample <- list()
-  for (sm in samples) {
-    dt_sm <- dt[.__sample__ == sm & !(Hugo_Symbol %in% UNKNOWN_GENE)]
-    if (nrow(dt_sm) > 0L) {
-      sm_gene_tab <- dt_sm[, .(N = .N), by = Hugo_Symbol]
-      data.table::setorder(sm_gene_tab, -N)
-      sm_gene_tab <- utils::head(sm_gene_tab, top_n_genes)
-      data.table::setnames(sm_gene_tab, "N", sm)
-      top_genes_per_sample[[sm]] <- sm_gene_tab
+    # --- Column-existence guard for the analytic columns -------------------------
+    req <- c("Hugo_Symbol", "Variant_Classification", "Variant_Type", "IMPACT", "CLIN_SIG")
+    miss_req <- req[!req %in% names(dt)]
+    if (length(miss_req) > 0) {
+        stop(sprintf("gvr_summary: required column(s) not found: %s",
+            paste(miss_req, collapse = ", ")))
     }
-  }
 
-  # ============================================================================
-  # SECTION 2: functional classes
-  # ============================================================================
-  variant_classification <- .count_by_sample(dt$Variant_Classification, dt$.__sample__,
-                                              "Variant_Classification")
-  variant_type <- .count_by_sample(dt$Variant_Type, dt$.__sample__, "Variant_Type")
-
-  # ============================================================================
-  # SECTION 3: clinical categories (token-split on & and /)
-  # ============================================================================
-  cs   <- dt$CLIN_SIG
-  miss <- .is_missing(cs)
-  # expand non-missing CLIN_SIG into (token, sample) pairs
-  idx_nm <- which(!miss)
-  if (length(idx_nm) > 0) {
-    # dedup tokens per row so multi-token CLIN_SIG values
-    # (e.g. "pathogenic&pathogenic/likely_pathogenic") count each token once per variant
-    toks_list <- lapply(strsplit(cs[idx_nm], "[&/]"), function(x) unique(trimws(x)))
-    ntok <- lengths(toks_list)
-    tok_vec <- unlist(toks_list, use.names = FALSE)
-    samp_vec <- rep(dt$.__sample__[idx_nm], ntok)
-    # drop any empty tokens produced by stray delimiters
-    keep_tok <- tok_vec != ""
-    clin_counts <- .count_by_sample(tok_vec[keep_tok], samp_vec[keep_tok], "CLIN_SIG")
-  } else {
-    clin_counts <- .count_by_sample(character(0), character(0), "CLIN_SIG")
-  }
-  # append missing/unclassified row
-  per_sample_miss <- vapply(samples, function(sm) sum(miss & dt$.__sample__ == sm), integer(1))
-  miss_row <- data.table::as.data.table(c(list(CLIN_SIG = "missing/unclassified"),
-                                          as.list(per_sample_miss),
-                                          list(Total = sum(miss))))
-  clin_sig <- rbind(clin_counts, miss_row, fill = TRUE)
-
-  # ============================================================================
-  # SECTION 3b: top variants by dbSNP_RS (rsID frequency)
-  # ============================================================================
-  top_variants <- NULL
-  has_dbsnp <- "dbSNP_RS" %in% names(dt)
-  if (has_dbsnp) {
-    rs <- dt$dbSNP_RS
-    rs_miss <- .is_missing(rs) | rs == "novel" | tolower(rs) == "unknown"
-    dt_rs <- dt[!rs_miss]
-    if (nrow(dt_rs) > 0L) {
-      # Group by dbSNP_RS; pick representative metadata (first non-blank per field)
-      dt_rs[, .__rs__ := dbSNP_RS]
-      # Aggregate: count per rsID x sample, plus representative Hugo/Chr/Pos/VC
-      rs_tab <- dt_rs[, .(Hugo_Symbol = {
-        v <- Hugo_Symbol[!(Hugo_Symbol %in% UNKNOWN_GENE) & !.is_missing(Hugo_Symbol)]
-        if (length(v)) v[1L] else ""
-      }, Chromosome = {
-        v <- Chromosome[!.is_missing(Chromosome)]; if (length(v)) v[1L] else ""
-      }, Start_Position = {
-        v <- Start_Position[!.is_missing(Start_Position)]; if (length(v)) v[1L] else ""
-      }, Variant_Classification = {
-        v <- Variant_Classification[!.is_missing(Variant_Classification)]; if (length(v)) v[1L] else ""
-      }, Total = .N), by = .__rs__]
-      # Per-sample counts: one dcast pass instead of O(N x n_samples) per-sample scans.
-      # Add a sentinel column of 1L so dcast can aggregate by count (length) without
-      # using the grouping column itself as value.var, which would give wrong results.
-      dt_rs_cast <- dt_rs[, .(.__rs__, .__sample__, .__n__ = 1L)]
-      samp_counts <- data.table::dcast(
-        dt_rs_cast, .__rs__ ~ .__sample__,
-        fun.aggregate = sum, value.var = ".__n__", fill = 0L)
-      # Ensure all sample columns exist (dcast drops samples absent from dt_rs)
-      for (sm in samples) if (!sm %in% names(samp_counts)) samp_counts[, (sm) := 0L]
-      # Right join: keep all rsIDs from rs_tab (the metadata table); attach sample counts
-      rs_tab <- samp_counts[rs_tab, on = ".__rs__"]
-      data.table::setcolorder(rs_tab, c(".__rs__", "Hugo_Symbol", "Chromosome",
-                                         "Start_Position", "Variant_Classification",
-                                         samples, "Total"))
-      data.table::setorder(rs_tab, -Total)
-      data.table::setnames(rs_tab, ".__rs__", "dbSNP_RS")
-      top_variants <- utils::head(rs_tab, top_n_variants)
-    }
-  } else {
-    if (isTRUE(verbose))
-      message("  Note: 'dbSNP_RS' column not found; top_variants section skipped.")
-  }
-
-  # ============================================================================
-  # SECTION 4: impact severity (fixed severity order)
-  # ============================================================================
-  impact_order <- c("HIGH", "MODERATE", "LOW", "MODIFIER")
-  present_impact <- c(intersect(impact_order, unique(dt$IMPACT)),
-                      setdiff(unique(dt$IMPACT[!.is_missing(dt$IMPACT)]), impact_order))
-  impact <- .count_by_sample(dt$IMPACT, dt$.__sample__, "IMPACT",
-                             order_levels = present_impact)
-
-  sections <- list(overview = overview,
-                   top_genes = top_genes,
-                   top_genes_per_sample = top_genes_per_sample,
-                   variant_classification = variant_classification,
-                   variant_type = variant_type,
-                   clin_sig = clin_sig,
-                   impact = impact)
-  if (!is.null(top_variants)) sections$top_variants <- top_variants
-
-  # ============================================================================
-  # Verbose console digest
-  # ============================================================================
-  if (isTRUE(verbose)) {
-    message(sprintf("gvr_summary: %d variants across %d sample(s): %s",
-                    n_total, length(samples), paste(samples, collapse = ", ")))
-    message(sprintf("  Distinct genes (known): %d   |  variants with no gene symbol: %d",
-                    data.table::uniqueN(dt$Hugo_Symbol[is_known_gene]), sum(!is_known_gene)))
-    topfc <- variant_classification[seq_len(min(3L, nrow(variant_classification)))]
-    message(sprintf("  Top functional classes: %s",
-                    paste(sprintf("%s=%d", topfc$Variant_Classification, topfc$Total), collapse = ", ")))
-    message(sprintf("  IMPACT: %s",
-                    paste(sprintf("%s=%d", impact$IMPACT, impact$Total), collapse = ", ")))
-    nrare <- clin_sig[CLIN_SIG != "missing/unclassified"]
-    if (nrow(nrare) > 0) {
-      message(sprintf("  CLIN_SIG (top tokens): %s",
-                      paste(sprintf("%s=%d", utils::head(nrare$CLIN_SIG, 4),
-                                    utils::head(nrare$Total, 4)), collapse = ", ")))
-    }
-    if (!is.null(top_variants) && nrow(top_variants) > 0) {
-      message(sprintf("  Top variant (by rsID): %s (%d occurrences)",
-                      top_variants$dbSNP_RS[1L], top_variants$Total[1L]))
-    }
-  }
-
-  # ============================================================================
-  # Output folder: ALL written summary outputs go into <out_dir>/gvr_summary/.
-  # The subfolder is created only when something is actually written.
-  # ============================================================================
-  out_subdir <- file.path(out_dir, "gvr_summary")
-  if (isTRUE(save_excel) || isTRUE(save_pdf) || isTRUE(save_html)) {
-    if (!dir.exists(out_subdir))
-      dir.create(out_subdir, recursive = TRUE, showWarnings = FALSE)
-  }
-
-  # --------------------------------------------------------------------------
-  # Shared report metadata (built once; consumed by BOTH the PDF and HTML
-  # renderers so the two reports show identical cohort figures).
-  # --------------------------------------------------------------------------
-  meta <- list(
-    out_dir   = normalizePath(out_dir, mustWork = FALSE),
-    n_samples = length(samples), samples = samples,
-    n_total   = n_total,
-    n_genes   = data.table::uniqueN(dt$Hugo_Symbol[is_known_gene]),
-    n_nogene  = sum(!is_known_gene),
-    generated = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
-
-  # --------------------------------------------------------------------------
-  # Shared helpers + constants used by BOTH the PDF and HTML renderers.
-  # Hoisted to the outer scope so the two report paths cannot drift apart.
-  # --------------------------------------------------------------------------
-  fmt <- function(x) format(x, big.mark = ",", trim = TRUE)
-
-  # Colour-blind-safe shared palette (Okabe-Ito ordering for the first 9
-  # entries: PDF dashboard uses exactly these). The HTML branch extends this
-  # with Paul-Tol "muted" + extras for cohorts up to 24 distinct legend entries
-  # (defined locally inside the HTML renderer).
-  PHYLO_PAL_BASE <- c("#0279EE", "#E69F00", "#009E73", "#CC79A7", "#56B4E9",
-                      "#75A025", "#D55E00", "#332288", "#AA4499")
-
-  # Common-prefix stripper for facet/group sample labels: identifies a leading
-  # substring shared by all sample names (length >= 3, e.g. "ACRO") and strips
-  # it from chart labels so legends stay compact. Returns the identity for
-  # samples with no shared >=3-char prefix or for cohorts of size 1.
-  .lab_fun <- local({
-    sn <- as.character(samples); pre <- ""
-    if (length(sn) > 1L) {
-      mn <- min(nchar(sn)); i <- 0L
-      while (i < mn && length(unique(substr(sn, 1L, i + 1L))) == 1L) i <- i + 1L
-      if (i >= 3L) pre <- substr(sn[1], 1L, i)
-    }
-    function(x) if (nzchar(pre)) sub(paste0("^", pre), "", x) else x
-  })
-
-  # Build the report table spec list (Overview / Top genes / per-sample top
-  # genes / VC / VT / Clinical / Impact / Top variants if present). Consumed
-  # identically by the PDF and HTML renderers, with two cosmetic divergences:
-  #   * PDF appends "(table)" to the impact title because the PDF puts a
-  #     separate IMPACT chart on the same reference page (so the table needs
-  #     a label that disambiguates from the chart).
-  #   * HTML tags VC / clin_sig / impact with a `special` key so the renderer
-  #     knows to render those entries as drill-down (summary + detail) pairs.
-  .build_tbl_specs <- function(sections, html = FALSE) {
-    specs <- list(
-      list(s = "overview",  t = "Overview"),
-      list(s = "top_genes", t = "Top genes"))
-    for (sm in names(sections$top_genes_per_sample)) {
-      specs <- c(specs, list(
-        list(s = paste0("top_genes_per_sample.", sm),
-             t = sprintf("Top genes \u2013 %s", sm),
-             per_sample_key = sm)))
-    }
-    impact_t <- if (isTRUE(html)) "Functional impact" else "Functional impact (table)"
-    rest <- list(
-      list(s = "variant_classification", t = "Variant classification"),
-      list(s = "variant_type",           t = "Variant type"),
-      list(s = "clin_sig",               t = "Clinical significance"),
-      list(s = "impact",                 t = impact_t))
-    if (isTRUE(html)) {
-      rest[[1]]$special <- "vc"
-      rest[[3]]$special <- "clin_sig"
-      rest[[4]]$special <- "impact"
-      # vN+7: Top genes becomes a 4th clickable section (drill-down = variants
-      # in the clicked gene, capped at 1,000 by composite IMPACT > nsamp >
-      # gnomADe_AF ranking). The specs$top_genes index is fixed: items 1=overview,
-      # 2=top_genes, then per-sample tables.
-      specs[[2]]$special <- "top_genes"
-    }
-    specs <- c(specs, rest)
-    if (!is.null(sections$top_variants))
-      specs <- c(specs, list(list(s = "top_variants", t = "Top variants (by rsID)")))
-    specs
-  }
-
-
-  # ============================================================================
-  # File-local writer helpers (vN+7.2): portable across S3-FUSE / Linux / macOS /
-  # Windows. The S3-staging path (write to tempdir(), then shell-cp) is used ONLY
-  # when the destination directory is on /mnt/ (sandbox S3 mount). On all other
-  # filesystems we write directly to the destination, since the FUSE limitation
-  # that motivated staging does not apply and `cp` is not available on Windows.
-  # ============================================================================
-  .gvr_use_staging <- function(final_path) {
-    # Override hook for tests/Windows simulation.
-    ov <- Sys.getenv("GVR_FORCE_DIRECT_WRITE", unset = "")
-    if (nzchar(ov)) return(FALSE)
-    dirn <- tryCatch(normalizePath(dirname(final_path), mustWork = FALSE),
-                     error = function(e) dirname(final_path))
-    isTRUE(startsWith(dirn, "/mnt/"))
-  }
-  .gvr_finalize_to_dest <- function(tmp_path, final_path, label = "file",
-                                    recursive = FALSE) {
-    # Caller already wrote to tmp_path (when staged) or to final_path (when direct).
-    # When tmp_path == final_path (direct mode), just verify and return.
-    if (identical(tmp_path, final_path)) {
-      if (!file.exists(final_path) || (!recursive && file.info(final_path)$size == 0))
-        warning(sprintf("gvr_summary: %s missing or zero-byte at '%s'.", label, final_path))
-      return(final_path)
-    }
-    # Staged path: try shell cp first (preferred on S3 FUSE), then R fallback.
-    if (recursive) {
-      # Directory copy (used by HTML sidecar _files/). Refresh any stale assets
-      # from a previous run BEFORE either cp -r or file.copy(), otherwise cp -r
-      # would nest the new tree inside the existing one.
-      if (dir.exists(final_path)) unlink(final_path, recursive = TRUE)
-      ok <- FALSE
-      if (.Platform$OS.type == "unix") {
-        # why: system2('cp') can emit a 'command not found' warning on minimal Unix shells; the ok-flag fallback below detects success regardless.
-        rc <- suppressWarnings(system2("cp", c("-r", shQuote(tmp_path), shQuote(final_path))))
-        ok <- isTRUE(rc == 0L) && dir.exists(final_path)
-      }
-      if (!isTRUE(ok)) {
-        ok <- tryCatch({
-          # file.copy(src_dir, dest_parent, recursive=TRUE) creates
-          # <dest_parent>/<basename(src_dir)>; require name match.
-          dest_parent <- dirname(final_path)
-          if (!dir.exists(dest_parent)) dir.create(dest_parent, recursive = TRUE, showWarnings = FALSE)
-          if (basename(tmp_path) == basename(final_path)) {
-            file.copy(tmp_path, dest_parent, recursive = TRUE, overwrite = TRUE) &&
-              dir.exists(final_path)
-          } else {
-            # Name mismatch: stage under dest_parent then rename atomically.
-            staged <- file.path(dest_parent, basename(tmp_path))
-            if (file.exists(staged) || dir.exists(staged)) unlink(staged, recursive = TRUE)
-            file.copy(tmp_path, dest_parent, recursive = TRUE, overwrite = TRUE)
-            file.rename(staged, final_path) && dir.exists(final_path)
-          }
-        }, error = function(e) FALSE)
-      }
-      if (!isTRUE(ok)) {
-        warning(sprintf("gvr_summary: copy of %s to '%s' may have failed; left at '%s'.",
-                        label, final_path, tmp_path))
-        return(tmp_path)
-      }
-      return(final_path)
-    }
-    # File copy (XLSX/PDF/HTML main file).
-    ok <- FALSE
-    if (.Platform$OS.type == "unix") {
-      # why: same as above — silence the system2('cp') warning; success is detected via rc==0 && file.exists() below.
-      rc <- suppressWarnings(system2("cp", c("-f", shQuote(tmp_path), shQuote(final_path))))
-      ok <- isTRUE(rc == 0L) && file.exists(final_path) && file.info(final_path)$size > 0
-    }
-    if (!isTRUE(ok)) {
-      ok <- tryCatch({
-        file.copy(tmp_path, final_path, overwrite = TRUE) &&
-          file.exists(final_path) && file.info(final_path)$size > 0
-      }, error = function(e) FALSE)
-    }
-    if (!isTRUE(ok)) {
-      warning(sprintf("gvr_summary: copy of %s to '%s' may have failed; %s left at '%s'.",
-                      label, final_path, label, tmp_path))
-      return(tmp_path)
-    }
-    final_path
-  }
-
-  # vN+9: shared per-token row-index builder used by the XLSX detail-sheet
-  # writer (below) and the HTML drill-down builder (further below). Returns a
-  # list keyed by category, with each value a named list mapping token -> integer
-  # row indices into `dt`. One single pass per category replaces three separate
-  # O(N x n_tokens) sweeps (XLSX writer, HTML .dd_build_cat, HTML .dd_project).
-  #
-  # Set semantics is identical to the original filter_fn closures:
-  #   * impact / vc / top_genes: which(col == tok) matches !is.na(col) & col == tok
-  #     because NA values are excluded from `which()`.
-  #   * clin_sig: strsplit("[&/]") + trimws + token-equality on each flattened
-  #     piece, same as the prior per-token vapply membership check.
-  .gvr_build_token_index <- function(dt, cat_specs) {
-    out <- list()
-    for (cat_nm in names(cat_specs)) {
-      sp <- cat_specs[[cat_nm]]
-      idx_map <- vector("list", length(sp$tokens))
-      names(idx_map) <- as.character(sp$tokens)
-      if (cat_nm == "clin_sig") {
-        cs <- dt$CLIN_SIG
-        m  <- !.is_missing(cs)
-        if (any(m)) {
-          row_idx_m <- which(m)
-          toks_list <- strsplit(cs[m], "[&/]")
-          toks_list <- lapply(toks_list, function(x) trimws(x))
-          rep_idx   <- rep.int(row_idx_m, lengths(toks_list))
-          flat_toks <- unlist(toks_list, use.names = FALSE)
-          sp_map    <- split(rep_idx, flat_toks)
-          for (tok in names(idx_map)) {
-            # dedupe: a token can appear >1x per row (e.g. "benign&benign/likely_benign"); equivalence with grepl requires one row index per row
-            idx_map[[tok]] <- if (!is.null(sp_map[[tok]])) unique(sp_map[[tok]]) else integer(0)
-          }
-        } else {
-          for (tok in names(idx_map)) idx_map[[tok]] <- integer(0)
+    # --- Helper: counts of `valuevec` x sample as a wide data.table --------------
+    #     rows = categories, cols = samples + Total. `order_levels` optionally fixes
+    #     row order; otherwise sorted by Total desc.
+    .count_by_sample <- function(valuevec, samplevec, category_name,
+                                 order_levels = NULL, drop_values = NULL) {
+        keep <- rep(TRUE, length(valuevec))
+        if (!is.null(drop_values)) keep <- !(valuevec %in% drop_values)
+        v <- valuevec[keep]
+        s <- samplevec[keep]
+        if (length(v) == 0L) {
+            out <- data.table::data.table(X = character(0))
+            data.table::setnames(out, "X", category_name)
+            for (sm in samples) out[, (sm) := integer(0)]
+            out[, Total := integer(0)]
+            return(out[])
         }
-      } else {
-        col_lookup <- switch(cat_nm,
-          top_genes = dt$Hugo_Symbol,
-          impact    = dt$IMPACT,
-          vc        = dt$Variant_Classification)
-        if (is.null(col_lookup)) {
-          for (tok in names(idx_map)) idx_map[[tok]] <- integer(0)
+        tab <- table(factor(v), factor(s, levels = samples))
+        m <- data.table::as.data.table(unclass(tab), keep.rownames = TRUE)
+        data.table::setnames(m, "rn", category_name)
+        # ensure all sample columns exist (table drops empty factor combos only if level absent)
+        for (sm in samples) if (!sm %in% names(m)) m[, (sm) := 0L]
+        data.table::setcolorder(m, c(category_name, samples))
+        m[, Total := rowSums(as.matrix(.SD)), .SDcols = samples]
+        if (!is.null(order_levels)) {
+            m <- m[match(order_levels, m[[category_name]])]
+            m <- m[!is.na(m[[category_name]])]
         } else {
-          keep <- !is.na(col_lookup)
-          if (any(keep)) {
-            row_idx <- which(keep)
-            keys    <- as.character(col_lookup[keep])
-            sp_map  <- split(row_idx, keys)
-            for (tok in names(idx_map)) {
-              idx_map[[tok]] <- if (!is.null(sp_map[[tok]])) sp_map[[tok]] else integer(0)
+            data.table::setorder(m, -Total)
+        }
+        m[]
+    }
+    # ============================================================================
+    # SECTION 1: overview (variants & genes)
+    # ============================================================================
+    is_known_gene <- !(dt$Hugo_Symbol %in% UNKNOWN_GENE)
+    ov_rows <- list()
+    # total variants
+    per_sample_var <- vapply(samples, function(sm) sum(dt$.__sample__ == sm), integer(1))
+    ov_rows[["Total variants"]] <- c(per_sample_var, Total = n_total)
+    # distinct genes (known only)
+    per_sample_genes <- vapply(samples, function(sm)
+        data.table::uniqueN(dt$Hugo_Symbol[dt$.__sample__ == sm & is_known_gene]), integer(1))
+    ov_rows[["Distinct genes (known)"]] <- c(per_sample_genes,
+        Total = data.table::uniqueN(dt$Hugo_Symbol[is_known_gene]))
+    # variants with no gene symbol
+    per_sample_nogene <- vapply(samples, function(sm)
+        sum(dt$.__sample__ == sm & !is_known_gene), integer(1))
+    ov_rows[["Variants with no gene symbol"]] <- c(per_sample_nogene, Total = sum(!is_known_gene))
+
+    overview <- data.table::data.table(Metric = names(ov_rows))
+    for (sm in c(samples, "Total")) {
+        overview[, (sm) := vapply(ov_rows, function(r) r[[sm]], numeric(1))]
+    }
+
+    # ============================================================================
+    # SECTION 1b: top genes (known only), by Total variant count
+    # ============================================================================
+    gene_tab <- .count_by_sample(dt$Hugo_Symbol, dt$.__sample__, "Hugo_Symbol",
+        drop_values = UNKNOWN_GENE)
+    top_genes <- utils::head(gene_tab, top_n_genes)
+
+    # ============================================================================
+    # SECTION 1c: per-sample top genes (known only), one table per sample
+    # ============================================================================
+    top_genes_per_sample <- list()
+    for (sm in samples) {
+        dt_sm <- dt[.__sample__ == sm & !(Hugo_Symbol %in% UNKNOWN_GENE)]
+        if (nrow(dt_sm) > 0L) {
+            sm_gene_tab <- dt_sm[, .(N = .N), by = Hugo_Symbol]
+            data.table::setorder(sm_gene_tab, -N)
+            sm_gene_tab <- utils::head(sm_gene_tab, top_n_genes)
+            data.table::setnames(sm_gene_tab, "N", sm)
+            top_genes_per_sample[[sm]] <- sm_gene_tab
+        }
+    }
+
+    # ============================================================================
+    # SECTION 2: functional classes
+    # ============================================================================
+    variant_classification <- .count_by_sample(dt$Variant_Classification, dt$.__sample__,
+        "Variant_Classification")
+    variant_type <- .count_by_sample(dt$Variant_Type, dt$.__sample__, "Variant_Type")
+
+    # ============================================================================
+    # SECTION 3: clinical categories (token-split on & and /)
+    # ============================================================================
+    cs   <- dt$CLIN_SIG
+    miss <- .is_missing(cs)
+    # expand non-missing CLIN_SIG into (token, sample) pairs
+    idx_nm <- which(!miss)
+    if (length(idx_nm) > 0) {
+        # dedup tokens per row so multi-token CLIN_SIG values
+        # (e.g. "pathogenic&pathogenic/likely_pathogenic") count each token once per variant
+        toks_list <- lapply(strsplit(cs[idx_nm], "[&/]"), function(x) unique(trimws(x)))
+        ntok <- lengths(toks_list)
+        tok_vec <- unlist(toks_list, use.names = FALSE)
+        samp_vec <- rep(dt$.__sample__[idx_nm], ntok)
+        # drop any empty tokens produced by stray delimiters
+        keep_tok <- tok_vec != ""
+        clin_counts <- .count_by_sample(tok_vec[keep_tok], samp_vec[keep_tok], "CLIN_SIG")
+    } else {
+        clin_counts <- .count_by_sample(character(0), character(0), "CLIN_SIG")
+    }
+    # append missing/unclassified row
+    per_sample_miss <- vapply(samples, function(sm) sum(miss & dt$.__sample__ == sm), integer(1))
+    miss_row <- data.table::as.data.table(c(list(CLIN_SIG = "missing/unclassified"),
+        as.list(per_sample_miss),
+        list(Total = sum(miss))))
+    clin_sig <- rbind(clin_counts, miss_row, fill = TRUE)
+
+    # ============================================================================
+    # SECTION 3b: top variants by dbSNP_RS (rsID frequency)
+    # ============================================================================
+    top_variants <- NULL
+    has_dbsnp <- "dbSNP_RS" %in% names(dt)
+    if (has_dbsnp) {
+        rs <- dt$dbSNP_RS
+        rs_miss <- .is_missing(rs) | rs == "novel" | tolower(rs) == "unknown"
+        dt_rs <- dt[!rs_miss]
+        if (nrow(dt_rs) > 0L) {
+            # Group by dbSNP_RS; pick representative metadata (first non-blank per field)
+            dt_rs[, .__rs__ := dbSNP_RS]
+            # Aggregate: count per rsID x sample, plus representative Hugo/Chr/Pos/VC
+            rs_tab <- dt_rs[, .(Hugo_Symbol = {
+                v <- Hugo_Symbol[!(Hugo_Symbol %in% UNKNOWN_GENE) & !.is_missing(Hugo_Symbol)]
+                if (length(v)) v[1L] else ""
+            }, Chromosome = {
+                v <- Chromosome[!.is_missing(Chromosome)]
+                if (length(v)) v[1L] else ""
+            }, Start_Position = {
+                v <- Start_Position[!.is_missing(Start_Position)]
+                if (length(v)) v[1L] else ""
+            }, Variant_Classification = {
+                v <- Variant_Classification[!.is_missing(Variant_Classification)]
+                if (length(v)) v[1L] else ""
+            }, Total = .N), by = .__rs__]
+            # Per-sample counts: one dcast pass instead of O(N x n_samples) per-sample scans.
+            # Add a sentinel column of 1L so dcast can aggregate by count (length) without
+            # using the grouping column itself as value.var, which would give wrong results.
+            dt_rs_cast <- dt_rs[, .(.__rs__, .__sample__, .__n__ = 1L)]
+            samp_counts <- data.table::dcast(
+                dt_rs_cast, .__rs__ ~ .__sample__,
+                fun.aggregate = sum, value.var = ".__n__", fill = 0L)
+            # Ensure all sample columns exist (dcast drops samples absent from dt_rs)
+            for (sm in samples) if (!sm %in% names(samp_counts)) samp_counts[, (sm) := 0L]
+            # Right join: keep all rsIDs from rs_tab (the metadata table); attach sample counts
+            rs_tab <- samp_counts[rs_tab, on = ".__rs__"]
+            data.table::setcolorder(rs_tab, c(".__rs__", "Hugo_Symbol", "Chromosome",
+                "Start_Position", "Variant_Classification",
+                samples, "Total"))
+            data.table::setorder(rs_tab, -Total)
+            data.table::setnames(rs_tab, ".__rs__", "dbSNP_RS")
+            top_variants <- utils::head(rs_tab, top_n_variants)
+        }
+    } else {
+        if (isTRUE(verbose))
+            message("  Note: 'dbSNP_RS' column not found; top_variants section skipped.")
+    }
+
+    # ============================================================================
+    # SECTION 4: impact severity (fixed severity order)
+    # ============================================================================
+    impact_order <- c("HIGH", "MODERATE", "LOW", "MODIFIER")
+    present_impact <- c(intersect(impact_order, unique(dt$IMPACT)),
+        setdiff(unique(dt$IMPACT[!.is_missing(dt$IMPACT)]), impact_order))
+    impact <- .count_by_sample(dt$IMPACT, dt$.__sample__, "IMPACT",
+        order_levels = present_impact)
+
+    sections <- list(overview = overview,
+        top_genes = top_genes,
+        top_genes_per_sample = top_genes_per_sample,
+        variant_classification = variant_classification,
+        variant_type = variant_type,
+        clin_sig = clin_sig,
+        impact = impact)
+    if (!is.null(top_variants)) sections$top_variants <- top_variants
+
+    # ============================================================================
+    # Verbose console digest
+    # ============================================================================
+    if (isTRUE(verbose)) {
+        message(sprintf("gvr_summary: %d variants across %d sample(s): %s",
+            n_total, length(samples), paste(samples, collapse = ", ")))
+        message(sprintf("  Distinct genes (known): %d   |  variants with no gene symbol: %d",
+            data.table::uniqueN(dt$Hugo_Symbol[is_known_gene]), sum(!is_known_gene)))
+        topfc <- variant_classification[seq_len(min(3L, nrow(variant_classification)))]
+        message(sprintf("  Top functional classes: %s",
+            paste(sprintf("%s=%d", topfc$Variant_Classification, topfc$Total), collapse = ", ")))
+        message(sprintf("  IMPACT: %s",
+            paste(sprintf("%s=%d", impact$IMPACT, impact$Total), collapse = ", ")))
+        nrare <- clin_sig[CLIN_SIG != "missing/unclassified"]
+        if (nrow(nrare) > 0) {
+            message(sprintf("  CLIN_SIG (top tokens): %s",
+                paste(sprintf("%s=%d", utils::head(nrare$CLIN_SIG, 4),
+                    utils::head(nrare$Total, 4)), collapse = ", ")))
+        }
+        if (!is.null(top_variants) && nrow(top_variants) > 0) {
+            message(sprintf("  Top variant (by rsID): %s (%d occurrences)",
+                top_variants$dbSNP_RS[1L], top_variants$Total[1L]))
+        }
+    }
+
+    # ============================================================================
+    # Output folder: ALL written summary outputs go into <out_dir>/gvr_summary/.
+    # The subfolder is created only when something is actually written.
+    # ============================================================================
+    out_subdir <- file.path(out_dir, "gvr_summary")
+    if (isTRUE(save_excel) || isTRUE(save_pdf) || isTRUE(save_html)) {
+        if (!dir.exists(out_subdir))
+            dir.create(out_subdir, recursive = TRUE, showWarnings = FALSE)
+    }
+
+    # --------------------------------------------------------------------------
+    # Shared report metadata (built once; consumed by BOTH the PDF and HTML
+    # renderers so the two reports show identical cohort figures).
+    # --------------------------------------------------------------------------
+    meta <- list(
+        out_dir   = normalizePath(out_dir, mustWork = FALSE),
+        n_samples = length(samples), samples = samples,
+        n_total   = n_total,
+        n_genes   = data.table::uniqueN(dt$Hugo_Symbol[is_known_gene]),
+        n_nogene  = sum(!is_known_gene),
+        generated = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+
+    # --------------------------------------------------------------------------
+    # Shared helpers + constants used by BOTH the PDF and HTML renderers.
+    # Hoisted to the outer scope so the two report paths cannot drift apart.
+    # --------------------------------------------------------------------------
+    fmt <- function(x) format(x, big.mark = ",", trim = TRUE)
+
+    # Colour-blind-safe shared palette (Okabe-Ito ordering for the first 9
+    # entries: PDF dashboard uses exactly these). The HTML branch extends this
+    # with Paul-Tol "muted" + extras for cohorts up to 24 distinct legend entries
+    # (defined locally inside the HTML renderer).
+    PHYLO_PAL_BASE <- c("#0279EE", "#E69F00", "#009E73", "#CC79A7", "#56B4E9",
+        "#75A025", "#D55E00", "#332288", "#AA4499")
+
+    # Common-prefix stripper for facet/group sample labels: identifies a leading
+    # substring shared by all sample names (length >= 3, e.g. "ACRO") and strips
+    # it from chart labels so legends stay compact. Returns the identity for
+    # samples with no shared >=3-char prefix or for cohorts of size 1.
+    .lab_fun <- local({
+        sn <- as.character(samples)
+        pre <- ""
+        if (length(sn) > 1L) {
+            mn <- min(nchar(sn))
+            i <- 0L
+            while (i < mn && length(unique(substr(sn, 1L, i + 1L))) == 1L) i <- i + 1L
+            if (i >= 3L) pre <- substr(sn[1], 1L, i)
+        }
+        function(x) if (nzchar(pre)) sub(paste0("^", pre), "", x) else x
+    })
+
+    # Build the report table spec list (Overview / Top genes / per-sample top
+    # genes / VC / VT / Clinical / Impact / Top variants if present). Consumed
+    # identically by the PDF and HTML renderers, with two cosmetic divergences:
+    #   * PDF appends "(table)" to the impact title because the PDF puts a
+    #     separate IMPACT chart on the same reference page (so the table needs
+    #     a label that disambiguates from the chart).
+    #   * HTML tags VC / clin_sig / impact with a `special` key so the renderer
+    #     knows to render those entries as drill-down (summary + detail) pairs.
+    .build_tbl_specs <- function(sections, html = FALSE) {
+        specs <- list(
+            list(s = "overview",  t = "Overview"),
+            list(s = "top_genes", t = "Top genes"))
+        for (sm in names(sections$top_genes_per_sample)) {
+            specs <- c(specs, list(
+                list(s = paste0("top_genes_per_sample.", sm),
+                    t = sprintf("Top genes \u2013 %s", sm),
+                    per_sample_key = sm)))
+        }
+        impact_t <- if (isTRUE(html)) "Functional impact" else "Functional impact (table)"
+        rest <- list(
+            list(s = "variant_classification", t = "Variant classification"),
+            list(s = "variant_type",           t = "Variant type"),
+            list(s = "clin_sig",               t = "Clinical significance"),
+            list(s = "impact",                 t = impact_t))
+        if (isTRUE(html)) {
+            rest[[1]]$special <- "vc"
+            rest[[3]]$special <- "clin_sig"
+            rest[[4]]$special <- "impact"
+            # vN+7: Top genes becomes a 4th clickable section (drill-down = variants
+            # in the clicked gene, capped at 1,000 by composite IMPACT > nsamp >
+            # gnomADe_AF ranking). The specs$top_genes index is fixed: items 1=overview,
+            # 2=top_genes, then per-sample tables.
+            specs[[2]]$special <- "top_genes"
+        }
+        specs <- c(specs, rest)
+        if (!is.null(sections$top_variants))
+            specs <- c(specs, list(list(s = "top_variants", t = "Top variants (by rsID)")))
+        specs
+    }
+
+
+    # ============================================================================
+    # File-local writer helpers (vN+7.2): portable across S3-FUSE / Linux / macOS /
+    # Windows. The S3-staging path (write to tempdir(), then shell-cp) is used ONLY
+    # when the destination directory is on /mnt/ (sandbox S3 mount). On all other
+    # filesystems we write directly to the destination, since the FUSE limitation
+    # that motivated staging does not apply and `cp` is not available on Windows.
+    # ============================================================================
+    .gvr_use_staging <- function(final_path) {
+        # Override hook for tests/Windows simulation.
+        ov <- Sys.getenv("GVR_FORCE_DIRECT_WRITE", unset = "")
+        if (nzchar(ov)) return(FALSE)
+        dirn <- tryCatch(normalizePath(dirname(final_path), mustWork = FALSE),
+            error = function(e) dirname(final_path))
+        isTRUE(startsWith(dirn, "/mnt/"))
+    }
+    .gvr_finalize_to_dest <- function(tmp_path, final_path, label = "file",
+                                      recursive = FALSE) {
+        # Caller already wrote to tmp_path (when staged) or to final_path (when direct).
+        # When tmp_path == final_path (direct mode), just verify and return.
+        if (identical(tmp_path, final_path)) {
+            if (!file.exists(final_path) || (!recursive && file.info(final_path)$size == 0))
+                warning(sprintf("gvr_summary: %s missing or zero-byte at '%s'.", label, final_path))
+            return(final_path)
+        }
+        # Staged path: try shell cp first (preferred on S3 FUSE), then R fallback.
+        if (recursive) {
+            # Directory copy (used by HTML sidecar _files/). Refresh any stale assets
+            # from a previous run BEFORE either cp -r or file.copy(), otherwise cp -r
+            # would nest the new tree inside the existing one.
+            if (dir.exists(final_path)) unlink(final_path, recursive = TRUE)
+            ok <- FALSE
+            if (.Platform$OS.type == "unix") {
+                # why: system2('cp') can emit a 'command not found' warning on minimal Unix shells; the ok-flag fallback below detects success regardless.
+                rc <- suppressWarnings(system2("cp", c("-r", shQuote(tmp_path), shQuote(final_path))))
+                ok <- isTRUE(rc == 0L) && dir.exists(final_path)
             }
-          } else {
-            for (tok in names(idx_map)) idx_map[[tok]] <- integer(0)
-          }
+            if (!isTRUE(ok)) {
+                ok <- tryCatch(
+                    {
+                        # file.copy(src_dir, dest_parent, recursive=TRUE) creates
+                        # <dest_parent>/<basename(src_dir)>; require name match.
+                        dest_parent <- dirname(final_path)
+                        if (!dir.exists(dest_parent)) dir.create(dest_parent, recursive = TRUE, showWarnings = FALSE)
+                        if (basename(tmp_path) == basename(final_path)) {
+                            file.copy(tmp_path, dest_parent, recursive = TRUE, overwrite = TRUE) &&
+                                dir.exists(final_path)
+                        } else {
+                            # Name mismatch: stage under dest_parent then rename atomically.
+                            staged <- file.path(dest_parent, basename(tmp_path))
+                            if (file.exists(staged) || dir.exists(staged)) unlink(staged, recursive = TRUE)
+                            file.copy(tmp_path, dest_parent, recursive = TRUE, overwrite = TRUE)
+                            file.rename(staged, final_path) && dir.exists(final_path)
+                        }
+                    },
+                    error = function(e) FALSE)
+            }
+            if (!isTRUE(ok)) {
+                warning(sprintf("gvr_summary: copy of %s to '%s' may have failed; left at '%s'.",
+                    label, final_path, tmp_path))
+                return(tmp_path)
+            }
+            return(final_path)
         }
-      }
-      out[[cat_nm]] <- idx_map
+        # File copy (XLSX/PDF/HTML main file).
+        ok <- FALSE
+        if (.Platform$OS.type == "unix") {
+            # why: same as above — silence the system2('cp') warning; success is detected via rc==0 && file.exists() below.
+            rc <- suppressWarnings(system2("cp", c("-f", shQuote(tmp_path), shQuote(final_path))))
+            ok <- isTRUE(rc == 0L) && file.exists(final_path) && file.info(final_path)$size > 0
+        }
+        if (!isTRUE(ok)) {
+            ok <- tryCatch(
+                {
+                    file.copy(tmp_path, final_path, overwrite = TRUE) &&
+                        file.exists(final_path) && file.info(final_path)$size > 0
+                },
+                error = function(e) FALSE)
+        }
+        if (!isTRUE(ok)) {
+            warning(sprintf("gvr_summary: copy of %s to '%s' may have failed; %s left at '%s'.",
+                label, final_path, label, tmp_path))
+            return(tmp_path)
+        }
+        final_path
     }
-    out
-  }
 
-  # ============================================================================
-  # Optional Excel export  ->  <out_dir>/gvr_summary/<file_prefix>.xlsx
-  # Fixed filename (no timestamp): re-running overwrites the previous workbook.
-  # ============================================================================
-  if (isTRUE(save_excel)) {
-    if (!requireNamespace("openxlsx", quietly = TRUE)) {
-      warning("gvr_summary: 'openxlsx' not installed; skipping Excel export.")
-    } else {
-      tryCatch({
-      xlsx_name  <- sprintf("%s.xlsx", file_prefix)
-      final_xlsx <- file.path(out_subdir, xlsx_name)
-      if (file.exists(final_xlsx) && isTRUE(verbose))
-        message(sprintf("  Overwriting existing Excel: %s", final_xlsx))
-
-      sheet_map <- c(overview = "Overview", top_genes = "Top_genes",
-                     variant_classification = "Variant_classification",
-                     variant_type = "Variant_type", clin_sig = "Clinical",
-                     top_variants = "Top_variants", impact = "Impact")
-      # vN+9: fixed per-column widths for known fields.
-      # Auto-width (widths = "auto") forces openxlsx to walk every cell --
-      # the dominant runtime cost at 200k+ rows. Fixed widths give identical
-      # Excel UX (users can drag to adjust if needed) at constant time.
-      .gvr_xl_width_for <- function(col_name) {
-        switch(as.character(col_name),
-          "Hugo_Symbol"            = 14,
-          "dbSNP_RS"               = 18,
-          "CLIN_SIG"               = 24,
-          "IMPACT"                 = 10,
-          "gnomADe_AF"             = 12,
-          "Variant_Classification" = 22,
-          "Variant_Type"           = 12,
-          "Tumor_Sample_Barcode"   = 18,
-          "Chromosome"             = 10,
-          "Start_Position"         = 14,
-          "End_Position"           = 14,
-          "Reference_Allele"       = 14,
-          "Tumor_Seq_Allele2"      = 14,
-          "HGVSp_Short"            = 18,
-          16  # default for unknown / base-section columns
-        )
-      }
-      .gvr_xl_widths <- function(col_names) {
-        vapply(col_names, .gvr_xl_width_for, numeric(1))
-      }
-      wb <- openxlsx::createWorkbook()
-      hs <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
-      for (nm in names(sections)) {
-        if (nm == "top_genes_per_sample") {
-          # Per-sample top genes: one sheet per sample (per-sheet tryCatch; vN+7.2)
-          for (sm in names(sections$top_genes_per_sample)) {
-            tryCatch({
-              sh_nm <- sprintf("TopGenes_%s", sm)
-              # Excel sheet names max 31 chars; truncate sample name if needed
-              if (nchar(sh_nm) > 31L) sh_nm <- paste0(substr(sh_nm, 1L, 28L), "...")
-              openxlsx::addWorksheet(wb, sh_nm)
-              openxlsx::writeData(wb, sh_nm, sections$top_genes_per_sample[[sm]], headerStyle = hs)
-              openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
-              openxlsx::setColWidths(wb, sh_nm,
-                                     cols = seq_len(ncol(sections$top_genes_per_sample[[sm]])),
-                                     widths = .gvr_xl_widths(names(sections$top_genes_per_sample[[sm]])))
-            }, error = function(e) {
-              warning(sprintf("gvr_summary: skipping sheet TopGenes_%s: %s",
-                              sm, conditionMessage(e)))
-              # Remove orphaned worksheet if addWorksheet succeeded before writeData
-              tryCatch(openxlsx::removeWorksheet(wb, sh_nm),
-                       error = function(e2) invisible(NULL))
-            })
-          }
-          next
+    # vN+9: shared per-token row-index builder used by the XLSX detail-sheet
+    # writer (below) and the HTML drill-down builder (further below). Returns a
+    # list keyed by category, with each value a named list mapping token -> integer
+    # row indices into `dt`. One single pass per category replaces three separate
+    # O(N x n_tokens) sweeps (XLSX writer, HTML .dd_build_cat, HTML .dd_project).
+    #
+    # Set semantics is identical to the original filter_fn closures:
+    #   * impact / vc / top_genes: which(col == tok) matches !is.na(col) & col == tok
+    #     because NA values are excluded from `which()`.
+    #   * clin_sig: strsplit("[&/]") + trimws + token-equality on each flattened
+    #     piece, same as the prior per-token vapply membership check.
+    .gvr_build_token_index <- function(dt, cat_specs) {
+        out <- list()
+        for (cat_nm in names(cat_specs)) {
+            sp <- cat_specs[[cat_nm]]
+            idx_map <- vector("list", length(sp$tokens))
+            names(idx_map) <- as.character(sp$tokens)
+            if (cat_nm == "clin_sig") {
+                cs <- dt$CLIN_SIG
+                m  <- !.is_missing(cs)
+                if (any(m)) {
+                    row_idx_m <- which(m)
+                    toks_list <- strsplit(cs[m], "[&/]")
+                    toks_list <- lapply(toks_list, function(x) trimws(x))
+                    rep_idx   <- rep.int(row_idx_m, lengths(toks_list))
+                    flat_toks <- unlist(toks_list, use.names = FALSE)
+                    sp_map    <- split(rep_idx, flat_toks)
+                    for (tok in names(idx_map)) {
+                        # dedupe: a token can appear >1x per row (e.g. "benign&benign/likely_benign"); equivalence with grepl requires one row index per row
+                        idx_map[[tok]] <- if (!is.null(sp_map[[tok]])) unique(sp_map[[tok]]) else integer(0)
+                    }
+                } else {
+                    for (tok in names(idx_map)) idx_map[[tok]] <- integer(0)
+                }
+            } else {
+                col_lookup <- switch(cat_nm,
+                    top_genes = dt$Hugo_Symbol,
+                    impact    = dt$IMPACT,
+                    vc        = dt$Variant_Classification)
+                if (is.null(col_lookup)) {
+                    for (tok in names(idx_map)) idx_map[[tok]] <- integer(0)
+                } else {
+                    keep <- !is.na(col_lookup)
+                    if (any(keep)) {
+                        row_idx <- which(keep)
+                        keys    <- as.character(col_lookup[keep])
+                        sp_map  <- split(row_idx, keys)
+                        for (tok in names(idx_map)) {
+                            idx_map[[tok]] <- if (!is.null(sp_map[[tok]])) sp_map[[tok]] else integer(0)
+                        }
+                    } else {
+                        for (tok in names(idx_map)) idx_map[[tok]] <- integer(0)
+                    }
+                }
+            }
+            out[[cat_nm]] <- idx_map
         }
-        # Base section sheets (per-sheet tryCatch; vN+7.2)
-        tryCatch({
-          sh <- if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm
-          openxlsx::addWorksheet(wb, sh)
-          openxlsx::writeData(wb, sh, sections[[nm]], headerStyle = hs)
-          openxlsx::freezePane(wb, sh, firstRow = TRUE)
-          openxlsx::setColWidths(wb, sh, cols = seq_len(ncol(sections[[nm]])),
-                                 widths = .gvr_xl_widths(names(sections[[nm]])))
-        }, error = function(e) {
-          warning(sprintf("gvr_summary: skipping sheet %s: %s",
-                          if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm,
-                          conditionMessage(e)))
-          # Remove orphaned worksheet if addWorksheet succeeded before writeData
-          tryCatch(openxlsx::removeWorksheet(wb,
-                     if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm),
-                   error = function(e2) invisible(NULL))
-        })
-      }
-      # ==============================================================
-      # vN+7: per-clickable XLSX sheets -- one sheet per token of each
-      # of the 4 clickable categories (Top genes / CLIN_SIG / IMPACT /
-      # Variant_Classification). Each sheet holds the FULL uncapped
-      # matching variants for that token, 7-column fixed projection,
-      # sorted by the same composite ranking as the HTML drill-downs.
-      # Excel sheet names are capped at 31 chars; tokens are truncated
-      # with collision-suffix on conflict.
-      # ==============================================================
-      .gvr_impact_rank_xl <- function(v) {
-        ord <- c("HIGH" = 1L, "MODERATE" = 2L, "LOW" = 3L, "MODIFIER" = 4L)
-        r <- ord[as.character(v)]; r[is.na(r)] <- 5L; as.integer(r)
-      }
-      .gvr_rank_xl <- function(d) {
-        ir <- .gvr_impact_rank_xl(d$IMPACT)
-        nsamp <- if (".__nsamp__" %in% names(d)) d$.__nsamp__ else rep(0L, nrow(d))
-        # why: as.numeric() on gnomADe_AF (character column with '' for missing); 'NAs introduced by coercion' is the intended path — NAs propagate as 'no AF available'.
-        gaf <- if ("gnomADe_AF" %in% names(d)) suppressWarnings(as.numeric(d$gnomADe_AF))
-                else rep(NA_real_, nrow(d))
-        chr <- if ("Chromosome" %in% names(d)) as.character(d$Chromosome) else rep("", nrow(d))
-        # why: as.integer() on Start_Position (character in pre-MAF stage); non-numeric rows become NA and are tolerated downstream.
-        pos <- if ("Start_Position" %in% names(d)) suppressWarnings(as.integer(d$Start_Position))
-                else rep(0L, nrow(d))
-        order(ir, -nsamp, gaf, chr, pos, na.last = TRUE)
-      }
-      # Precompute .__nsamp__ on dt if not already present.
-      if (!(".__nsamp__" %in% names(dt))) {
-        key_cols_xl <- intersect(c("Chromosome", "Start_Position",
-                                   "Reference_Allele", "Tumor_Seq_Allele2"),
-                                 names(dt))
-        if (length(key_cols_xl) < 2L) {
-          dt[, .__nsamp__ := 1L]
+        out
+    }
+
+    # ============================================================================
+    # Optional Excel export  ->  <out_dir>/gvr_summary/<file_prefix>.xlsx
+    # Fixed filename (no timestamp): re-running overwrites the previous workbook.
+    # ============================================================================
+    if (isTRUE(save_excel)) {
+        if (!requireNamespace("openxlsx", quietly = TRUE)) {
+            warning("gvr_summary: 'openxlsx' not installed; skipping Excel export.")
         } else {
-          dt[, .__nsamp__ := data.table::uniqueN(.__sample__), by = key_cols_xl]
-        }
-      }
-      .XLSX_ROW_CAP <- 1048575L      # Excel data-row hard limit
-      .gvr_safe_sheet <- function(pfx, tok, used) {
-        # Replace Excel-illegal chars, build "<PFX>_<token>", truncate to 31, dedup.
-        clean <- gsub("[\\\\/?*\\[\\]:]", "_", tok, perl = TRUE)
-        nm <- paste0(pfx, clean)
-        if (nchar(nm) > 31L) nm <- substr(nm, 1L, 31L)
-        base <- nm; k <- 1L
-        while (nm %in% used) {
-          suf <- paste0("_", k)
-          nm <- paste0(substr(base, 1L, 31L - nchar(suf)), suf)
-          k <- k + 1L
-        }
-        nm
-      }
-      .gvr_xl_cols <- c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
+            tryCatch(
+                {
+                    xlsx_name  <- sprintf("%s.xlsx", file_prefix)
+                    final_xlsx <- file.path(out_subdir, xlsx_name)
+                    if (file.exists(final_xlsx) && isTRUE(verbose))
+                        message(sprintf("  Overwriting existing Excel: %s", final_xlsx))
+
+                    sheet_map <- c(overview = "Overview", top_genes = "Top_genes",
+                        variant_classification = "Variant_classification",
+                        variant_type = "Variant_type", clin_sig = "Clinical",
+                        top_variants = "Top_variants", impact = "Impact")
+                    # vN+9: fixed per-column widths for known fields.
+                    # Auto-width (widths = "auto") forces openxlsx to walk every cell --
+                    # the dominant runtime cost at 200k+ rows. Fixed widths give identical
+                    # Excel UX (users can drag to adjust if needed) at constant time.
+                    .gvr_xl_width_for <- function(col_name) {
+                        switch(as.character(col_name),
+                            "Hugo_Symbol"            = 14,
+                            "dbSNP_RS"               = 18,
+                            "CLIN_SIG"               = 24,
+                            "IMPACT"                 = 10,
+                            "gnomADe_AF"             = 12,
+                            "Variant_Classification" = 22,
+                            "Variant_Type"           = 12,
+                            "Tumor_Sample_Barcode"   = 18,
+                            "Chromosome"             = 10,
+                            "Start_Position"         = 14,
+                            "End_Position"           = 14,
+                            "Reference_Allele"       = 14,
+                            "Tumor_Seq_Allele2"      = 14,
+                            "HGVSp_Short"            = 18,
+                            16  # default for unknown / base-section columns
+                        )
+                    }
+                    .gvr_xl_widths <- function(col_names) {
+                        vapply(col_names, .gvr_xl_width_for, numeric(1))
+                    }
+                    wb <- openxlsx::createWorkbook()
+                    hs <- openxlsx::createStyle(textDecoration = "bold", halign = "center")
+                    for (nm in names(sections)) {
+                        if (nm == "top_genes_per_sample") {
+                            # Per-sample top genes: one sheet per sample (per-sheet tryCatch; vN+7.2)
+                            for (sm in names(sections$top_genes_per_sample)) {
+                                tryCatch(
+                                    {
+                                        sh_nm <- sprintf("TopGenes_%s", sm)
+                                        # Excel sheet names max 31 chars; truncate sample name if needed
+                                        if (nchar(sh_nm) > 31L) sh_nm <- paste0(substr(sh_nm, 1L, 28L), "...")
+                                        openxlsx::addWorksheet(wb, sh_nm)
+                                        openxlsx::writeData(wb, sh_nm, sections$top_genes_per_sample[[sm]], headerStyle = hs)
+                                        openxlsx::freezePane(wb, sh_nm, firstRow = TRUE)
+                                        openxlsx::setColWidths(wb, sh_nm,
+                                            cols = seq_len(ncol(sections$top_genes_per_sample[[sm]])),
+                                            widths = .gvr_xl_widths(names(sections$top_genes_per_sample[[sm]])))
+                                    },
+                                    error = function(e) {
+                                        warning(sprintf("gvr_summary: skipping sheet TopGenes_%s: %s",
+                                            sm, conditionMessage(e)))
+                                        # Remove orphaned worksheet if addWorksheet succeeded before writeData
+                                        tryCatch(openxlsx::removeWorksheet(wb, sh_nm),
+                                            error = function(e2) invisible(NULL))
+                                    })
+                            }
+                            next
+                        }
+                        # Base section sheets (per-sheet tryCatch; vN+7.2)
+                        tryCatch(
+                            {
+                                sh <- if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm
+                                openxlsx::addWorksheet(wb, sh)
+                                openxlsx::writeData(wb, sh, sections[[nm]], headerStyle = hs)
+                                openxlsx::freezePane(wb, sh, firstRow = TRUE)
+                                openxlsx::setColWidths(wb, sh, cols = seq_len(ncol(sections[[nm]])),
+                                    widths = .gvr_xl_widths(names(sections[[nm]])))
+                            },
+                            error = function(e) {
+                                warning(sprintf("gvr_summary: skipping sheet %s: %s",
+                                    if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm,
+                                    conditionMessage(e)))
+                                # Remove orphaned worksheet if addWorksheet succeeded before writeData
+                                tryCatch(openxlsx::removeWorksheet(wb,
+                                    if (nm %in% names(sheet_map)) sheet_map[[nm]] else nm),
+                                error = function(e2) invisible(NULL))
+                            })
+                    }
+                    # ==============================================================
+                    # vN+7: per-clickable XLSX sheets -- one sheet per token of each
+                    # of the 4 clickable categories (Top genes / CLIN_SIG / IMPACT /
+                    # Variant_Classification). Each sheet holds the FULL uncapped
+                    # matching variants for that token, 7-column fixed projection,
+                    # sorted by the same composite ranking as the HTML drill-downs.
+                    # Excel sheet names are capped at 31 chars; tokens are truncated
+                    # with collision-suffix on conflict.
+                    # ==============================================================
+                    .gvr_impact_rank_xl <- function(v) {
+                        ord <- c("HIGH" = 1L, "MODERATE" = 2L, "LOW" = 3L, "MODIFIER" = 4L)
+                        r <- ord[as.character(v)]
+                        r[is.na(r)] <- 5L
+                        as.integer(r)
+                    }
+                    .gvr_rank_xl <- function(d) {
+                        ir <- .gvr_impact_rank_xl(d$IMPACT)
+                        nsamp <- if (".__nsamp__" %in% names(d)) d$.__nsamp__ else rep(0L, nrow(d))
+                        # why: as.numeric() on gnomADe_AF (character column with '' for missing); 'NAs introduced by coercion' is the intended path — NAs propagate as 'no AF available'.
+                        gaf <- if ("gnomADe_AF" %in% names(d)) suppressWarnings(as.numeric(d$gnomADe_AF))
+                        else rep(NA_real_, nrow(d))
+                        chr <- if ("Chromosome" %in% names(d)) as.character(d$Chromosome) else rep("", nrow(d))
+                        # why: as.integer() on Start_Position (character in pre-MAF stage); non-numeric rows become NA and are tolerated downstream.
+                        pos <- if ("Start_Position" %in% names(d)) suppressWarnings(as.integer(d$Start_Position))
+                        else rep(0L, nrow(d))
+                        order(ir, -nsamp, gaf, chr, pos, na.last = TRUE)
+                    }
+                    # Precompute .__nsamp__ on dt if not already present.
+                    if (!(".__nsamp__" %in% names(dt))) {
+                        key_cols_xl <- intersect(c("Chromosome", "Start_Position",
+                            "Reference_Allele", "Tumor_Seq_Allele2"),
+                        names(dt))
+                        if (length(key_cols_xl) < 2L) {
+                            dt[, .__nsamp__ := 1L]
+                        } else {
+                            dt[, .__nsamp__ := data.table::uniqueN(.__sample__), by = key_cols_xl]
+                        }
+                    }
+                    .XLSX_ROW_CAP <- 1048575L      # Excel data-row hard limit
+                    .gvr_safe_sheet <- function(pfx, tok, used) {
+                        # Replace Excel-illegal chars, build "<PFX>_<token>", truncate to 31, dedup.
+                        clean <- gsub("[\\\\/?*\\[\\]:]", "_", tok, perl = TRUE)
+                        nm <- paste0(pfx, clean)
+                        if (nchar(nm) > 31L) nm <- substr(nm, 1L, 31L)
+                        base <- nm
+                        k <- 1L
+                        while (nm %in% used) {
+                            suf <- paste0("_", k)
+                            nm <- paste0(substr(base, 1L, 31L - nchar(suf)), suf)
+                            k <- k + 1L
+                        }
+                        nm
+                    }
+                    .gvr_xl_cols <- c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
                         "gnomADe_AF", "Variant_Classification",
                         "Tumor_Sample_Barcode")
-      .gvr_xl_cols <- intersect(.gvr_xl_cols, names(dt))
-      # vN+9 Stage D: precompute the XLSX detail projection AND the 5 rank-key vectors
-      # once. Each per-token loop then subsets only these ~12 columns instead of
-      # all 116, and ranking does not recompute as.numeric/as.character per token.
-      .xl_proj <- dt[, intersect(c(.gvr_xl_cols,
-                                   "Chromosome", "Start_Position",
-                                   ".__sample__", ".__nsamp__"),
-                                 names(dt)), with = FALSE]
-      .xl_proj[, .__ir__  := {
-        ord <- c("HIGH"=1L,"MODERATE"=2L,"LOW"=3L,"MODIFIER"=4L)
-        r <- ord[as.character(IMPACT)]; r[is.na(r)] <- 5L; as.integer(r)
-      }]
-      # why: as.numeric() on gnomADe_AF inside a data.table set-by-reference; '' becomes NA which is the intended missing sentinel.
-      .xl_proj[, .__gaf__ := if ("gnomADe_AF" %in% names(.xl_proj)) suppressWarnings(as.numeric(gnomADe_AF)) else NA_real_]
-      .xl_proj[, .__chr__ := if ("Chromosome" %in% names(.xl_proj)) as.character(Chromosome) else ""]
-      # why: as.integer() on Start_Position inside a set-by-reference; non-numeric becomes NA which is tolerated downstream.
-      .xl_proj[, .__pos__ := if ("Start_Position" %in% names(.xl_proj)) suppressWarnings(as.integer(Start_Position)) else 0L]
-      # vN+10: global rank-of-row precomputed ONCE so the per-token write loop
-      # in .gvr_write_combined_sheet can sort each pool with a single integer-key
-      # vector lookup instead of re-running a 5-key composite order(). The keys
-      # don't depend on which token's pool we're in, so this is mathematically
-      # equivalent to the per-token order() it replaces (verified empirically).
-      .xl_rank_of_row <- integer(nrow(.xl_proj))
-      .xl_rank_of_row[order(.xl_proj$.__ir__, -.xl_proj$.__nsamp__,
-                            .xl_proj$.__gaf__, .xl_proj$.__chr__,
-                            .xl_proj$.__pos__, na.last = TRUE)] <- seq_len(nrow(.xl_proj))
-      # Category specs: (prefix, tokens, filter_fn returning logical mask on dt)
-      # token order: same composite ranking applied to a one-row-per-token aggregate
-      # for IMPACT/VC/Hugo_Symbol; CLIN_SIG keeps the summary-table order (already by Total desc).
-      cat_specs <- list()
-      if (!is.null(sections$top_genes) && nrow(sections$top_genes) > 0L) {
-        cat_specs$top_genes <- list(
-          pfx = "GEN_",
-          tokens = as.character(sections$top_genes$Hugo_Symbol),
-          filter_fn = function(tok) dt$Hugo_Symbol == tok)
-      }
-      if (!is.null(sections$clin_sig) && nrow(sections$clin_sig) > 0L) {
-        cs_tokens <- as.character(sections$clin_sig$CLIN_SIG)
-        cs_tokens <- cs_tokens[cs_tokens != "missing/unclassified"]
-        if (length(cs_tokens) > 0L) {
-          cat_specs$clin_sig <- list(
-            pfx = "CS_",
-            tokens = cs_tokens,
-            filter_fn = function(tok) {
-              cs <- dt$CLIN_SIG; m <- !.is_missing(cs)
-              # Multi-token match: split on &/ and check membership.
-              out <- logical(length(cs))
-              if (any(m)) {
-                toks_list <- strsplit(cs[m], "[&/]")
-                hit <- vapply(toks_list, function(x) tok %in% trimws(x), logical(1L))
-                out[m] <- hit
-              }
-              out
-            })
+                    .gvr_xl_cols <- intersect(.gvr_xl_cols, names(dt))
+                    # vN+9 Stage D: precompute the XLSX detail projection AND the 5 rank-key vectors
+                    # once. Each per-token loop then subsets only these ~12 columns instead of
+                    # all 116, and ranking does not recompute as.numeric/as.character per token.
+                    .xl_proj <- dt[, intersect(c(.gvr_xl_cols,
+                        "Chromosome", "Start_Position",
+                        ".__sample__", ".__nsamp__"),
+                    names(dt)), with = FALSE]
+                    .xl_proj[, .__ir__  := {
+                        ord <- c("HIGH" = 1L, "MODERATE" = 2L, "LOW" = 3L, "MODIFIER" = 4L)
+                        r <- ord[as.character(IMPACT)]
+                        r[is.na(r)] <- 5L
+                        as.integer(r)
+                    }]
+                    # why: as.numeric() on gnomADe_AF inside a data.table set-by-reference; '' becomes NA which is the intended missing sentinel.
+                    .xl_proj[, .__gaf__ := if ("gnomADe_AF" %in% names(.xl_proj)) suppressWarnings(as.numeric(gnomADe_AF)) else NA_real_]
+                    .xl_proj[, .__chr__ := if ("Chromosome" %in% names(.xl_proj)) as.character(Chromosome) else ""]
+                    # why: as.integer() on Start_Position inside a set-by-reference; non-numeric becomes NA which is tolerated downstream.
+                    .xl_proj[, .__pos__ := if ("Start_Position" %in% names(.xl_proj)) suppressWarnings(as.integer(Start_Position)) else 0L]
+                    # vN+10: global rank-of-row precomputed ONCE so the per-token write loop
+                    # in .gvr_write_combined_sheet can sort each pool with a single integer-key
+                    # vector lookup instead of re-running a 5-key composite order(). The keys
+                    # don't depend on which token's pool we're in, so this is mathematically
+                    # equivalent to the per-token order() it replaces (verified empirically).
+                    .xl_rank_of_row <- integer(nrow(.xl_proj))
+                    .xl_rank_of_row[order(.xl_proj$.__ir__, -.xl_proj$.__nsamp__,
+                        .xl_proj$.__gaf__, .xl_proj$.__chr__,
+                        .xl_proj$.__pos__, na.last = TRUE)] <- seq_len(nrow(.xl_proj))
+                    # Category specs: (prefix, tokens, filter_fn returning logical mask on dt)
+                    # token order: same composite ranking applied to a one-row-per-token aggregate
+                    # for IMPACT/VC/Hugo_Symbol; CLIN_SIG keeps the summary-table order (already by Total desc).
+                    cat_specs <- list()
+                    if (!is.null(sections$top_genes) && nrow(sections$top_genes) > 0L) {
+                        cat_specs$top_genes <- list(
+                            pfx = "GEN_",
+                            tokens = as.character(sections$top_genes$Hugo_Symbol),
+                            filter_fn = function(tok) dt$Hugo_Symbol == tok)
+                    }
+                    if (!is.null(sections$clin_sig) && nrow(sections$clin_sig) > 0L) {
+                        cs_tokens <- as.character(sections$clin_sig$CLIN_SIG)
+                        cs_tokens <- cs_tokens[cs_tokens != "missing/unclassified"]
+                        if (length(cs_tokens) > 0L) {
+                            cat_specs$clin_sig <- list(
+                                pfx = "CS_",
+                                tokens = cs_tokens,
+                                filter_fn = function(tok) {
+                                    cs <- dt$CLIN_SIG
+                                    m <- !.is_missing(cs)
+                                    # Multi-token match: split on &/ and check membership.
+                                    out <- logical(length(cs))
+                                    if (any(m)) {
+                                        toks_list <- strsplit(cs[m], "[&/]")
+                                        hit <- vapply(toks_list, function(x) tok %in% trimws(x), logical(1L))
+                                        out[m] <- hit
+                                    }
+                                    out
+                                })
+                        }
+                    }
+                    if (!is.null(sections$impact) && nrow(sections$impact) > 0L) {
+                        cat_specs$impact <- list(
+                            pfx = "IMP_",
+                            tokens = as.character(sections$impact$IMPACT),
+                            filter_fn = function(tok) !is.na(dt$IMPACT) & dt$IMPACT == tok)
+                    }
+                    if (!is.null(sections$variant_classification) && nrow(sections$variant_classification) > 0L) {
+                        cat_specs$vc <- list(
+                            pfx = "VC_",
+                            tokens = as.character(sections$variant_classification$Variant_Classification),
+                            filter_fn = function(tok) !is.na(dt$Variant_Classification) & dt$Variant_Classification == tok)
+                    }
+                    # vN+9: build per-token row-index map ONCE for the XLSX detail writer.
+                    # The same builder is reused by the HTML drill-down builder below.
+                    .gvr_token_idx <- .gvr_build_token_index(dt, cat_specs)
+
+                    # vN+11: combined detail sheets -- one sheet per category, all tokens stacked
+                    # vertically.  Layout per sheet:
+                    #   Row 1          : column headers (bold, frozen)
+                    #   Then           : data rows for each token, grouped contiguously in sp$tokens
+                    #                    order. No blank dividers, no bold token labels. Empty tokens
+                    #                    (0 matching variants) are dropped silently.
+                    combined_sheet_map <- list(
+                        top_genes = "Genes_detail",
+                        vc        = "VC_detail",
+                        clin_sig  = "Clinical_detail",
+                        impact    = "Impact_detail"
+                    )
+
+                    .gvr_write_combined_sheet <- function(wb, sheet_name, cat_nm, sp) {
+                        # Guard: skip if category absent from cat_specs
+                        if (is.null(sp)) return(invisible(NULL))
+                        tryCatch(
+                            {
+                                openxlsx::addWorksheet(wb, sheet_name)
+
+                                # Row 1: column headers only (zero data rows so writeData emits header only)
+                                header_df <- as.data.frame(
+                                    matrix(NA_character_, nrow = 0L, ncol = length(.gvr_xl_cols),
+                                        dimnames = list(NULL, .gvr_xl_cols)),
+                                    stringsAsFactors = FALSE)
+                                openxlsx::writeData(wb, sheet_name, header_df, headerStyle = hs, startRow = 1L)
+                                openxlsx::freezePane(wb, sheet_name, firstRow = TRUE)
+
+                                # Build the entire sheet body as a SINGLE data.frame and emit ONE writeData
+                                # call. Token grouping is preserved by iterating sp$tokens in order. Empty
+                                # tokens contribute nothing. Per token: rank pool by precomputed global key,
+                                # cap at .XLSX_ROW_CAP, append the data rows. Native column types are
+                                # preserved through rbindlist because every part comes straight from .xl_proj.
+                                body_parts <- vector("list", 0L)
+                                for (tok in sp$tokens) {
+                                    row_idx <- .gvr_token_idx[[cat_nm]][[as.character(tok)]]
+                                    if (length(row_idx) == 0L) next
+                                    ord_idx <- row_idx[order(.xl_rank_of_row[row_idx])]
+                                    if (length(ord_idx) > .XLSX_ROW_CAP) ord_idx <- ord_idx[seq_len(.XLSX_ROW_CAP)]
+                                    sub <- .xl_proj[ord_idx]
+                                    body_parts[[length(body_parts) + 1L]] <- as.data.frame(
+                                        sub[, .gvr_xl_cols, with = FALSE], stringsAsFactors = FALSE)
+                                }
+                                if (length(body_parts) > 0L) {
+                                    big_body <- data.table::rbindlist(body_parts, use.names = TRUE, fill = TRUE)
+                                    data.table::setcolorder(big_body, .gvr_xl_cols)
+                                    big_body_df <- as.data.frame(big_body, stringsAsFactors = FALSE)
+                                    openxlsx::writeData(wb, sheet_name, big_body_df,
+                                        colNames = FALSE, startRow = 2L)
+                                }
+
+                                # column widths set once after all blocks
+                                openxlsx::setColWidths(wb, sheet_name,
+                                    cols = seq_along(.gvr_xl_cols),
+                                    widths = .gvr_xl_widths(.gvr_xl_cols))
+                            },
+                            error = function(e) {
+                                warning(sprintf("gvr_summary: skipping combined sheet '%s': %s",
+                                    sheet_name, conditionMessage(e)))
+                                tryCatch(openxlsx::removeWorksheet(wb, sheet_name),
+                                    error = function(e2) invisible(NULL))
+                            })
+                    }
+
+                    .gvr_write_combined_sheet(wb, combined_sheet_map$top_genes,
+                        "top_genes", cat_specs$top_genes)
+                    .gvr_write_combined_sheet(wb, combined_sheet_map$vc,
+                        "vc",        cat_specs$vc)
+                    .gvr_write_combined_sheet(wb, combined_sheet_map$clin_sig,
+                        "clin_sig",  cat_specs$clin_sig)
+                    .gvr_write_combined_sheet(wb, combined_sheet_map$impact,
+                        "impact",    cat_specs$impact)
+                    # vN+7.2: portable write. Stage in tempdir() only when destination is on
+                    # /mnt/ (S3 FUSE); write directly otherwise (Windows/macOS/local Linux).
+                    use_stage <- .gvr_use_staging(final_xlsx)
+                    write_path <- if (use_stage) file.path(tempdir(), xlsx_name) else final_xlsx
+                    wrote_ok <- tryCatch(
+                        {
+                            openxlsx::saveWorkbook(wb, write_path, overwrite = TRUE)
+                            TRUE
+                        },
+                        error = function(e) {
+                            warning(sprintf("gvr_summary: Excel write failed: %s",
+                                conditionMessage(e)))
+                            FALSE
+                        })
+                    if (wrote_ok) {
+                        final_xlsx <- .gvr_finalize_to_dest(write_path, final_xlsx, "Excel")
+                        if (isTRUE(verbose)) message(sprintf("  Excel written: %s", final_xlsx))
+                    }
+                },
+                error = function(e) {
+                    warning(sprintf("gvr_summary: Excel export failed: %s", conditionMessage(e)))
+                })
         }
-      }
-      if (!is.null(sections$impact) && nrow(sections$impact) > 0L) {
-        cat_specs$impact <- list(
-          pfx = "IMP_",
-          tokens = as.character(sections$impact$IMPACT),
-          filter_fn = function(tok) !is.na(dt$IMPACT) & dt$IMPACT == tok)
-      }
-      if (!is.null(sections$variant_classification) && nrow(sections$variant_classification) > 0L) {
-        cat_specs$vc <- list(
-          pfx = "VC_",
-          tokens = as.character(sections$variant_classification$Variant_Classification),
-          filter_fn = function(tok) !is.na(dt$Variant_Classification) & dt$Variant_Classification == tok)
-      }
-      # vN+9: build per-token row-index map ONCE for the XLSX detail writer.
-      # The same builder is reused by the HTML drill-down builder below.
-      .gvr_token_idx <- .gvr_build_token_index(dt, cat_specs)
-
-      # vN+11: combined detail sheets -- one sheet per category, all tokens stacked
-      # vertically.  Layout per sheet:
-      #   Row 1          : column headers (bold, frozen)
-      #   Then           : data rows for each token, grouped contiguously in sp$tokens
-      #                    order. No blank dividers, no bold token labels. Empty tokens
-      #                    (0 matching variants) are dropped silently.
-      combined_sheet_map <- list(
-        top_genes = "Genes_detail",
-        vc        = "VC_detail",
-        clin_sig  = "Clinical_detail",
-        impact    = "Impact_detail"
-      )
-
-      .gvr_write_combined_sheet <- function(wb, sheet_name, cat_nm, sp) {
-        # Guard: skip if category absent from cat_specs
-        if (is.null(sp)) return(invisible(NULL))
-        tryCatch({
-          openxlsx::addWorksheet(wb, sheet_name)
-
-          # Row 1: column headers only (zero data rows so writeData emits header only)
-          header_df <- as.data.frame(
-            matrix(NA_character_, nrow = 0L, ncol = length(.gvr_xl_cols),
-                   dimnames = list(NULL, .gvr_xl_cols)),
-            stringsAsFactors = FALSE)
-          openxlsx::writeData(wb, sheet_name, header_df, headerStyle = hs, startRow = 1L)
-          openxlsx::freezePane(wb, sheet_name, firstRow = TRUE)
-
-          # Build the entire sheet body as a SINGLE data.frame and emit ONE writeData
-          # call. Token grouping is preserved by iterating sp$tokens in order. Empty
-          # tokens contribute nothing. Per token: rank pool by precomputed global key,
-          # cap at .XLSX_ROW_CAP, append the data rows. Native column types are
-          # preserved through rbindlist because every part comes straight from .xl_proj.
-          body_parts <- vector("list", 0L)
-          for (tok in sp$tokens) {
-            row_idx <- .gvr_token_idx[[cat_nm]][[as.character(tok)]]
-            if (length(row_idx) == 0L) next
-            ord_idx <- row_idx[order(.xl_rank_of_row[row_idx])]
-            if (length(ord_idx) > .XLSX_ROW_CAP) ord_idx <- ord_idx[seq_len(.XLSX_ROW_CAP)]
-            sub <- .xl_proj[ord_idx]
-            body_parts[[length(body_parts) + 1L]] <- as.data.frame(
-              sub[, .gvr_xl_cols, with = FALSE], stringsAsFactors = FALSE)
-          }
-          if (length(body_parts) > 0L) {
-            big_body <- data.table::rbindlist(body_parts, use.names = TRUE, fill = TRUE)
-            data.table::setcolorder(big_body, .gvr_xl_cols)
-            big_body_df <- as.data.frame(big_body, stringsAsFactors = FALSE)
-            openxlsx::writeData(wb, sheet_name, big_body_df,
-                                colNames = FALSE, startRow = 2L)
-          }
-
-          # column widths set once after all blocks
-          openxlsx::setColWidths(wb, sheet_name,
-                                 cols = seq_along(.gvr_xl_cols),
-                                 widths = .gvr_xl_widths(.gvr_xl_cols))
-        }, error = function(e) {
-          warning(sprintf("gvr_summary: skipping combined sheet '%s': %s",
-                          sheet_name, conditionMessage(e)))
-          tryCatch(openxlsx::removeWorksheet(wb, sheet_name),
-                   error = function(e2) invisible(NULL))
-        })
-      }
-
-      .gvr_write_combined_sheet(wb, combined_sheet_map$top_genes,
-                                "top_genes", cat_specs$top_genes)
-      .gvr_write_combined_sheet(wb, combined_sheet_map$vc,
-                                "vc",        cat_specs$vc)
-      .gvr_write_combined_sheet(wb, combined_sheet_map$clin_sig,
-                                "clin_sig",  cat_specs$clin_sig)
-      .gvr_write_combined_sheet(wb, combined_sheet_map$impact,
-                                "impact",    cat_specs$impact)
-      # vN+7.2: portable write. Stage in tempdir() only when destination is on
-      # /mnt/ (S3 FUSE); write directly otherwise (Windows/macOS/local Linux).
-      use_stage <- .gvr_use_staging(final_xlsx)
-      write_path <- if (use_stage) file.path(tempdir(), xlsx_name) else final_xlsx
-      wrote_ok <- tryCatch({ openxlsx::saveWorkbook(wb, write_path, overwrite = TRUE); TRUE },
-                           error = function(e) { warning(sprintf("gvr_summary: Excel write failed: %s",
-                                                                  conditionMessage(e))); FALSE })
-      if (wrote_ok) {
-        final_xlsx <- .gvr_finalize_to_dest(write_path, final_xlsx, "Excel")
-        if (isTRUE(verbose)) message(sprintf("  Excel written: %s", final_xlsx))
-      }
-      }, error = function(e) {
-        warning(sprintf("gvr_summary: Excel export failed: %s", conditionMessage(e)))
-      })
     }
-  }
 
-  # ============================================================================
-  # Optional PDF report -> <out_dir>/gvr_summary/<file_prefix>_report.pdf (fixed name).
-  # Layout: title/metadata page; each CHARTED section (top genes, variant
-  # classification, predicted impact) shown as its table together with its bar
-  # chart (side-by-side when the table is short, table full-width + chart below
-  # when the table is tall); then the remaining chart-less tables (overview,
-  # variant type, clinical significance) grouped/stacked on their own page(s).
-  # Requires gridExtra + ggplot2; if unavailable the PDF is skipped with a warning
-  # (sections are still returned).
-  # ============================================================================
-  if (isTRUE(save_pdf)) {
-    have_pkgs <- requireNamespace("gridExtra", quietly = TRUE) &&
-                 requireNamespace("ggplot2",   quietly = TRUE) &&
-                 requireNamespace("grid",      quietly = TRUE) &&
-                 requireNamespace("scales",    quietly = TRUE)
-    if (!have_pkgs) {
-      warning("gvr_summary: 'gridExtra'/'ggplot2'/'scales' not installed; skipping PDF report.")
-    } else {
-      # Internal renderer for the multi-page PDF (nested: single-use, not exported).
-      # ASCII-only text (base pdf() substitutes non-ASCII glyphs); writes to a POSIX
-      # temp path then shell-cp to final_pdf (R file.copy() can 0-byte on S3 FUSE).
-      .gvr_summary_pdf <- function(sections, samples, meta, final_pdf, file_prefix = "gvr_summary") {
-        PHYLO_BLUE <- "#0279EE"; PHYLO_GREEN <- "#75A025"; CREAM <- "#FAF9F3"; STONE <- "#ECE9E2"
-        INK <- "#000000"; ORANGE <- "#E69F00"; VERMIL <- "#D55E00"
+    # ============================================================================
+    # Optional PDF report -> <out_dir>/gvr_summary/<file_prefix>_report.pdf (fixed name).
+    # Layout: title/metadata page; each CHARTED section (top genes, variant
+    # classification, predicted impact) shown as its table together with its bar
+    # chart (side-by-side when the table is short, table full-width + chart below
+    # when the table is tall); then the remaining chart-less tables (overview,
+    # variant type, clinical significance) grouped/stacked on their own page(s).
+    # Requires gridExtra + ggplot2; if unavailable the PDF is skipped with a warning
+    # (sections are still returned).
+    # ============================================================================
+    if (isTRUE(save_pdf)) {
+        have_pkgs <- requireNamespace("gridExtra", quietly = TRUE) &&
+            requireNamespace("ggplot2",   quietly = TRUE) &&
+            requireNamespace("grid",      quietly = TRUE) &&
+            requireNamespace("scales",    quietly = TRUE)
+        if (!have_pkgs) {
+            warning("gvr_summary: 'gridExtra'/'ggplot2'/'scales' not installed; skipping PDF report.")
+        } else {
+            # Internal renderer for the multi-page PDF (nested: single-use, not exported).
+            # ASCII-only text (base pdf() substitutes non-ASCII glyphs); writes to a POSIX
+            # temp path then shell-cp to final_pdf (R file.copy() can 0-byte on S3 FUSE).
+            .gvr_summary_pdf <- function(sections, samples, meta, final_pdf, file_prefix = "gvr_summary") {
+                PHYLO_BLUE <- "#0279EE"
+                PHYLO_GREEN <- "#75A025"
+                CREAM <- "#FAF9F3"
+                STONE <- "#ECE9E2"
+                INK <- "#000000"
+                ORANGE <- "#E69F00"
+                VERMIL <- "#D55E00"
 
-        W <- 8.27; H <- 11.69                       # A4 portrait inches
-        USABLE_W_IN <- 7.3                          # printable body width (matches shipped)
-        CEX_CORE_FLOOR <- 0.50                      # min table body font scale before col-paginate
-        CEX_HEAD_FLOOR <- 0.55
-        FACET_THRESHOLD <- 6L                       # > this many samples -> facet charts
+                W <- 8.27
+                H <- 11.69                       # A4 portrait inches
+                USABLE_W_IN <- 7.3                          # printable body width (matches shipped)
+                CEX_CORE_FLOOR <- 0.50                      # min table body font scale before col-paginate
+                CEX_HEAD_FLOOR <- 0.55
+                FACET_THRESHOLD <- 6L                       # > this many samples -> facet charts
 
-        # PDF palette: shared 9-colour base + one neutral grey for a 10th sample
-        # before cycling. (HTML extends further; see the HTML renderer.)
-        pal <- c(PHYLO_PAL_BASE, "#888888")
-        fill_vals <- stats::setNames(pal[((seq_along(samples) - 1L) %% length(pal)) + 1L], samples)
+                # PDF palette: shared 9-colour base + one neutral grey for a 10th sample
+                # before cycling. (HTML extends further; see the HTML renderer.)
+                pal <- c(PHYLO_PAL_BASE, "#888888")
+                fill_vals <- stats::setNames(pal[((seq_along(samples) - 1L) %% length(pal)) + 1L], samples)
 
-        # ---- measured grob size in inches (drive fit by measurement, not guesses) --------
-        .grob_w_in <- function(g) grid::convertWidth(sum(g$widths),  "in", valueOnly = TRUE)
-        .grob_h_in <- function(g) grid::convertHeight(sum(g$heights), "in", valueOnly = TRUE)
+                # ---- measured grob size in inches (drive fit by measurement, not guesses) --------
+                .grob_w_in <- function(g) grid::convertWidth(sum(g$widths),  "in", valueOnly = TRUE)
+                .grob_h_in <- function(g) grid::convertHeight(sum(g$heights), "in", valueOnly = TRUE)
 
-        # ---- dashboard table theme at a given core font scale ----------------------------
-        .mk_theme <- function(cex_core = 0.72) {
-          cex_head <- max(CEX_HEAD_FLOOR, cex_core + 0.06)
-          gridExtra::ttheme_minimal(
-            core    = list(fg_params = list(cex = cex_core, hjust = 1, x = 0.95),
-                           bg_params = list(fill = c(CREAM, STONE), col = NA)),
-            colhead = list(fg_params = list(col = "white", fontface = "bold", cex = cex_head),
-                           bg_params = list(fill = PHYLO_BLUE, col = NA)))
-        }
+                # ---- dashboard table theme at a given core font scale ----------------------------
+                .mk_theme <- function(cex_core = 0.72) {
+                    cex_head <- max(CEX_HEAD_FLOOR, cex_core + 0.06)
+                    gridExtra::ttheme_minimal(
+                        core    = list(fg_params = list(cex = cex_core, hjust = 1, x = 0.95),
+                            bg_params = list(fill = c(CREAM, STONE), col = NA)),
+                        colhead = list(fg_params = list(col = "white", fontface = "bold", cex = cex_head),
+                            bg_params = list(fill = PHYLO_BLUE, col = NA)))
+                }
 
-        # ---- robust table-grob factory (PORTED VERBATIM from shipped renderer): -----------
-        #   row pagination -> font shrink -> column pagination. Returns flat list of grobs,
-        #   each with attr "colspan" (e.g. "samples 1-6 of 20" or NULL) and "n_rows".
-        .mk_table_grobs <- function(dt, rows_per_page = 34L) {
-          df <- as.data.frame(dt, stringsAsFactors = FALSE)
-          for (j in seq_len(ncol(df)))
-            if (is.numeric(df[[j]])) df[[j]] <- format(df[[j]], big.mark = ",", trim = TRUE)
-          # Dashboard tables are DENSE by default (start at 0.60, not gridExtra's larger
-          # default) so the common few-sample report packs tightly; the ladder still steps
-          # DOWN toward the floor when a wide many-sample table overflows the page width
-          # (after which .mk_table_grobs column-paginates).
-          cex_try <- c(0.60, 0.55, CEX_CORE_FLOOR)
-          cex_use <- CEX_CORE_FLOOR
-          for (cx in cex_try) {
-            g0 <- gridExtra::tableGrob(df[1, , drop = FALSE], rows = NULL, theme = .mk_theme(cx))
-            if (.grob_w_in(g0) <= USABLE_W_IN) { cex_use <- cx; break }
-            cex_use <- cx
-          }
-          th <- .mk_theme(cex_use)
-          ncol_df <- ncol(df)
-          probe   <- gridExtra::tableGrob(df[1, , drop = FALSE], rows = NULL, theme = th)
-          col_groups <- list(seq_len(ncol_df))
-          if (ncol_df >= 3L && .grob_w_in(probe) > USABLE_W_IN) {
-            cat_i <- 1L; total_i <- ncol_df
-            mid   <- setdiff(seq_len(ncol_df), c(cat_i, total_i))
-            wcol  <- vapply(seq_len(ncol_df), function(j)
-              .grob_w_in(gridExtra::tableGrob(df[1, j, drop = FALSE], rows = NULL, theme = th)),
-              numeric(1))
-            fixed_w <- wcol[cat_i] + wcol[total_i]
-            budget  <- USABLE_W_IN - fixed_w
-            col_groups <- list(); cur <- integer(0); used <- 0
-            for (j in mid) {
-              if (length(cur) > 0L && used + wcol[j] > budget) {
-                col_groups[[length(col_groups) + 1L]] <- c(cat_i, cur, total_i)
-                cur <- integer(0); used <- 0
-              }
-              cur <- c(cur, j); used <- used + wcol[j]
+                # ---- robust table-grob factory (PORTED VERBATIM from shipped renderer): -----------
+                #   row pagination -> font shrink -> column pagination. Returns flat list of grobs,
+                #   each with attr "colspan" (e.g. "samples 1-6 of 20" or NULL) and "n_rows".
+                .mk_table_grobs <- function(dt, rows_per_page = 34L) {
+                    df <- as.data.frame(dt, stringsAsFactors = FALSE)
+                    for (j in seq_len(ncol(df)))
+                        if (is.numeric(df[[j]])) df[[j]] <- format(df[[j]], big.mark = ",", trim = TRUE)
+                    # Dashboard tables are DENSE by default (start at 0.60, not gridExtra's larger
+                    # default) so the common few-sample report packs tightly; the ladder still steps
+                    # DOWN toward the floor when a wide many-sample table overflows the page width
+                    # (after which .mk_table_grobs column-paginates).
+                    cex_try <- c(0.60, 0.55, CEX_CORE_FLOOR)
+                    cex_use <- CEX_CORE_FLOOR
+                    for (cx in cex_try) {
+                        g0 <- gridExtra::tableGrob(df[1, , drop = FALSE], rows = NULL, theme = .mk_theme(cx))
+                        if (.grob_w_in(g0) <= USABLE_W_IN) {
+                            cex_use <- cx
+                            break
+                        }
+                        cex_use <- cx
+                    }
+                    th <- .mk_theme(cex_use)
+                    ncol_df <- ncol(df)
+                    probe   <- gridExtra::tableGrob(df[1, , drop = FALSE], rows = NULL, theme = th)
+                    col_groups <- list(seq_len(ncol_df))
+                    if (ncol_df >= 3L && .grob_w_in(probe) > USABLE_W_IN) {
+                        cat_i <- 1L
+                        total_i <- ncol_df
+                        mid   <- setdiff(seq_len(ncol_df), c(cat_i, total_i))
+                        wcol  <- vapply(seq_len(ncol_df), function(j)
+                            .grob_w_in(gridExtra::tableGrob(df[1, j, drop = FALSE], rows = NULL, theme = th)),
+                        numeric(1))
+                        fixed_w <- wcol[cat_i] + wcol[total_i]
+                        budget  <- USABLE_W_IN - fixed_w
+                        col_groups <- list()
+                        cur <- integer(0)
+                        used <- 0
+                        for (j in mid) {
+                            if (length(cur) > 0L && used + wcol[j] > budget) {
+                                col_groups[[length(col_groups) + 1L]] <- c(cat_i, cur, total_i)
+                                cur <- integer(0)
+                                used <- 0
+                            }
+                            cur <- c(cur, j)
+                            used <- used + wcol[j]
+                        }
+                        if (length(cur)) col_groups[[length(col_groups) + 1L]] <- c(cat_i, cur, total_i)
+                    }
+                    n_mid_total <- if (length(col_groups) > 1L) ncol_df - 2L else NA_integer_
+                    npg_rows <- max(1L, ceiling(nrow(df) / rows_per_page))
+                    out <- list()
+                    for (cg_idx in seq_along(col_groups)) {
+                        cg <- col_groups[[cg_idx]]
+                        colspan_lbl <- if (length(col_groups) > 1L) {
+                            mids <- setdiff(cg, c(1L, ncol_df))
+                            sprintf("samples %d-%d of %d", mids[1] - 1L, mids[length(mids)] - 1L, n_mid_total)
+                        } else NULL
+                        for (pg in seq_len(npg_rows)) {
+                            rs <- ((pg - 1L) * rows_per_page + 1L):min(pg * rows_per_page, nrow(df))
+                            g  <- gridExtra::tableGrob(df[rs, cg, drop = FALSE], rows = NULL, theme = th)
+                            attr(g, "colspan") <- colspan_lbl
+                            attr(g, "n_rows")  <- length(rs)
+                            out[[length(out) + 1L]] <- g
+                        }
+                    }
+                    out
+                }
+
+                # ---- bar chart grob: grouped (<=6 samples) or faceted (>6) — PORTED -------------
+                .bar_grob <- function(dt, cat_col, top = NULL, title = NULL) {
+                    d <- as.data.frame(dt, stringsAsFactors = FALSE)
+                    d <- d[d[[cat_col]] != "" & !is.na(d[[cat_col]]), , drop = FALSE]
+                    if (!is.null(top) && nrow(d) > top) d <- d[order(-d$Total)[seq_len(top)], , drop = FALSE]
+                    long <- do.call(rbind, lapply(samples, function(s)
+                        data.frame(Category = d[[cat_col]], Sample = s, n = d[[s]], stringsAsFactors = FALSE)))
+                    long$Category <- factor(long$Category, levels = d[[cat_col]][order(d$Total)])
+                    many <- length(samples) > FACET_THRESHOLD
+                    gg <- ggplot2::ggplot(long, ggplot2::aes(x = Category, y = n, fill = Sample)) +
+                        ggplot2::coord_flip() +
+                        ggplot2::scale_fill_manual(values = fill_vals) +
+                        ggplot2::labs(title = title, x = NULL, y = NULL, fill = NULL) +
+                        ggplot2::theme_minimal(base_size = 10) +
+                        ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", colour = PHYLO_BLUE, size = 13),
+                            panel.grid.major.y = ggplot2::element_blank())
+                    if (many) {
+                        # Compact facet labels via the shared common-prefix stripper (.lab_fun).
+                        gg <- gg + ggplot2::geom_col(show.legend = FALSE) +
+                            ggplot2::facet_wrap(~Sample, ncol = ceiling(sqrt(length(samples))),
+                                labeller = ggplot2::as_labeller(.lab_fun)) +
+                            ggplot2::scale_y_continuous(breaks = scales::breaks_extended(3),
+                                labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+                            ggplot2::theme(legend.position = "none",
+                                strip.text = ggplot2::element_text(size = 7, face = "bold"),
+                                axis.text  = ggplot2::element_text(size = 5.5),
+                                panel.spacing = grid::unit(4, "pt"))
+                    } else {
+                        gg <- gg + ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.75), width = 0.68) +
+                            ggplot2::scale_y_continuous(breaks = scales::breaks_extended(4),
+                                labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
+                            ggplot2::theme(legend.position = "top", legend.justification = "left",
+                                legend.key.size = grid::unit(10, "pt"),
+                                legend.text = ggplot2::element_text(size = 8),
+                                axis.text = ggplot2::element_text(size = 9))
+                    }
+                    ggplot2::ggplotGrob(gg)
+                }
+
+                # ---- left-justify a table grob within a full-width row ---------------------------
+                .left_just <- function(g) {
+                    w_in <- .grob_w_in(g)
+                    gridExtra::arrangeGrob(g, grid::nullGrob(), ncol = 2,
+                        widths = grid::unit.c(grid::unit(w_in, "in"), grid::unit(1, "null")))
+                }
+
+                # ---- KPI card. Big-number font auto-shrinks for long values (e.g. 7-digit cohort
+                #      totals) so the number never kisses the card edge. ----------------------------
+                .mk_kpi <- function(value, label, fill = PHYLO_BLUE, fg = "white") {
+                    nchar_v <- nchar(value)
+                    num_fs  <- if (nchar_v <= 6L) 30 else if (nchar_v <= 8L) 24 else 20
+                    grid::grobTree(
+                        grid::roundrectGrob(gp = grid::gpar(fill = fill, col = NA), r = grid::unit(6, "pt")),
+                        grid::textGrob(value, y = 0.60, gp = grid::gpar(col = fg, fontface = "bold", fontsize = num_fs)),
+                        grid::textGrob(label, y = 0.22, gp = grid::gpar(col = fg, fontsize = 11)))
+                }
+
+                # ---- cairo_pdf blank-first-page guard --------------------------------------------
+                # BiocCheck-preferred idiom: env slot in place of super-assigned closure state.
+                .make_new_page <- function() {
+                    state <- new.env(parent = emptyenv())
+                    state$first <- TRUE
+                    function() {
+                        if (state$first) state$first <- FALSE else grid::grid.newpage()
+                    }
+                }
+
+                # ============================ HERO PAGE ===========================================
+                .render_hero <- function(np) {
+                    np()
+                    title_grob <- grid::grobTree(
+                        grid::textGrob("germlinevaR \u2013 Cohort Summary", x = 0.02, y = 0.70, hjust = 0,
+                            gp = grid::gpar(fontface = "bold", fontsize = 24, col = PHYLO_BLUE)),
+                        grid::textGrob(sprintf("%d sample%s  \u00b7  %s total variants  \u00b7  %s distinct genes",
+                            meta$n_samples, if (meta$n_samples == 1L) "" else "s",
+                            fmt(meta$n_total), fmt(meta$n_genes)),
+                        x = 0.02, y = 0.26, hjust = 0, gp = grid::gpar(fontsize = 11, col = INK)))
+                    hi <- sections$impact$Total[sections$impact$IMPACT == "HIGH"]
+                    if (!length(hi)) hi <- 0L
+                    kpis <- list(
+                        .mk_kpi(fmt(meta$n_total),    "Total variants",         PHYLO_BLUE),
+                        .mk_kpi(fmt(meta$n_samples),  "Samples",                PHYLO_GREEN),
+                        .mk_kpi(fmt(meta$n_genes),    "Distinct genes (known)", ORANGE, fg = INK),
+                        .mk_kpi(fmt(hi),              "HIGH-impact variants",   VERMIL))
+                    cards <- lapply(kpis, function(g)
+                        gridExtra::arrangeGrob(g, vp = grid::viewport(width = 0.94, height = 0.86)))
+                    cards_row <- gridExtra::arrangeGrob(grobs = cards, nrow = 1)
+                    chart_top <- .bar_grob(sections$top_genes, "Hugo_Symbol",
+                        title = "Top genes by variant count (top 10)", top = 10L)
+                    chart_cls <- .bar_grob(sections$variant_classification, "Variant_Classification",
+                        title = "Variant classification (top 10)", top = 10L)
+                    hero <- gridExtra::arrangeGrob(
+                        grobs = list(title_grob, cards_row, chart_top, chart_cls), ncol = 1,
+                        heights = grid::unit.c(grid::unit(0.95, "in"), grid::unit(1.5, "in"),
+                            grid::unit(1, "null"), grid::unit(1, "null")))
+                    grid::pushViewport(grid::viewport(width = grid::unit(W - 1, "in"),
+                        height = grid::unit(H - 1, "in")))
+                    grid::grid.draw(hero)
+                    grid::popViewport()
+                }
+
+                # ===================== AUTO SIDE-BY-SIDE REFERENCE SECTION ========================
+                # Each section -> .mk_table_grobs (already font-shrunk / column-paginated). A
+                # section's grob is SIDE-BY-SIDE eligible only when it produced a SINGLE grob whose
+                # measured width fits half the content width (so two fit with a gap). Otherwise it
+                # is FULL-WIDTH and stacks. This degrades safely for many-sample (wide / paginated)
+                # tables, matching the user's "side-by-side if it fits, else stack" rule.
+                .render_reference <- function(np, target_dev,
+                                              title_in = 0.30, tgap_in = 0.10, bgap_in = 0.18,
+                                              col_gap_in = 0.30, draw_frac = 0.97) {
+                    content_w <- W - 1
+                    budget    <- (H - 1) * draw_frac
+                    tbl_specs <- .build_tbl_specs(sections, html = FALSE)
+                    # MEASUREMENT must happen on a throwaway device that is opened AND closed HERE,
+                    # so the cairo report device is current during all subsequent drawing. (Leaving
+                    # pdf(NULL) open across the draw loop sends every page to the throwaway device
+                    # and the report comes out empty/0-byte.)
+                    items <- local({
+                        grDevices::pdf(NULL, width = W, height = H)
+                        on.exit(grDevices::dev.off())
+                        grid::pushViewport(grid::viewport(width = grid::unit(content_w, "in"),
+                            height = grid::unit(budget, "in")))
+                        it <- list()
+                        for (sp in tbl_specs) {
+                            sec_dt <- if (!is.null(sp$per_sample_key))
+                                sections$top_genes_per_sample[[sp$per_sample_key]]
+                            else sections[[sp$s]]
+                            gl <- .mk_table_grobs(sec_dt)
+                            multi <- length(gl) > 1L
+                            for (gi in seq_along(gl)) {
+                                g  <- gl[[gi]]
+                                cs <- attr(g, "colspan")
+                                lbl <- if (multi && !is.null(cs)) sprintf("%s (%s)", sp$t, cs) else sp$t
+                                wi <- .grob_w_in(g)
+                                hi <- .grob_h_in(g)
+                                # Side-by-side eligible iff this section produced a SINGLE grob (not
+                                # column-paginated). Whether two eligible tables actually fit a row is
+                                # decided later by the real pairwise width sum (a$w + gap + b$w <= content_w),
+                                # which is more permissive than a rigid half-width gate (a wide table can
+                                # still pair with a narrow one). Column-paginated (multi) tables stay
+                                # full-width and stack -- the many-sample safe fallback.
+                                eligible <- !multi
+                                it[[length(it) + 1L]] <- list(type = "table", lbl = lbl, g = g,
+                                    w = wi, h = hi, pair_ok = eligible)
+                            }
+                        }
+                        grid::popViewport()
+                        it
+                    })
+                    # Closing the throwaway measurement device above can leave a DIFFERENT device
+                    # current (R falls back to the most-recent surviving device, not necessarily our
+                    # report device). Force the report device current before any drawing.
+                    if (target_dev %in% grDevices::dev.list()) grDevices::dev.set(target_dev)
+                    imp_chart <- list(type = "chart", lbl = "Functional impact (VEP IMPACT)",
+                        g = .bar_grob(sections$impact, "IMPACT", title = NULL),
+                        w = content_w, h = 2.4, pair_ok = FALSE)
+
+                    # ---- height-balanced pairing among pair_ok items; others stay single --------
+                    ord  <- order(vapply(items, function(u) u$h, numeric(1)), decreasing = TRUE)
+                    done <- rep(FALSE, length(items))
+                    rows <- list()
+                    for (ii in seq_along(ord)) {
+                        i <- ord[ii]
+                        if (done[i]) next
+                        a <- items[[i]]
+                        if (!isTRUE(a$pair_ok)) {
+                            done[i] <- TRUE
+                            rows[[length(rows) + 1]] <- list(kind = "single", a = a, h = a$h)
+                            next
+                        }
+                        partner <- NA_integer_
+                        for (jj in seq_along(ord)) {
+                            j <- ord[jj]
+                            if (j == i || done[j] || !isTRUE(items[[j]]$pair_ok)) next
+                            if (a$w + col_gap_in + items[[j]]$w <= content_w) {
+                                partner <- j
+                                break
+                            }
+                        }
+                        if (!is.na(partner)) {
+                            b <- items[[partner]]
+                            done[i] <- TRUE
+                            done[partner] <- TRUE
+                            rows[[length(rows) + 1]] <- list(kind = "pair", a = a, b = b, h = max(a$h, b$h))
+                        } else {
+                            done[i] <- TRUE
+                            rows[[length(rows) + 1]] <- list(kind = "single", a = a, h = a$h)
+                        }
+                    }
+                    rows[[length(rows) + 1]] <- list(kind = "single", a = imp_chart, h = imp_chart$h)
+
+                    per_row_overhead <- title_in + tgap_in + bgap_in
+                    pages <- list()
+                    cur <- list()
+                    used <- 0
+                    for (r in rows) {
+                        cost <- r$h + per_row_overhead
+                        if (length(cur) > 0 && used + cost > budget) {
+                            pages[[length(pages) + 1]] <- cur
+                            cur <- list()
+                            used <- 0
+                        }
+                        cur[[length(cur) + 1]] <- r
+                        used <- used + cost
+                    }
+                    if (length(cur)) pages[[length(pages) + 1]] <- cur
+
+                    block_for <- function(item, full_width, row_h) {
+                        body <- if (item$type == "table") {
+                            if (full_width) .left_just(item$g) else item$g
+                        } else item$g
+                        # Top-anchor the title within its band (vjust = 1 at y = 1) so its
+                        # baseline sits high and there is full clearance to the table body that
+                        # follows the tgap spacer -- prevents the body riding up under the title.
+                        ttl <- grid::textGrob(item$lbl, x = 0.02, y = 1, hjust = 0, vjust = 1,
+                            gp = grid::gpar(fontsize = 10.5, fontface = "bold", col = PHYLO_BLUE))
+                        pad <- max(row_h - item$h, 0)
+                        gridExtra::arrangeGrob(ttl, grid::nullGrob(), body, grid::nullGrob(), ncol = 1,
+                            heights = grid::unit.c(grid::unit(title_in, "in"), grid::unit(tgap_in, "in"),
+                                grid::unit(item$h, "in"), grid::unit(pad, "in")))
+                    }
+
+                    for (pg in pages) {
+                        np()
+                        grobs <- list(grid::textGrob("Reference tables", x = 0.02, hjust = 0, vjust = 1, y = 1,
+                            gp = grid::gpar(fontface = "bold", fontsize = 10, col = PHYLO_GREEN)))
+                        rel <- c(0.18)
+                        for (r in pg) {
+                            if (r$kind == "pair") {
+                                ga <- block_for(r$a, FALSE, r$h)
+                                gb <- block_for(r$b, FALSE, r$h)
+                                row_grob <- gridExtra::arrangeGrob(ga, grid::nullGrob(), gb, ncol = 3,
+                                    widths = grid::unit.c(grid::unit(1, "null"), grid::unit(col_gap_in, "in"),
+                                        grid::unit(1, "null")))
+                            } else {
+                                row_grob <- block_for(r$a, TRUE, r$h)
+                            }
+                            grobs[[length(grobs) + 1]] <- row_grob
+                            rel <- c(rel, r$h + title_in + tgap_in)
+                            grobs[[length(grobs) + 1]] <- grid::nullGrob()
+                            rel <- c(rel, bgap_in)
+                        }
+                        if (sum(rel) < budget) {
+                            grobs[[length(grobs) + 1]] <- grid::nullGrob()
+                            rel <- c(rel, budget - sum(rel))
+                        }
+                        grid::pushViewport(grid::viewport(y = 0.5, height = grid::unit(budget, "in"),
+                            width = grid::unit(content_w, "in")))
+                        grid::grid.draw(gridExtra::arrangeGrob(grobs = grobs, ncol = 1, heights = grid::unit(rel, "in")))
+                        grid::popViewport()
+                    }
+                }
+
+                # ============================ DRIVE THE DEVICE ====================================
+                # vN+7.2: portable write. Stage under tempdir() only when destination is on
+                # /mnt/ (S3 FUSE); cairo_pdf can write directly to local FS / Windows path.
+                use_stage <- .gvr_use_staging(final_pdf)
+                tmp_pdf <- if (use_stage) file.path(tempdir(), basename(final_pdf)) else final_pdf
+                grDevices::cairo_pdf(tmp_pdf, width = W, height = H, onefile = TRUE)
+                cairo_dev <- grDevices::dev.cur()
+                on.exit(if (cairo_dev %in% grDevices::dev.list()) grDevices::dev.off(cairo_dev), add = TRUE)
+                np <- .make_new_page()
+                .render_hero(np)
+                .render_reference(np, target_dev = cairo_dev)
+                if (cairo_dev %in% grDevices::dev.list()) grDevices::dev.off(cairo_dev)
+                on.exit()
+                if (!file.exists(tmp_pdf) || file.info(tmp_pdf)$size == 0)
+                    stop("PDF device produced no/zero-byte file.")
+                final_pdf <- .gvr_finalize_to_dest(tmp_pdf, final_pdf, "PDF")
+                invisible(final_pdf)
             }
-            if (length(cur)) col_groups[[length(col_groups) + 1L]] <- c(cat_i, cur, total_i)
-          }
-          n_mid_total <- if (length(col_groups) > 1L) ncol_df - 2L else NA_integer_
-          npg_rows <- max(1L, ceiling(nrow(df) / rows_per_page))
-          out <- list()
-          for (cg_idx in seq_along(col_groups)) {
-            cg <- col_groups[[cg_idx]]
-            colspan_lbl <- if (length(col_groups) > 1L) {
-              mids <- setdiff(cg, c(1L, ncol_df))
-              sprintf("samples %d-%d of %d", mids[1] - 1L, mids[length(mids)] - 1L, n_mid_total)
-            } else NULL
-            for (pg in seq_len(npg_rows)) {
-              rs <- ((pg - 1L) * rows_per_page + 1L):min(pg * rows_per_page, nrow(df))
-              g  <- gridExtra::tableGrob(df[rs, cg, drop = FALSE], rows = NULL, theme = th)
-              attr(g, "colspan") <- colspan_lbl
-              attr(g, "n_rows")  <- length(rs)
-              out[[length(out) + 1L]] <- g
-            }
-          }
-          out
+
+            pdf_name  <- sprintf("%s_report.pdf", file_prefix)
+            final_pdf <- file.path(out_subdir, pdf_name)
+            if (file.exists(final_pdf) && isTRUE(verbose))
+                message(sprintf("  Overwriting existing PDF report: %s", final_pdf))
+            ok_pdf <- tryCatch(
+                {
+                    .gvr_summary_pdf(sections, samples, meta, final_pdf, file_prefix)
+                    file.exists(final_pdf) && file.info(final_pdf)$size > 0
+                },
+                error = function(e) {
+                    warning(sprintf("gvr_summary: PDF report failed: %s", conditionMessage(e)))
+                    FALSE
+                })
+            if (isTRUE(ok_pdf) && isTRUE(verbose)) message(sprintf("  PDF report written: %s", final_pdf))
         }
-
-        # ---- bar chart grob: grouped (<=6 samples) or faceted (>6) — PORTED -------------
-        .bar_grob <- function(dt, cat_col, top = NULL, title = NULL) {
-          d <- as.data.frame(dt, stringsAsFactors = FALSE)
-          d <- d[d[[cat_col]] != "" & !is.na(d[[cat_col]]), , drop = FALSE]
-          if (!is.null(top) && nrow(d) > top) d <- d[order(-d$Total)[seq_len(top)], , drop = FALSE]
-          long <- do.call(rbind, lapply(samples, function(s)
-            data.frame(Category = d[[cat_col]], Sample = s, n = d[[s]], stringsAsFactors = FALSE)))
-          long$Category <- factor(long$Category, levels = d[[cat_col]][order(d$Total)])
-          many <- length(samples) > FACET_THRESHOLD
-          gg <- ggplot2::ggplot(long, ggplot2::aes(x = Category, y = n, fill = Sample)) +
-            ggplot2::coord_flip() +
-            ggplot2::scale_fill_manual(values = fill_vals) +
-            ggplot2::labs(title = title, x = NULL, y = NULL, fill = NULL) +
-            ggplot2::theme_minimal(base_size = 10) +
-            ggplot2::theme(plot.title = ggplot2::element_text(face = "bold", colour = PHYLO_BLUE, size = 13),
-                           panel.grid.major.y = ggplot2::element_blank())
-          if (many) {
-            # Compact facet labels via the shared common-prefix stripper (.lab_fun).
-            gg <- gg + ggplot2::geom_col(show.legend = FALSE) +
-              ggplot2::facet_wrap(~ Sample, ncol = ceiling(sqrt(length(samples))),
-                                  labeller = ggplot2::as_labeller(.lab_fun)) +
-              ggplot2::scale_y_continuous(breaks = scales::breaks_extended(3),
-                                          labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
-              ggplot2::theme(legend.position = "none",
-                             strip.text = ggplot2::element_text(size = 7, face = "bold"),
-                             axis.text  = ggplot2::element_text(size = 5.5),
-                             panel.spacing = grid::unit(4, "pt"))
-          } else {
-            gg <- gg + ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.75), width = 0.68) +
-              ggplot2::scale_y_continuous(breaks = scales::breaks_extended(4),
-                                          labels = scales::label_number(scale_cut = scales::cut_short_scale())) +
-              ggplot2::theme(legend.position = "top", legend.justification = "left",
-                             legend.key.size = grid::unit(10, "pt"),
-                             legend.text = ggplot2::element_text(size = 8),
-                             axis.text = ggplot2::element_text(size = 9))
-          }
-          ggplot2::ggplotGrob(gg)
-        }
-
-        # ---- left-justify a table grob within a full-width row ---------------------------
-        .left_just <- function(g) {
-          w_in <- .grob_w_in(g)
-          gridExtra::arrangeGrob(g, grid::nullGrob(), ncol = 2,
-                                 widths = grid::unit.c(grid::unit(w_in, "in"), grid::unit(1, "null")))
-        }
-
-        # ---- KPI card. Big-number font auto-shrinks for long values (e.g. 7-digit cohort
-        #      totals) so the number never kisses the card edge. ----------------------------
-        .mk_kpi <- function(value, label, fill = PHYLO_BLUE, fg = "white") {
-          nchar_v <- nchar(value)
-          num_fs  <- if (nchar_v <= 6L) 30 else if (nchar_v <= 8L) 24 else 20
-          grid::grobTree(
-            grid::roundrectGrob(gp = grid::gpar(fill = fill, col = NA), r = grid::unit(6, "pt")),
-            grid::textGrob(value, y = 0.60, gp = grid::gpar(col = fg, fontface = "bold", fontsize = num_fs)),
-            grid::textGrob(label, y = 0.22, gp = grid::gpar(col = fg, fontsize = 11)))
-        }
-
-        # ---- cairo_pdf blank-first-page guard --------------------------------------------
-        # BiocCheck-preferred idiom: env slot in place of super-assigned closure state.
-        .make_new_page <- function() {
-          state <- new.env(parent = emptyenv())
-          state$first <- TRUE
-          function() {
-            if (state$first) state$first <- FALSE else grid::grid.newpage()
-          }
-        }
-
-        # ============================ HERO PAGE ===========================================
-        .render_hero <- function(np) {
-          np()
-          title_grob <- grid::grobTree(
-            grid::textGrob("germlinevaR \u2013 Cohort Summary", x = 0.02, y = 0.70, hjust = 0,
-                           gp = grid::gpar(fontface = "bold", fontsize = 24, col = PHYLO_BLUE)),
-            grid::textGrob(sprintf("%d sample%s  \u00b7  %s total variants  \u00b7  %s distinct genes",
-                                   meta$n_samples, if (meta$n_samples == 1L) "" else "s",
-                                   fmt(meta$n_total), fmt(meta$n_genes)),
-                           x = 0.02, y = 0.26, hjust = 0, gp = grid::gpar(fontsize = 11, col = INK)))
-          hi <- sections$impact$Total[sections$impact$IMPACT == "HIGH"]; if (!length(hi)) hi <- 0L
-          kpis <- list(
-            .mk_kpi(fmt(meta$n_total),    "Total variants",         PHYLO_BLUE),
-            .mk_kpi(fmt(meta$n_samples),  "Samples",                PHYLO_GREEN),
-            .mk_kpi(fmt(meta$n_genes),    "Distinct genes (known)", ORANGE, fg = INK),
-            .mk_kpi(fmt(hi),              "HIGH-impact variants",   VERMIL))
-          cards <- lapply(kpis, function(g)
-            gridExtra::arrangeGrob(g, vp = grid::viewport(width = 0.94, height = 0.86)))
-          cards_row <- gridExtra::arrangeGrob(grobs = cards, nrow = 1)
-          chart_top <- .bar_grob(sections$top_genes, "Hugo_Symbol",
-                                 title = "Top genes by variant count (top 10)", top = 10L)
-          chart_cls <- .bar_grob(sections$variant_classification, "Variant_Classification",
-                                 title = "Variant classification (top 10)", top = 10L)
-          hero <- gridExtra::arrangeGrob(
-            grobs = list(title_grob, cards_row, chart_top, chart_cls), ncol = 1,
-            heights = grid::unit.c(grid::unit(0.95, "in"), grid::unit(1.5, "in"),
-                                   grid::unit(1, "null"), grid::unit(1, "null")))
-          grid::pushViewport(grid::viewport(width = grid::unit(W - 1, "in"),
-                                            height = grid::unit(H - 1, "in")))
-          grid::grid.draw(hero); grid::popViewport()
-        }
-
-        # ===================== AUTO SIDE-BY-SIDE REFERENCE SECTION ========================
-        # Each section -> .mk_table_grobs (already font-shrunk / column-paginated). A
-        # section's grob is SIDE-BY-SIDE eligible only when it produced a SINGLE grob whose
-        # measured width fits half the content width (so two fit with a gap). Otherwise it
-        # is FULL-WIDTH and stacks. This degrades safely for many-sample (wide / paginated)
-        # tables, matching the user's "side-by-side if it fits, else stack" rule.
-        .render_reference <- function(np, target_dev,
-                                      title_in = 0.30, tgap_in = 0.10, bgap_in = 0.18,
-                                      col_gap_in = 0.30, draw_frac = 0.97) {
-          content_w <- W - 1
-          budget    <- (H - 1) * draw_frac
-          tbl_specs <- .build_tbl_specs(sections, html = FALSE)
-          # MEASUREMENT must happen on a throwaway device that is opened AND closed HERE,
-          # so the cairo report device is current during all subsequent drawing. (Leaving
-          # pdf(NULL) open across the draw loop sends every page to the throwaway device
-          # and the report comes out empty/0-byte.)
-          items <- local({
-            grDevices::pdf(NULL, width = W, height = H)
-            on.exit(grDevices::dev.off())
-            grid::pushViewport(grid::viewport(width = grid::unit(content_w, "in"),
-                                              height = grid::unit(budget, "in")))
-            it <- list()
-            for (sp in tbl_specs) {
-              sec_dt <- if (!is.null(sp$per_sample_key))
-                          sections$top_genes_per_sample[[sp$per_sample_key]]
-                        else sections[[sp$s]]
-              gl <- .mk_table_grobs(sec_dt)
-              multi <- length(gl) > 1L
-              for (gi in seq_along(gl)) {
-                g  <- gl[[gi]]
-                cs <- attr(g, "colspan")
-                lbl <- if (multi && !is.null(cs)) sprintf("%s (%s)", sp$t, cs) else sp$t
-                wi <- .grob_w_in(g); hi <- .grob_h_in(g)
-                # Side-by-side eligible iff this section produced a SINGLE grob (not
-                # column-paginated). Whether two eligible tables actually fit a row is
-                # decided later by the real pairwise width sum (a$w + gap + b$w <= content_w),
-                # which is more permissive than a rigid half-width gate (a wide table can
-                # still pair with a narrow one). Column-paginated (multi) tables stay
-                # full-width and stack -- the many-sample safe fallback.
-                eligible <- !multi
-                it[[length(it) + 1L]] <- list(type = "table", lbl = lbl, g = g,
-                                              w = wi, h = hi, pair_ok = eligible)
-              }
-            }
-            grid::popViewport()
-            it
-          })
-          # Closing the throwaway measurement device above can leave a DIFFERENT device
-          # current (R falls back to the most-recent surviving device, not necessarily our
-          # report device). Force the report device current before any drawing.
-          if (target_dev %in% grDevices::dev.list()) grDevices::dev.set(target_dev)
-          imp_chart <- list(type = "chart", lbl = "Functional impact (VEP IMPACT)",
-                            g = .bar_grob(sections$impact, "IMPACT", title = NULL),
-                            w = content_w, h = 2.4, pair_ok = FALSE)
-
-          # ---- height-balanced pairing among pair_ok items; others stay single --------
-          ord  <- order(vapply(items, function(u) u$h, numeric(1)), decreasing = TRUE)
-          done <- rep(FALSE, length(items)); rows <- list()
-          for (ii in seq_along(ord)) {
-            i <- ord[ii]; if (done[i]) next
-            a <- items[[i]]
-            if (!isTRUE(a$pair_ok)) { done[i] <- TRUE
-              rows[[length(rows)+1]] <- list(kind = "single", a = a, h = a$h); next }
-            partner <- NA_integer_
-            for (jj in seq_along(ord)) {
-              j <- ord[jj]
-              if (j == i || done[j] || !isTRUE(items[[j]]$pair_ok)) next
-              if (a$w + col_gap_in + items[[j]]$w <= content_w) { partner <- j; break }
-            }
-            if (!is.na(partner)) {
-              b <- items[[partner]]; done[i] <- TRUE; done[partner] <- TRUE
-              rows[[length(rows)+1]] <- list(kind = "pair", a = a, b = b, h = max(a$h, b$h))
-            } else {
-              done[i] <- TRUE
-              rows[[length(rows)+1]] <- list(kind = "single", a = a, h = a$h)
-            }
-          }
-          rows[[length(rows)+1]] <- list(kind = "single", a = imp_chart, h = imp_chart$h)
-
-          per_row_overhead <- title_in + tgap_in + bgap_in
-          pages <- list(); cur <- list(); used <- 0
-          for (r in rows) {
-            cost <- r$h + per_row_overhead
-            if (length(cur) > 0 && used + cost > budget) { pages[[length(pages)+1]] <- cur; cur <- list(); used <- 0 }
-            cur[[length(cur)+1]] <- r; used <- used + cost
-          }
-          if (length(cur)) pages[[length(pages)+1]] <- cur
-
-          block_for <- function(item, full_width, row_h) {
-            body <- if (item$type == "table") { if (full_width) .left_just(item$g) else item$g } else item$g
-            # Top-anchor the title within its band (vjust = 1 at y = 1) so its
-            # baseline sits high and there is full clearance to the table body that
-            # follows the tgap spacer -- prevents the body riding up under the title.
-            ttl <- grid::textGrob(item$lbl, x = 0.02, y = 1, hjust = 0, vjust = 1,
-                                  gp = grid::gpar(fontsize = 10.5, fontface = "bold", col = PHYLO_BLUE))
-            pad <- max(row_h - item$h, 0)
-            gridExtra::arrangeGrob(ttl, grid::nullGrob(), body, grid::nullGrob(), ncol = 1,
-                                   heights = grid::unit.c(grid::unit(title_in, "in"), grid::unit(tgap_in, "in"),
-                                                          grid::unit(item$h, "in"), grid::unit(pad, "in")))
-          }
-
-          for (pg in pages) {
-            np()
-            grobs <- list(grid::textGrob("Reference tables", x = 0.02, hjust = 0, vjust = 1, y = 1,
-                                         gp = grid::gpar(fontface = "bold", fontsize = 10, col = PHYLO_GREEN)))
-            rel <- c(0.18)
-            for (r in pg) {
-              if (r$kind == "pair") {
-                ga <- block_for(r$a, FALSE, r$h); gb <- block_for(r$b, FALSE, r$h)
-                row_grob <- gridExtra::arrangeGrob(ga, grid::nullGrob(), gb, ncol = 3,
-                              widths = grid::unit.c(grid::unit(1, "null"), grid::unit(col_gap_in, "in"),
-                                                    grid::unit(1, "null")))
-              } else {
-                row_grob <- block_for(r$a, TRUE, r$h)
-              }
-              grobs[[length(grobs)+1]] <- row_grob
-              rel <- c(rel, r$h + title_in + tgap_in)
-              grobs[[length(grobs)+1]] <- grid::nullGrob(); rel <- c(rel, bgap_in)
-            }
-            if (sum(rel) < budget) { grobs[[length(grobs)+1]] <- grid::nullGrob(); rel <- c(rel, budget - sum(rel)) }
-            grid::pushViewport(grid::viewport(y = 0.5, height = grid::unit(budget, "in"),
-                                              width = grid::unit(content_w, "in")))
-            grid::grid.draw(gridExtra::arrangeGrob(grobs = grobs, ncol = 1, heights = grid::unit(rel, "in")))
-            grid::popViewport()
-          }
-        }
-
-        # ============================ DRIVE THE DEVICE ====================================
-        # vN+7.2: portable write. Stage under tempdir() only when destination is on
-        # /mnt/ (S3 FUSE); cairo_pdf can write directly to local FS / Windows path.
-        use_stage <- .gvr_use_staging(final_pdf)
-        tmp_pdf <- if (use_stage) file.path(tempdir(), basename(final_pdf)) else final_pdf
-        grDevices::cairo_pdf(tmp_pdf, width = W, height = H, onefile = TRUE)
-        cairo_dev <- grDevices::dev.cur()
-        on.exit(if (cairo_dev %in% grDevices::dev.list()) grDevices::dev.off(cairo_dev), add = TRUE)
-        np <- .make_new_page()
-        .render_hero(np)
-        .render_reference(np, target_dev = cairo_dev)
-        if (cairo_dev %in% grDevices::dev.list()) grDevices::dev.off(cairo_dev)
-        on.exit()
-        if (!file.exists(tmp_pdf) || file.info(tmp_pdf)$size == 0)
-          stop("PDF device produced no/zero-byte file.")
-        final_pdf <- .gvr_finalize_to_dest(tmp_pdf, final_pdf, "PDF")
-        invisible(final_pdf)
-      }
-
-      pdf_name  <- sprintf("%s_report.pdf", file_prefix)
-      final_pdf <- file.path(out_subdir, pdf_name)
-      if (file.exists(final_pdf) && isTRUE(verbose))
-        message(sprintf("  Overwriting existing PDF report: %s", final_pdf))
-      ok_pdf <- tryCatch({
-        .gvr_summary_pdf(sections, samples, meta, final_pdf, file_prefix)
-        file.exists(final_pdf) && file.info(final_pdf)$size > 0
-      }, error = function(e) {
-        warning(sprintf("gvr_summary: PDF report failed: %s", conditionMessage(e))); FALSE })
-      if (isTRUE(ok_pdf) && isTRUE(verbose)) message(sprintf("  PDF report written: %s", final_pdf))
     }
-  }
 
-  # ============================================================================
-  # Optional interactive HTML report
-  #   -> <out_dir>/gvr_summary/<file_prefix>_report.html (fixed name).
-  # An interactive dashboard mirroring the PDF: KPI cards, the same three bar
-  # charts (Top genes / Variant classification / Functional impact) as plotly
-  # (grouped <=6 samples, faceted small-multiples >6), and all six section
-  # tables as searchable/sortable DT widgets. Self-contained single file when
-  # pandoc is available; otherwise a <prefix>_report.html + <prefix>_report_files/
-  # asset folder (fallback) with a note. Requires plotly + DT + htmlwidgets +
-  # htmltools; if unavailable the HTML is skipped with a warning (sections,
-  # Excel and PDF are still produced).
-  # ============================================================================
-  if (isTRUE(save_html)) {
-    have_html <- requireNamespace("plotly",      quietly = TRUE) &&
-                 requireNamespace("DT",          quietly = TRUE) &&
-                 requireNamespace("htmlwidgets", quietly = TRUE) &&
-                 requireNamespace("htmltools",   quietly = TRUE)
-    if (!have_html) {
-      warning("gvr_summary: 'plotly'/'DT'/'htmlwidgets' not installed; skipping HTML report.")
-    } else {
-      # Pandoc availability probe (kept local so a test can mask it to force the
-      # sidecar fallback). Needs both 'rmarkdown' (the pandoc wrapper used for
-      # asset-inlining) and a working pandoc; if either is missing we return FALSE
-      # and the renderer writes the sidecar (.html + _files/) form instead.
-      .gvr_pandoc_ok <- function() {
-        requireNamespace("rmarkdown", quietly = TRUE) &&
-          isTRUE(tryCatch(rmarkdown::pandoc_available(), error = function(e) FALSE))
-      }
+    # ============================================================================
+    # Optional interactive HTML report
+    #   -> <out_dir>/gvr_summary/<file_prefix>_report.html (fixed name).
+    # An interactive dashboard mirroring the PDF: KPI cards, the same three bar
+    # charts (Top genes / Variant classification / Functional impact) as plotly
+    # (grouped <=6 samples, faceted small-multiples >6), and all six section
+    # tables as searchable/sortable DT widgets. Self-contained single file when
+    # pandoc is available; otherwise a <prefix>_report.html + <prefix>_report_files/
+    # asset folder (fallback) with a note. Requires plotly + DT + htmlwidgets +
+    # htmltools; if unavailable the HTML is skipped with a warning (sections,
+    # Excel and PDF are still produced).
+    # ============================================================================
+    if (isTRUE(save_html)) {
+        have_html <- requireNamespace("plotly",      quietly = TRUE) &&
+            requireNamespace("DT",          quietly = TRUE) &&
+            requireNamespace("htmlwidgets", quietly = TRUE) &&
+            requireNamespace("htmltools",   quietly = TRUE)
+        if (!have_html) {
+            warning("gvr_summary: 'plotly'/'DT'/'htmlwidgets' not installed; skipping HTML report.")
+        } else {
+            # Pandoc availability probe (kept local so a test can mask it to force the
+            # sidecar fallback). Needs both 'rmarkdown' (the pandoc wrapper used for
+            # asset-inlining) and a working pandoc; if either is missing we return FALSE
+            # and the renderer writes the sidecar (.html + _files/) form instead.
+            .gvr_pandoc_ok <- function() {
+                requireNamespace("rmarkdown", quietly = TRUE) &&
+                    isTRUE(tryCatch(rmarkdown::pandoc_available(), error = function(e) FALSE))
+            }
 
-      # --- Adaptive size-band policy (HTML drill-down tables) ----------------
-      # The HTML report self-contains every detail-table row as inline JSON. At
-      # the pilot (~22k variants) the file is ~8.6 MB; linear projection to
-      # 300k+ variants overflows pandoc's --self-contained pass on Windows
-      # (VirtualAlloc / pagefile). To keep the report self-containable at scale
-      # we trim the inline payload as a function of cohort size:
-      #
-      #   small   (< .HTML_SMALL_MAX)   : full drill-downs (current behaviour)
-      #   medium  (< .HTML_MEDIUM_MAX)  : detail tables pre-filtered to the
-      #                                   biologically informative subset
-      #                                   (no MODIFIER impact / no Intron
-      #                                   classification / no missing CLIN_SIG).
-      #                                   VC additionally capped at 50k rows.
-      #   large   (>= .HTML_MEDIUM_MAX) : drill-downs disabled entirely. The
-      #                                   CLIN_SIG / VC / IMPACT sections
-      #                                   render as plain summary tables only;
-      #                                   per-variant data lives in the Excel.
-      #
-      # Tunable in one place. Boundaries are conservative against the pilot's
-      # MODIFIER/Intron fractions and pandoc's observed working set.
-      .HTML_SMALL_MAX      <- 50000L
-      .HTML_PAYLOAD_BUDGET <- 100000L   # asymptotic row budget for inline JSON
+            # --- Adaptive size-band policy (HTML drill-down tables) ----------------
+            # The HTML report self-contains every detail-table row as inline JSON. At
+            # the pilot (~22k variants) the file is ~8.6 MB; linear projection to
+            # 300k+ variants overflows pandoc's --self-contained pass on Windows
+            # (VirtualAlloc / pagefile). To keep the report self-containable at scale
+            # we trim the inline payload as a function of cohort size:
+            #
+            #   small   (< .HTML_SMALL_MAX)   : full drill-downs (current behaviour)
+            #   medium  (< .HTML_MEDIUM_MAX)  : detail tables pre-filtered to the
+            #                                   biologically informative subset
+            #                                   (no MODIFIER impact / no Intron
+            #                                   classification / no missing CLIN_SIG).
+            #                                   VC additionally capped at 50k rows.
+            #   large   (>= .HTML_MEDIUM_MAX) : drill-downs disabled entirely. The
+            #                                   CLIN_SIG / VC / IMPACT sections
+            #                                   render as plain summary tables only;
+            #                                   per-variant data lives in the Excel.
+            #
+            # Tunable in one place. Boundaries are conservative against the pilot's
+            # MODIFIER/Intron fractions and pandoc's observed working set.
+            .HTML_SMALL_MAX      <- 50000L
+            .HTML_PAYLOAD_BUDGET <- 100000L   # asymptotic row budget for inline JSON
 
-      .gvr_size_band <- function(n_total) {
-        if (n_total < .HTML_SMALL_MAX) "small" else "medium"
-      }
+            .gvr_size_band <- function(n_total) {
+                if (n_total < .HTML_SMALL_MAX) "small" else "medium"
+            }
 
 
-      # Internal renderer for the interactive HTML (nested: single-use, not exported).
-      # Reuses the PDF palette / KPI / chart logic so both reports stay consistent.
-      # Returns the path actually written, with attr "sidecar" (TRUE when pandoc was
-      # unavailable and assets live in a sibling <prefix>_report_files/ folder) and
-      # attr "files_dir" (that folder, or NA when self-contained).
-      .gvr_summary_html <- function(sections, samples, meta, final_html, file_prefix = "gvr_summary") {
+            # Internal renderer for the interactive HTML (nested: single-use, not exported).
+            # Reuses the PDF palette / KPI / chart logic so both reports stay consistent.
+            # Returns the path actually written, with attr "sidecar" (TRUE when pandoc was
+            # unavailable and assets live in a sibling <prefix>_report_files/ folder) and
+            # attr "files_dir" (that folder, or NA when self-contained).
+            .gvr_summary_html <- function(sections, samples, meta, final_html, file_prefix = "gvr_summary") {
 
-        PHYLO_BLUE <- "#0279EE"; PHYLO_GREEN <- "#75A025"; CREAM <- "#FAF9F3"; STONE <- "#ECE9E2"
-        INK <- "#000000"; ORANGE <- "#E69F00"; VERMIL <- "#D55E00"
+                PHYLO_BLUE <- "#0279EE"
+                PHYLO_GREEN <- "#75A025"
+                CREAM <- "#FAF9F3"
+                STONE <- "#ECE9E2"
+                INK <- "#000000"
+                ORANGE <- "#E69F00"
+                VERMIL <- "#D55E00"
 
-        # 24-colour qualitative palette: shared 9-colour PHYLO_PAL_BASE (Okabe-Ito
-        # ordering, matches the PDF dashboard exactly) extended with Paul-Tol
-        # "muted" + extras for cohorts up to 24 (cycles only beyond that --
-        # an acceptable edge case).
-        pal <- c(PHYLO_PAL_BASE,
-                 "#117733", "#882255", "#88CCEE", "#999933", "#661100",
-                 "#6699CC", "#DDCC77", "#44AA99", "#AA4466", "#4477AA",
-                 "#228833", "#EE6677", "#BBBBBB", "#000000", "#EE3377")
-        fill_vals <- stats::setNames(pal[((seq_along(samples) - 1L) %% length(pal)) + 1L], samples)
+                # 24-colour qualitative palette: shared 9-colour PHYLO_PAL_BASE (Okabe-Ito
+                # ordering, matches the PDF dashboard exactly) extended with Paul-Tol
+                # "muted" + extras for cohorts up to 24 (cycles only beyond that --
+                # an acceptable edge case).
+                pal <- c(PHYLO_PAL_BASE,
+                    "#117733", "#882255", "#88CCEE", "#999933", "#661100",
+                    "#6699CC", "#DDCC77", "#44AA99", "#AA4466", "#4477AA",
+                    "#228833", "#EE6677", "#BBBBBB", "#000000", "#EE3377")
+                fill_vals <- stats::setNames(pal[((seq_along(samples) - 1L) %% length(pal)) + 1L], samples)
 
-        # one interactive plotly bar chart: GROUPED horizontal bars (one bar per
-        # sample) at every cohort size. Unlike the static PDF (which facets >6
-        # samples because print cannot toggle), the HTML keeps a single grouped
-        # plot and leans on plotly's interactivity - click a legend entry to
-        # isolate/hide a sample, hover for exact counts - which stays legible and
-        # useful even for large cohorts. Sample legend labels reuse the PDF's
-        # common-prefix stripping so they stay compact.
-        .plt_bar <- function(dt, cat_col, top = NULL, title = NULL) {
-          d <- as.data.frame(dt, stringsAsFactors = FALSE)
-          d <- d[d[[cat_col]] != "" & !is.na(d[[cat_col]]), , drop = FALSE]
-          if (!is.null(top) && nrow(d) > top) d <- d[order(-d$Total)[seq_len(top)], , drop = FALSE]
-          lev <- d[[cat_col]][order(d$Total)]          # ascending so biggest sits on top
-          slab <- .lab_fun(samples)                    # compact (prefix-stripped) labels
+                # one interactive plotly bar chart: GROUPED horizontal bars (one bar per
+                # sample) at every cohort size. Unlike the static PDF (which facets >6
+                # samples because print cannot toggle), the HTML keeps a single grouped
+                # plot and leans on plotly's interactivity - click a legend entry to
+                # isolate/hide a sample, hover for exact counts - which stays legible and
+                # useful even for large cohorts. Sample legend labels reuse the PDF's
+                # common-prefix stripping so they stay compact.
+                .plt_bar <- function(dt, cat_col, top = NULL, title = NULL) {
+                    d <- as.data.frame(dt, stringsAsFactors = FALSE)
+                    d <- d[d[[cat_col]] != "" & !is.na(d[[cat_col]]), , drop = FALSE]
+                    if (!is.null(top) && nrow(d) > top) d <- d[order(-d$Total)[seq_len(top)], , drop = FALSE]
+                    lev <- d[[cat_col]][order(d$Total)]          # ascending so biggest sits on top
+                    slab <- .lab_fun(samples)                    # compact (prefix-stripped) labels
 
-          long <- do.call(rbind, lapply(seq_along(samples), function(k)
-            data.frame(Category = factor(d[[cat_col]], levels = lev),
-                       Sample   = factor(slab[k], levels = slab),
-                       n        = d[[samples[k]]], stringsAsFactors = FALSE)))
+                    long <- do.call(rbind, lapply(seq_along(samples), function(k)
+                        data.frame(Category = factor(d[[cat_col]], levels = lev),
+                            Sample   = factor(slab[k], levels = slab),
+                            n        = d[[samples[k]]], stringsAsFactors = FALSE)))
 
-          # Plot height grows with the number of categories (so grouped bars stay
-          # readable) AND with the number of samples (so the per-sample legend shows
-          # every entry instead of collapsing into a short scrollable box). Measured
-          # in-browser, plotly's vertical legend needs ~20 px/entry of *content*, and
-          # it only avoids engaging its internal scrollbox when the plotting area is
-          # comfortably taller than that content. We therefore budget ~22 px/entry plus
-          # generous top/bottom padding so all samples stay visible without scrolling.
-          h_cat <- 90 + 26 * length(lev)
-          h_leg <- 120 + 22 * length(samples)
-          h_px  <- max(360, h_cat, h_leg)
-          p <- plotly::plot_ly(long, x = ~n, y = ~Category, color = ~Sample,
-                               colors = unname(fill_vals), type = "bar", orientation = "h",
-                               height = h_px,
-                               hovertemplate = "%{y}: %{x:,}<extra>%{fullData.name}</extra>")
-          plotly::layout(p, barmode = "group",
-                         title  = list(text = title, x = 0, font = list(color = PHYLO_BLUE, size = 16)),
-                         xaxis  = list(title = "", tickformat = ","),
-                         yaxis  = list(title = ""),
-                         legend = list(title = list(text = "Sample"), font = list(size = 9)),
-                         margin = list(l = 8, r = 8, t = 50, b = 8))
-        }
+                    # Plot height grows with the number of categories (so grouped bars stay
+                    # readable) AND with the number of samples (so the per-sample legend shows
+                    # every entry instead of collapsing into a short scrollable box). Measured
+                    # in-browser, plotly's vertical legend needs ~20 px/entry of *content*, and
+                    # it only avoids engaging its internal scrollbox when the plotting area is
+                    # comfortably taller than that content. We therefore budget ~22 px/entry plus
+                    # generous top/bottom padding so all samples stay visible without scrolling.
+                    h_cat <- 90 + 26 * length(lev)
+                    h_leg <- 120 + 22 * length(samples)
+                    h_px  <- max(360, h_cat, h_leg)
+                    p <- plotly::plot_ly(long, x = ~n, y = ~Category, color = ~Sample,
+                        colors = unname(fill_vals), type = "bar", orientation = "h",
+                        height = h_px,
+                        hovertemplate = "%{y}: %{x:,}<extra>%{fullData.name}</extra>")
+                    plotly::layout(p, barmode = "group",
+                        title  = list(text = title, x = 0, font = list(color = PHYLO_BLUE, size = 16)),
+                        xaxis  = list(title = "", tickformat = ","),
+                        yaxis  = list(title = ""),
+                        legend = list(title = list(text = "Sample"), font = list(size = 9)),
+                        margin = list(l = 8, r = 8, t = 50, b = 8))
+                }
 
-        # one DT table for a section (sort/search/paginate; comma-formatted numerics)
-        .dt_tbl <- function(dt, caption = NULL) {
-          df <- as.data.frame(dt, stringsAsFactors = FALSE)
-          num_cols <- names(df)[vapply(df, is.numeric, logical(1))]
-          dtbl <- DT::datatable(
-            df, rownames = FALSE, caption = caption,
-            class = "stripe hover compact", filter = "none",
-            options = list(pageLength = 10, lengthMenu = c(5, 10, 25, 50),
-                           dom = "ftip", scrollX = TRUE,
-                           columnDefs = list(list(className = "dt-right",
-                                                  targets = which(names(df) %in% num_cols) - 1L))))
-          if (length(num_cols))
-            dtbl <- DT::formatCurrency(dtbl, num_cols, currency = "", interval = 3, mark = ",", digits = 0)
-          dtbl
-        }
+                # one DT table for a section (sort/search/paginate; comma-formatted numerics)
+                .dt_tbl <- function(dt, caption = NULL) {
+                    df <- as.data.frame(dt, stringsAsFactors = FALSE)
+                    num_cols <- names(df)[vapply(df, is.numeric, logical(1))]
+                    dtbl <- DT::datatable(
+                        df, rownames = FALSE, caption = caption,
+                        class = "stripe hover compact", filter = "none",
+                        options = list(pageLength = 10, lengthMenu = c(5, 10, 25, 50),
+                            dom = "ftip", scrollX = TRUE,
+                            columnDefs = list(list(className = "dt-right",
+                                targets = which(names(df) %in% num_cols) - 1L))))
+                    if (length(num_cols))
+                        dtbl <- DT::formatCurrency(dtbl, num_cols, currency = "", interval = 3, mark = ",", digits = 0)
+                    dtbl
+                }
 
-        # KPI card (styled div mirroring the PDF cards)
-        .kpi_card <- function(value, label, fill = PHYLO_BLUE, fg = "white") {
-          htmltools::tags$div(
-            style = sprintf(paste0("flex:1; min-width:150px; background:%s; color:%s; border-radius:6px;",
-                                   "padding:14px 16px; box-shadow:0 1px 3px rgba(0,0,0,.12);"), fill, fg),
-            htmltools::tags$div(value, style = "font-size:30px; font-weight:700; line-height:1.1;"),
-            htmltools::tags$div(label, style = "font-size:12px; opacity:.92; margin-top:4px;"))
-        }
+                # KPI card (styled div mirroring the PDF cards)
+                .kpi_card <- function(value, label, fill = PHYLO_BLUE, fg = "white") {
+                    htmltools::tags$div(
+                        style = sprintf(paste0("flex:1; min-width:150px; background:%s; color:%s; border-radius:6px;",
+                            "padding:14px 16px; box-shadow:0 1px 3px rgba(0,0,0,.12);"), fill, fg),
+                        htmltools::tags$div(value, style = "font-size:30px; font-weight:700; line-height:1.1;"),
+                        htmltools::tags$div(label, style = "font-size:12px; opacity:.92; margin-top:4px;"))
+                }
 
-        hi <- sections$impact$Total[sections$impact$IMPACT == "HIGH"]; if (!length(hi)) hi <- 0L
-        cards <- htmltools::tags$div(
-          style = "display:flex; gap:12px; flex-wrap:wrap; margin:14px 0 22px 0;",
-          .kpi_card(fmt(meta$n_total),   "Total variants",         PHYLO_BLUE),
-          .kpi_card(fmt(meta$n_samples), "Samples",                PHYLO_GREEN),
-          .kpi_card(fmt(meta$n_genes),   "Distinct genes (known)", ORANGE, fg = INK),
-          .kpi_card(fmt(hi),             "HIGH-impact variants",   VERMIL))
+                hi <- sections$impact$Total[sections$impact$IMPACT == "HIGH"]
+                if (!length(hi)) hi <- 0L
+                cards <- htmltools::tags$div(
+                    style = "display:flex; gap:12px; flex-wrap:wrap; margin:14px 0 22px 0;",
+                    .kpi_card(fmt(meta$n_total),   "Total variants",         PHYLO_BLUE),
+                    .kpi_card(fmt(meta$n_samples), "Samples",                PHYLO_GREEN),
+                    .kpi_card(fmt(meta$n_genes),   "Distinct genes (known)", ORANGE, fg = INK),
+                    .kpi_card(fmt(hi),             "HIGH-impact variants",   VERMIL))
 
-        header <- htmltools::tags$div(
-          htmltools::tags$h1("germlinevaR \u2013 Cohort Summary",
-                             style = sprintf("color:%s; margin:0; font-size:26px;", PHYLO_BLUE)),
-          htmltools::tags$div(
-            sprintf("%d sample%s \u00b7 %s total variants \u00b7 %s distinct genes \u00b7 generated %s",
-                    meta$n_samples, if (meta$n_samples == 1L) "" else "s",
-                    fmt(meta$n_total), fmt(meta$n_genes), meta$generated),
-            style = sprintf("color:%s; font-size:13px; margin-top:4px;", INK)))
+                header <- htmltools::tags$div(
+                    htmltools::tags$h1("germlinevaR \u2013 Cohort Summary",
+                        style = sprintf("color:%s; margin:0; font-size:26px;", PHYLO_BLUE)),
+                    htmltools::tags$div(
+                        sprintf("%d sample%s \u00b7 %s total variants \u00b7 %s distinct genes \u00b7 generated %s",
+                            meta$n_samples, if (meta$n_samples == 1L) "" else "s",
+                            fmt(meta$n_total), fmt(meta$n_genes), meta$generated),
+                        style = sprintf("color:%s; font-size:13px; margin-top:4px;", INK)))
 
-        sec_h <- function(txt) htmltools::tags$h2(
-          txt, style = sprintf("color:%s; border-bottom:2px solid %s; padding-bottom:4px; margin-top:30px;",
-                               PHYLO_GREEN, STONE))
+                sec_h <- function(txt) htmltools::tags$h2(
+                    txt, style = sprintf("color:%s; border-bottom:2px solid %s; padding-bottom:4px; margin-top:30px;",
+                        PHYLO_GREEN, STONE))
 
-        # Per-sample top genes: simple horizontal bar chart (single sample, no grouping)
-        .plt_bar_single <- function(dt, cat_col, val_col, top = 10L, title = NULL) {
-          d <- as.data.frame(dt, stringsAsFactors = FALSE)
-          d <- d[d[[cat_col]] != "" & !is.na(d[[cat_col]]), , drop = FALSE]
-          if (!is.null(top) && nrow(d) > top) d <- d[order(-d[[val_col]])[seq_len(top)], , drop = FALSE]
-          lev <- d[[cat_col]][order(d[[val_col]])]   # ascending so biggest on top
-          d[[cat_col]] <- factor(d[[cat_col]], levels = lev)
-          h_px <- max(280, 90 + 26 * length(lev))
-          p <- plotly::plot_ly(d, x = stats::as.formula(paste0("~`", val_col, "`")),
-                               y = stats::as.formula(paste0("~`", cat_col, "`")),
-                               type = "bar", orientation = "h", height = h_px,
-                               hovertemplate = "%{y}: %{x:,}<extra></extra>",
-                               marker = list(color = PHYLO_BLUE))
-          plotly::layout(p, barmode = "group",
-                         title  = list(text = title, x = 0, font = list(color = PHYLO_BLUE, size = 14)),
-                         xaxis  = list(title = "", tickformat = ","),
-                         yaxis  = list(title = ""),
-                         margin = list(l = 8, r = 8, t = 44, b = 8),
-                         showlegend = FALSE)
-        }
+                # Per-sample top genes: simple horizontal bar chart (single sample, no grouping)
+                .plt_bar_single <- function(dt, cat_col, val_col, top = 10L, title = NULL) {
+                    d <- as.data.frame(dt, stringsAsFactors = FALSE)
+                    d <- d[d[[cat_col]] != "" & !is.na(d[[cat_col]]), , drop = FALSE]
+                    if (!is.null(top) && nrow(d) > top) d <- d[order(-d[[val_col]])[seq_len(top)], , drop = FALSE]
+                    lev <- d[[cat_col]][order(d[[val_col]])]   # ascending so biggest on top
+                    d[[cat_col]] <- factor(d[[cat_col]], levels = lev)
+                    h_px <- max(280, 90 + 26 * length(lev))
+                    p <- plotly::plot_ly(d, x = stats::as.formula(paste0("~`", val_col, "`")),
+                        y = stats::as.formula(paste0("~`", cat_col, "`")),
+                        type = "bar", orientation = "h", height = h_px,
+                        hovertemplate = "%{y}: %{x:,}<extra></extra>",
+                        marker = list(color = PHYLO_BLUE))
+                    plotly::layout(p, barmode = "group",
+                        title  = list(text = title, x = 0, font = list(color = PHYLO_BLUE, size = 14)),
+                        xaxis  = list(title = "", tickformat = ","),
+                        yaxis  = list(title = ""),
+                        margin = list(l = 8, r = 8, t = 44, b = 8),
+                        showlegend = FALSE)
+                }
 
-        charts <- htmltools::tagList(
-          sec_h("Charts"),
-          .plt_bar(sections$top_genes, "Hugo_Symbol", top = 10L, title = "Top genes by variant count (top 10)"),
-          .plt_bar(sections$variant_classification, "Variant_Classification", top = 10L,
-                   title = "Variant classification (top 10)"),
-          .plt_bar(sections$impact, "IMPACT", top = NULL, title = "Functional impact (VEP IMPACT)"),
-          if (!is.null(sections$top_variants))
-            .plt_bar(sections$top_variants, "dbSNP_RS", top = 10L,
-                     title = "Top variants by rsID frequency (top 10)"),
-          # Per-sample top genes charts (top 10 genes per sample)
-          if (length(sections$top_genes_per_sample))
-            lapply(names(sections$top_genes_per_sample), function(sm) {
-              sm_dt <- sections$top_genes_per_sample[[sm]]
-              .plt_bar_single(sm_dt, "Hugo_Symbol", sm, top = 10L,
-                              title = sprintf("Top genes \u2013 %s (top 10)", sm))
-            }))
+                charts <- htmltools::tagList(
+                    sec_h("Charts"),
+                    .plt_bar(sections$top_genes, "Hugo_Symbol", top = 10L, title = "Top genes by variant count (top 10)"),
+                    .plt_bar(sections$variant_classification, "Variant_Classification", top = 10L,
+                        title = "Variant classification (top 10)"),
+                    .plt_bar(sections$impact, "IMPACT", top = NULL, title = "Functional impact (VEP IMPACT)"),
+                    if (!is.null(sections$top_variants))
+                        .plt_bar(sections$top_variants, "dbSNP_RS", top = 10L,
+                            title = "Top variants by rsID frequency (top 10)"),
+                    # Per-sample top genes charts (top 10 genes per sample)
+                    if (length(sections$top_genes_per_sample))
+                        lapply(names(sections$top_genes_per_sample), function(sm) {
+                            sm_dt <- sections$top_genes_per_sample[[sm]]
+                            .plt_bar_single(sm_dt, "Hugo_Symbol", sm, top = 10L,
+                                title = sprintf("Top genes \u2013 %s (top 10)", sm))
+                        }))
 
-        # --- Drill-down detail tables (CLIN_SIG, IMPACT, Variant_Classification) ---
-        # Clicking a category token in the summary table filters the detail table
-        # on the relevant column and toggles its visibility.
-        # IMPORTANT: the detail container must NOT use display:none at build time,
-        # because DT cannot initialise inside a hidden element (causes TN/2 warning).
-        # Instead, the detail DT's own initComplete hides the container after it
-        # has fully rendered.
-        #
-        # CRITICAL: the click handler uses dtApi.column(idx).search(val) for
-        # COLUMN-SPECIFIC filtering (not dtApi.search(val) which does a global
-        # search across all columns and returns wrong results).
+                # --- Drill-down detail tables (CLIN_SIG, IMPACT, Variant_Classification) ---
+                # Clicking a category token in the summary table filters the detail table
+                # on the relevant column and toggles its visibility.
+                # IMPORTANT: the detail container must NOT use display:none at build time,
+                # because DT cannot initialise inside a hidden element (causes TN/2 warning).
+                # Instead, the detail DT's own initComplete hides the container after it
+                # has fully rendered.
+                #
+                # CRITICAL: the click handler uses dtApi.column(idx).search(val) for
+                # COLUMN-SPECIFIC filtering (not dtApi.search(val) which does a global
+                # search across all columns and returns wrong results).
 
-        # --- Helper: build a drill-down pair (summary DT + detail DT) ---
-        # Returns a named list with: summary_dtbl, detail_dtbl, container_id
-        .mk_drilldown <- function(summary_section, token_map, container_id,
-                                  filter_col, caption_summary, header_col_label,
-                                  cap_note = NULL) {
-          # ------------------------------------------------------------------
-          # vN+7.1 redesign: per-token detail tables via JSON lookup.
-          # The detail DT is now an EMPTY shell initialised with column names
-          # only; clicking a summary cell looks up `token_map[<val>]` in a
-          # hidden <script type="application/json"> block, clears the table,
-          # and adds the per-token ranked rows. This guarantees that the row
-          # order shown after a click is the SAME order written to the XLSX
-          # `<PFX>_<token>` sheet (both built from the same per-token slice),
-          # closing the CS7 acceptance gate that the prior dedup-by-locus
-          # design failed for 11/18 CS_ tokens.
-          # ------------------------------------------------------------------
-          # Compose the "empty shell" for the detail DT: a 0-row data frame
-          # carrying just the column names. The actual rows arrive client-side.
-          if (length(token_map) > 0L) {
-            shell_cols <- names(token_map[[1L]])
-          } else {
-            shell_cols <- character(0)
-          }
-          shell_df <- as.data.frame(
-            stats::setNames(rep(list(character(0)), length(shell_cols)),
+                # --- Helper: build a drill-down pair (summary DT + detail DT) ---
+                # Returns a named list with: summary_dtbl, detail_dtbl, container_id
+                .mk_drilldown <- function(summary_section, token_map, container_id,
+                                          filter_col, caption_summary, header_col_label,
+                                          cap_note = NULL) {
+                    # ------------------------------------------------------------------
+                    # vN+7.1 redesign: per-token detail tables via JSON lookup.
+                    # The detail DT is now an EMPTY shell initialised with column names
+                    # only; clicking a summary cell looks up `token_map[<val>]` in a
+                    # hidden <script type="application/json"> block, clears the table,
+                    # and adds the per-token ranked rows. This guarantees that the row
+                    # order shown after a click is the SAME order written to the XLSX
+                    # `<PFX>_<token>` sheet (both built from the same per-token slice),
+                    # closing the CS7 acceptance gate that the prior dedup-by-locus
+                    # design failed for 11/18 CS_ tokens.
+                    # ------------------------------------------------------------------
+                    # Compose the "empty shell" for the detail DT: a 0-row data frame
+                    # carrying just the column names. The actual rows arrive client-side.
+                    if (length(token_map) > 0L) {
+                        shell_cols <- names(token_map[[1L]])
+                    } else {
+                        shell_cols <- character(0)
+                    }
+                    shell_df <- as.data.frame(
+                        stats::setNames(rep(list(character(0)), length(shell_cols)),
                             shell_cols),
-            stringsAsFactors = FALSE)
+                        stringsAsFactors = FALSE)
 
-          # why: DT::datatable() can warn about extra columnDefs targets when the rendered table has fewer columns than the spec; harmless.
-          detail_dtbl <- suppressWarnings(DT::datatable(
-            shell_df, rownames = FALSE,
-            class = "stripe hover compact", filter = "none",
-            options = list(pageLength = 5, lengthMenu = c(5, 10, 25),
-                           dom = "ftip", scrollX = TRUE, searchDelay = 300,
-                           initComplete = htmlwidgets::JS(
-                             "function() {",
-                             sprintf("  document.getElementById('%s').style.display = 'none';", container_id),
-                             # Wire the Close button. Listener attached once;
-                             # button persists across redraws.
-                             sprintf("  var btn = document.getElementById('%s_close');", container_id),
-                             "  if (btn) {",
-                             "    btn.addEventListener('click', function() {",
-                             sprintf("      var c = document.getElementById('%s');", container_id),
-                             "      if (!c) return;",
-                             "      c.style.display = 'none';",
-                             "    });",
-                             "  }",
-                             "}"))))
-          # Defensive eager init (see prior comment block in pre-N+7.1 code
-          # for the htmlwidgets lazyRender gate rationale).
-          detail_dtbl$x$lazyRender <- FALSE
+                    # why: DT::datatable() can warn about extra columnDefs targets when the rendered table has fewer columns than the spec; harmless.
+                    detail_dtbl <- suppressWarnings(DT::datatable(
+                        shell_df, rownames = FALSE,
+                        class = "stripe hover compact", filter = "none",
+                        options = list(pageLength = 5, lengthMenu = c(5, 10, 25),
+                            dom = "ftip", scrollX = TRUE, searchDelay = 300,
+                            initComplete = htmlwidgets::JS(
+                                "function() {",
+                                sprintf("  document.getElementById('%s').style.display = 'none';", container_id),
+                                # Wire the Close button. Listener attached once;
+                                # button persists across redraws.
+                                sprintf("  var btn = document.getElementById('%s_close');", container_id),
+                                "  if (btn) {",
+                                "    btn.addEventListener('click', function() {",
+                                sprintf("      var c = document.getElementById('%s');", container_id),
+                                "      if (!c) return;",
+                                "      c.style.display = 'none';",
+                                "    });",
+                                "  }",
+                                "}"))))
+                    # Defensive eager init (see prior comment block in pre-N+7.1 code
+                    # for the htmlwidgets lazyRender gate rationale).
+                    detail_dtbl$x$lazyRender <- FALSE
 
-          # Encode the per-token map as a hidden JSON <script> block. Each
-          # token maps to an array of row arrays (dataframe="values" -> rows
-          # as nested arrays, matching what dtApi.rows.add() consumes).
-          # NA encoded as JSON null; DT renders null as an empty cell.
-          json_id <- paste0(container_id, "_data")
-          json_str <- if (length(token_map) > 0L) {
-            as.character(jsonlite::toJSON(token_map, dataframe = "values",
-                                          na = "null", auto_unbox = FALSE))
-          } else {
-            "{}"
-          }
-          # JSON-encoded strings cannot contain a literal "</script" sequence
-          # without breaking the closing tag parser; escape the forward slash.
-          json_str <- gsub("</", "<\\\\/", json_str, fixed = TRUE)
-          data_script <- htmltools::tags$script(
-            type = "application/json",
-            id   = json_id,
-            htmltools::HTML(json_str))
+                    # Encode the per-token map as a hidden JSON <script> block. Each
+                    # token maps to an array of row arrays (dataframe="values" -> rows
+                    # as nested arrays, matching what dtApi.rows.add() consumes).
+                    # NA encoded as JSON null; DT renders null as an empty cell.
+                    json_id <- paste0(container_id, "_data")
+                    json_str <- if (length(token_map) > 0L) {
+                        as.character(jsonlite::toJSON(token_map, dataframe = "values",
+                            na = "null", auto_unbox = FALSE))
+                    } else {
+                        "{}"
+                    }
+                    # JSON-encoded strings cannot contain a literal "</script" sequence
+                    # without breaking the closing tag parser; escape the forward slash.
+                    json_str <- gsub("</", "<\\\\/", json_str, fixed = TRUE)
+                    data_script <- htmltools::tags$script(
+                        type = "application/json",
+                        id   = json_id,
+                        htmltools::HTML(json_str))
 
-          # Summary DT: clickable first-column cells.
-          summary_dtbl <- .dt_tbl(summary_section, caption = caption_summary)
-          summary_dtbl$x$options$initComplete <- htmlwidgets::JS(
-            "function() {",
-            "  var tbl = this.api().table().body();",
-            "  var cells = tbl.querySelectorAll('td:first-child');",
-            sprintf("  var dataEl = document.getElementById('%s');", json_id),
-            "  var tokenMap = {};",
-            "  if (dataEl) {",
-            "    try { tokenMap = JSON.parse(dataEl.textContent || '{}'); }",
-            "    catch (e) { tokenMap = {}; }",
-            "  }",
-            "  cells.forEach(function(c) {",
-            "    var val0 = c.textContent.trim();",
-            "    if (val0 === 'missing/unclassified') return;",
-            # Hide non-clickable behaviour for tokens not present in tokenMap
-            # (defensive; zero-count rows are pre-filtered at section build).
-            "    if (!Object.prototype.hasOwnProperty.call(tokenMap, val0)) return;",
-            "    c.style.cursor = 'pointer';",
-            "    c.style.textDecoration = 'underline';",
-            "    c.style.color = '#0279EE';",
-            "    c.addEventListener('click', function() {",
-            "      var val = this.textContent.trim();",
-            "      if (!Object.prototype.hasOwnProperty.call(tokenMap, val)) return;",
-            sprintf("      var container = document.getElementById('%s');", container_id),
-            "      if (!container) return;",
-            "      var bodyTable = container.querySelector('.dataTables_scrollBody table');",
-            "      if (!bodyTable) {",
-            "        var allTables = container.querySelectorAll('table');",
-            "        bodyTable = allTables[allTables.length - 1];",
-            "      }",
-            "      var dtApi = bodyTable ? new $.fn.dataTable.Api(bodyTable) : null;",
-            "      if (dtApi && dtApi.context.length === 0) dtApi = null;",
-            "      if (!dtApi) return;",
-            "      var rows = tokenMap[val] || [];",
-            "      dtApi.clear();",
-            "      if (rows.length) dtApi.rows.add(rows);",
-            # Reset to page 0 (top) on every new token click -- predictable
-            # behaviour matching user expectation that a new token starts
-            # at the top of its ranking.
-            "      dtApi.page(0).draw();",
-            "      container.style.display = 'block';",
-            "      dtApi.columns.adjust();",
-            "      var n = rows.length;",
-            "      var nFmt = n.toLocaleString();",
-            sprintf("      var v = document.getElementById('%s_value');", container_id),
-            sprintf("      var ct = document.getElementById('%s_count');", container_id),
-            "      if (v)  v.textContent  = val;",
-            "      if (ct) ct.textContent = nFmt + ' variant' + (n === 1 ? '' : 's');",
-            "    });",
-            "  });",
-            "}")
+                    # Summary DT: clickable first-column cells.
+                    summary_dtbl <- .dt_tbl(summary_section, caption = caption_summary)
+                    summary_dtbl$x$options$initComplete <- htmlwidgets::JS(
+                        "function() {",
+                        "  var tbl = this.api().table().body();",
+                        "  var cells = tbl.querySelectorAll('td:first-child');",
+                        sprintf("  var dataEl = document.getElementById('%s');", json_id),
+                        "  var tokenMap = {};",
+                        "  if (dataEl) {",
+                        "    try { tokenMap = JSON.parse(dataEl.textContent || '{}'); }",
+                        "    catch (e) { tokenMap = {}; }",
+                        "  }",
+                        "  cells.forEach(function(c) {",
+                        "    var val0 = c.textContent.trim();",
+                        "    if (val0 === 'missing/unclassified') return;",
+                        # Hide non-clickable behaviour for tokens not present in tokenMap
+                        # (defensive; zero-count rows are pre-filtered at section build).
+                        "    if (!Object.prototype.hasOwnProperty.call(tokenMap, val0)) return;",
+                        "    c.style.cursor = 'pointer';",
+                        "    c.style.textDecoration = 'underline';",
+                        "    c.style.color = '#0279EE';",
+                        "    c.addEventListener('click', function() {",
+                        "      var val = this.textContent.trim();",
+                        "      if (!Object.prototype.hasOwnProperty.call(tokenMap, val)) return;",
+                        sprintf("      var container = document.getElementById('%s');", container_id),
+                        "      if (!container) return;",
+                        "      var bodyTable = container.querySelector('.dataTables_scrollBody table');",
+                        "      if (!bodyTable) {",
+                        "        var allTables = container.querySelectorAll('table');",
+                        "        bodyTable = allTables[allTables.length - 1];",
+                        "      }",
+                        "      var dtApi = bodyTable ? new $.fn.dataTable.Api(bodyTable) : null;",
+                        "      if (dtApi && dtApi.context.length === 0) dtApi = null;",
+                        "      if (!dtApi) return;",
+                        "      var rows = tokenMap[val] || [];",
+                        "      dtApi.clear();",
+                        "      if (rows.length) dtApi.rows.add(rows);",
+                        # Reset to page 0 (top) on every new token click -- predictable
+                        # behaviour matching user expectation that a new token starts
+                        # at the top of its ranking.
+                        "      dtApi.page(0).draw();",
+                        "      container.style.display = 'block';",
+                        "      dtApi.columns.adjust();",
+                        "      var n = rows.length;",
+                        "      var nFmt = n.toLocaleString();",
+                        sprintf("      var v = document.getElementById('%s_value');", container_id),
+                        sprintf("      var ct = document.getElementById('%s_count');", container_id),
+                        "      if (v)  v.textContent  = val;",
+                        "      if (ct) ct.textContent = nFmt + ' variant' + (n === 1 ? '' : 's');",
+                        "    });",
+                        "  });",
+                        "}")
 
-          # ------------------------------------------------------------------
-          # Panel wrapper: cream background + 4px yellow left edge accent +
-          # Close button. The panel is hidden at build time via the detail
-          # DT's initComplete; clicking a summary token shows it. The
-          # per-token JSON <script> block lives INSIDE the panel so it's
-          # carried along with the panel in the final HTML.
-          # ------------------------------------------------------------------
-          panel_tag <- htmltools::tags$div(
-            id    = container_id,
-            style = paste0("display:none;",
-                           " margin-top:12px;",
-                           " background:#FAF9F3;",
-                           " border-left:4px solid #E9ED4C;",
-                           " border-radius:6px;",
-                           " padding:14px 16px;"),
-            # Header row: title (left, dynamic) + Close button (right).
-            htmltools::tags$div(
-              style = paste0("display:flex; align-items:center;",
-                             " justify-content:space-between;",
-                             " margin-bottom:10px;"),
-              htmltools::tags$div(
-                style = sprintf("font-size:15px; font-weight:bold; color:%s;", "#0279EE"),
-                sprintf("%s = ", header_col_label),
-                htmltools::tags$span(id = paste0(container_id, "_value"),
-                                     htmltools::HTML("&hellip;")),
-                htmltools::tags$span("  |  ",
-                                     style = "color:#888; font-weight:normal;"),
-                htmltools::tags$span(id = paste0(container_id, "_count"),
-                                     style = "font-weight:bold;",
-                                     htmltools::HTML("&hellip;"))),
-              htmltools::tags$button(
-                id    = paste0(container_id, "_close"),
-                type  = "button",
-                style = paste0("background:transparent; border:1px solid #ccc;",
-                               " border-radius:4px; padding:4px 10px;",
-                               " cursor:pointer; font-size:12px; color:#555;"),
-                htmltools::HTML("&times; Close"))),
-            if (!is.null(cap_note))
-              htmltools::tags$div(
-                style = paste0("font-size:11.5px; color:#666;",
-                               " font-style:italic; margin-bottom:8px;"),
-                cap_note),
-            data_script,
-            detail_dtbl)
+                    # ------------------------------------------------------------------
+                    # Panel wrapper: cream background + 4px yellow left edge accent +
+                    # Close button. The panel is hidden at build time via the detail
+                    # DT's initComplete; clicking a summary token shows it. The
+                    # per-token JSON <script> block lives INSIDE the panel so it's
+                    # carried along with the panel in the final HTML.
+                    # ------------------------------------------------------------------
+                    panel_tag <- htmltools::tags$div(
+                        id    = container_id,
+                        style = paste0("display:none;",
+                            " margin-top:12px;",
+                            " background:#FAF9F3;",
+                            " border-left:4px solid #E9ED4C;",
+                            " border-radius:6px;",
+                            " padding:14px 16px;"),
+                        # Header row: title (left, dynamic) + Close button (right).
+                        htmltools::tags$div(
+                            style = paste0("display:flex; align-items:center;",
+                                " justify-content:space-between;",
+                                " margin-bottom:10px;"),
+                            htmltools::tags$div(
+                                style = sprintf("font-size:15px; font-weight:bold; color:%s;", "#0279EE"),
+                                sprintf("%s = ", header_col_label),
+                                htmltools::tags$span(id = paste0(container_id, "_value"),
+                                    htmltools::HTML("&hellip;")),
+                                htmltools::tags$span("  |  ",
+                                    style = "color:#888; font-weight:normal;"),
+                                htmltools::tags$span(id = paste0(container_id, "_count"),
+                                    style = "font-weight:bold;",
+                                    htmltools::HTML("&hellip;"))),
+                            htmltools::tags$button(
+                                id    = paste0(container_id, "_close"),
+                                type  = "button",
+                                style = paste0("background:transparent; border:1px solid #ccc;",
+                                    " border-radius:4px; padding:4px 10px;",
+                                    " cursor:pointer; font-size:12px; color:#555;"),
+                                htmltools::HTML("&times; Close"))),
+                        if (!is.null(cap_note))
+                            htmltools::tags$div(
+                                style = paste0("font-size:11.5px; color:#666;",
+                                    " font-style:italic; margin-bottom:8px;"),
+                                cap_note),
+                        data_script,
+                        detail_dtbl)
 
-          list(summary_dtbl = summary_dtbl,
-               panel_tag    = panel_tag,
-               container_id = container_id)
-        }
+                    list(summary_dtbl = summary_dtbl,
+                        panel_tag    = panel_tag,
+                        container_id = container_id)
+                }
 
-        # --- Drill-down build (CLIN_SIG / IMPACT / Variant_Classification) ---
-        # Each entry below drives one drill-down pair: a clickable summary DT (the
-        # category section) plus a hidden detail DT showing the underlying variant
-        # rows (curated column set). The detail rows are filtered to non-missing
-        # values of the click-target column; rows where the filter column is
-        # NA/"" can never be matched by the regex search anyway, so dropping them
-        # keeps the detail table compact. Adding a new drill-down = adding one
-        # entry here.
-        dd_specs <- list(
-          clin_sig = list(
-            section_key = "clin_sig", filter_col = "CLIN_SIG",
-            container = "gvr_clin_detail",
-            cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
-                     "gnomADe_AF", "Variant_Classification",
-                     "Tumor_Sample_Barcode"),
-            cap_summary  = "Clinical significance (click a token to see variants)",
-            header_label = "CLIN_SIG"),
-          impact = list(
-            section_key = "impact", filter_col = "IMPACT",
-            container = "gvr_impact_detail",
-            cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
-                     "gnomADe_AF", "Variant_Classification",
-                     "Tumor_Sample_Barcode"),
-            cap_summary  = "Functional impact (click a level to see variants)",
-            header_label = "IMPACT"),
-          vc = list(
-            section_key = "variant_classification",
-            filter_col = "Variant_Classification",
-            container = "gvr_vc_detail",
-            cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
-                     "gnomADe_AF", "Variant_Classification",
-                     "Tumor_Sample_Barcode"),
-            cap_summary  = "Variant classification (click a class to see variants)",
-            header_label = "Variant_Classification"),
-          # vN+7: Top genes becomes a 4th clickable. Click handler filters detail
-          # by exact Hugo_Symbol match.
-          top_genes = list(
-            section_key = "top_genes", filter_col = "Hugo_Symbol",
-            container = "gvr_topgenes_detail",
-            cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
-                     "gnomADe_AF", "Variant_Classification",
-                     "Tumor_Sample_Barcode"),
-            cap_summary  = "Top genes (click a symbol to see variants)",
-            header_label = "Hugo_Symbol"))
+                # --- Drill-down build (CLIN_SIG / IMPACT / Variant_Classification) ---
+                # Each entry below drives one drill-down pair: a clickable summary DT (the
+                # category section) plus a hidden detail DT showing the underlying variant
+                # rows (curated column set). The detail rows are filtered to non-missing
+                # values of the click-target column; rows where the filter column is
+                # NA/"" can never be matched by the regex search anyway, so dropping them
+                # keeps the detail table compact. Adding a new drill-down = adding one
+                # entry here.
+                dd_specs <- list(
+                    clin_sig = list(
+                        section_key = "clin_sig", filter_col = "CLIN_SIG",
+                        container = "gvr_clin_detail",
+                        cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
+                            "gnomADe_AF", "Variant_Classification",
+                            "Tumor_Sample_Barcode"),
+                        cap_summary  = "Clinical significance (click a token to see variants)",
+                        header_label = "CLIN_SIG"),
+                    impact = list(
+                        section_key = "impact", filter_col = "IMPACT",
+                        container = "gvr_impact_detail",
+                        cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
+                            "gnomADe_AF", "Variant_Classification",
+                            "Tumor_Sample_Barcode"),
+                        cap_summary  = "Functional impact (click a level to see variants)",
+                        header_label = "IMPACT"),
+                    vc = list(
+                        section_key = "variant_classification",
+                        filter_col = "Variant_Classification",
+                        container = "gvr_vc_detail",
+                        cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
+                            "gnomADe_AF", "Variant_Classification",
+                            "Tumor_Sample_Barcode"),
+                        cap_summary  = "Variant classification (click a class to see variants)",
+                        header_label = "Variant_Classification"),
+                    # vN+7: Top genes becomes a 4th clickable. Click handler filters detail
+                    # by exact Hugo_Symbol match.
+                    top_genes = list(
+                        section_key = "top_genes", filter_col = "Hugo_Symbol",
+                        container = "gvr_topgenes_detail",
+                        cols = c("Hugo_Symbol", "dbSNP_RS", "CLIN_SIG", "IMPACT",
+                            "gnomADe_AF", "Variant_Classification",
+                            "Tumor_Sample_Barcode"),
+                        cap_summary  = "Top genes (click a symbol to see variants)",
+                        header_label = "Hugo_Symbol"))
 
-        # ----------------------------------------------------------------
-        # Adaptive build: classify cohort size, then build the per-section
-        # detail data accordingly.
-        #   small  -> full detail (current behaviour, after non-missing filter)
-        #   medium -> drop low-information rows per section
-        #             (MODIFIER for IMPACT; Intron for VC; missing for CLIN_SIG
-        #             which is already filtered out by the non-missing step);
-        #             additionally cap VC detail at .HTML_SMALL_MAX (50k)
-        #             rows ordered by IMPACT severity, since after dropping
-        #             Intron the remaining classes can still exceed the cap.
-        #   large  -> no detail tables at all; dd_map stays NULL and the
-        #             tables branch falls through to plain summary tables.
-        # ----------------------------------------------------------------
-        # vN+7: composite ranking helper -- IMPACT > nsamp > gnomADe_AF >
-        # genomic position. Returns integer order over rows of `d`. Sample
-        # count is precomputed per locus (Chromosome+Start_Position+
-        # Reference_Allele+Tumor_Seq_Allele2) so all drill-downs share it.
-        .impact_rank <- function(v) {
-          ord <- c("HIGH" = 1L, "MODERATE" = 2L, "LOW" = 3L, "MODIFIER" = 4L)
-          r <- ord[as.character(v)]
-          r[is.na(r)] <- 5L   # unknown impact sorts last
-          as.integer(r)
-        }
-        .gvr_rank_variants <- function(d) {
-          ir <- .impact_rank(d$IMPACT)
-          nsamp <- if (".__nsamp__" %in% names(d)) d$.__nsamp__ else rep(0L, nrow(d))
-          # why: as.numeric() on gnomADe_AF (character with '' for missing); coercion warnings are the intended path — NAs propagate as 'no AF available'.
-          gaf <- if ("gnomADe_AF" %in% names(d)) suppressWarnings(as.numeric(d$gnomADe_AF))
-                  else rep(NA_real_, nrow(d))
-          chr <- if ("Chromosome" %in% names(d)) as.character(d$Chromosome) else rep("", nrow(d))
-          # why: as.integer() on Start_Position (character pre-MAF); non-numeric becomes NA which is tolerated downstream.
-          pos <- if ("Start_Position" %in% names(d)) suppressWarnings(as.integer(d$Start_Position))
-                  else rep(0L, nrow(d))
-          order(ir, -nsamp, gaf, chr, pos, na.last = TRUE)
-        }
+                # ----------------------------------------------------------------
+                # Adaptive build: classify cohort size, then build the per-section
+                # detail data accordingly.
+                #   small  -> full detail (current behaviour, after non-missing filter)
+                #   medium -> drop low-information rows per section
+                #             (MODIFIER for IMPACT; Intron for VC; missing for CLIN_SIG
+                #             which is already filtered out by the non-missing step);
+                #             additionally cap VC detail at .HTML_SMALL_MAX (50k)
+                #             rows ordered by IMPACT severity, since after dropping
+                #             Intron the remaining classes can still exceed the cap.
+                #   large  -> no detail tables at all; dd_map stays NULL and the
+                #             tables branch falls through to plain summary tables.
+                # ----------------------------------------------------------------
+                # vN+7: composite ranking helper -- IMPACT > nsamp > gnomADe_AF >
+                # genomic position. Returns integer order over rows of `d`. Sample
+                # count is precomputed per locus (Chromosome+Start_Position+
+                # Reference_Allele+Tumor_Seq_Allele2) so all drill-downs share it.
+                .impact_rank <- function(v) {
+                    ord <- c("HIGH" = 1L, "MODERATE" = 2L, "LOW" = 3L, "MODIFIER" = 4L)
+                    r <- ord[as.character(v)]
+                    r[is.na(r)] <- 5L   # unknown impact sorts last
+                    as.integer(r)
+                }
+                .gvr_rank_variants <- function(d) {
+                    ir <- .impact_rank(d$IMPACT)
+                    nsamp <- if (".__nsamp__" %in% names(d)) d$.__nsamp__ else rep(0L, nrow(d))
+                    # why: as.numeric() on gnomADe_AF (character with '' for missing); coercion warnings are the intended path — NAs propagate as 'no AF available'.
+                    gaf <- if ("gnomADe_AF" %in% names(d)) suppressWarnings(as.numeric(d$gnomADe_AF))
+                    else rep(NA_real_, nrow(d))
+                    chr <- if ("Chromosome" %in% names(d)) as.character(d$Chromosome) else rep("", nrow(d))
+                    # why: as.integer() on Start_Position (character pre-MAF); non-numeric becomes NA which is tolerated downstream.
+                    pos <- if ("Start_Position" %in% names(d)) suppressWarnings(as.integer(d$Start_Position))
+                    else rep(0L, nrow(d))
+                    order(ir, -nsamp, gaf, chr, pos, na.last = TRUE)
+                }
 
-        # vN+7: precompute distinct-sample count per locus on `dt` (once).
-        # Falls back to (Chromosome,Start_Position) if allele cols missing.
-        if (!(".__nsamp__" %in% names(dt))) {
-          key_cols <- intersect(c("Chromosome", "Start_Position",
-                                  "Reference_Allele", "Tumor_Seq_Allele2"),
-                                names(dt))
-          if (length(key_cols) < 2L) {
-            dt[, .__nsamp__ := 1L]   # cannot key variants; tiebreak inert
-          } else {
-            dt[, .__nsamp__ := data.table::uniqueN(.__sample__),
-               by = key_cols]
-          }
-        }
+                # vN+7: precompute distinct-sample count per locus on `dt` (once).
+                # Falls back to (Chromosome,Start_Position) if allele cols missing.
+                if (!(".__nsamp__" %in% names(dt))) {
+                    key_cols <- intersect(c("Chromosome", "Start_Position",
+                        "Reference_Allele", "Tumor_Seq_Allele2"),
+                    names(dt))
+                    if (length(key_cols) < 2L) {
+                        dt[, .__nsamp__ := 1L]   # cannot key variants; tiebreak inert
+                    } else {
+                        dt[, .__nsamp__ := data.table::uniqueN(.__sample__),
+                            by = key_cols]
+                    }
+                }
 
-        # vN+7 (refined): per-TOKEN cap. Each clickable category emits one
-        # detail JSON formed by concatenating per-token slices, each slice
-        # capped at .HTML_TOPK_CAP rows. The click handler still uses the
-        # existing token-bounded regex search to surface only the clicked
-        # token's rows, so no JS changes are needed.
-        #
-        # Payload budget: total embedded rows across all 4 categories is
-        # bounded by sum_over_tokens(min(pool_size, cap)). If projection
-        # exceeds .HTML_PAYLOAD_BUDGET the drill-downs are dropped and the
-        # tables fall back to plain summary view -- same behaviour as the
-        # legacy 'large' band but driven by actual payload size, not
-        # cohort size. With the standard token vocabularies (CLIN_SIG ~18,
-        # IMPACT 4, VC ~17, top genes 20) the asymptote is ~60k rows,
-        # well under the budget, so the fallback only triggers for unusual
-        # parameter choices (e.g. top_n_genes >> 20).
-        .HTML_TOPK_CAP <- 1000L
+                # vN+7 (refined): per-TOKEN cap. Each clickable category emits one
+                # detail JSON formed by concatenating per-token slices, each slice
+                # capped at .HTML_TOPK_CAP rows. The click handler still uses the
+                # existing token-bounded regex search to surface only the clicked
+                # token's rows, so no JS changes are needed.
+                #
+                # Payload budget: total embedded rows across all 4 categories is
+                # bounded by sum_over_tokens(min(pool_size, cap)). If projection
+                # exceeds .HTML_PAYLOAD_BUDGET the drill-downs are dropped and the
+                # tables fall back to plain summary view -- same behaviour as the
+                # legacy 'large' band but driven by actual payload size, not
+                # cohort size. With the standard token vocabularies (CLIN_SIG ~18,
+                # IMPACT 4, VC ~17, top genes 20) the asymptote is ~60k rows,
+                # well under the budget, so the fallback only triggers for unusual
+                # parameter choices (e.g. top_n_genes >> 20).
+                .HTML_TOPK_CAP <- 1000L
 
-        # Per-category token enumeration -- exact same logic as the XLSX
-        # writer above so click and sheet semantics stay aligned.
-        # vN+10 Stage F: filter_fn callbacks dropped -- never called after
-        # .gvr_build_token_index replaced per-token .filter_fn() invocations.
-        .dd_token_specs <- list(
-          clin_sig = list(
-            tokens = {
-              cs_t <- as.character(sections$clin_sig$CLIN_SIG)
-              cs_t[cs_t != "missing/unclassified"]
-            }),
-          impact = list(
-            tokens = as.character(sections$impact$IMPACT)),
-          vc = list(
-            tokens = as.character(sections$variant_classification$Variant_Classification)),
-          top_genes = list(
-            tokens = as.character(sections$top_genes$Hugo_Symbol)))
+                # Per-category token enumeration -- exact same logic as the XLSX
+                # writer above so click and sheet semantics stay aligned.
+                # vN+10 Stage F: filter_fn callbacks dropped -- never called after
+                # .gvr_build_token_index replaced per-token .filter_fn() invocations.
+                .dd_token_specs <- list(
+                    clin_sig = list(
+                        tokens = {
+                            cs_t <- as.character(sections$clin_sig$CLIN_SIG)
+                            cs_t[cs_t != "missing/unclassified"]
+                    }),
+                    impact = list(
+                        tokens = as.character(sections$impact$IMPACT)),
+                    vc = list(
+                        tokens = as.character(sections$variant_classification$Variant_Classification)),
+                    top_genes = list(
+                        tokens = as.character(sections$top_genes$Hugo_Symbol)))
 
-        # vN+9: build per-token row-index cache ONCE -- shared by .dd_project
-        # (payload size estimate) and .dd_build_cat (slice construction).
-        # Replaces two full-table passes per token with a single split() per
-        # category.
-        # vN+10: precompute global rank-of-row ONCE so .dd_build_cat's per-token
-        # loop sorts each pool with a single integer-key lookup instead of
-        # re-running .gvr_rank_variants() per token (was 23.6% of HTML writer
-        # cost in Rprof). The rank keys depend only on row content, not on which
-        # token's pool we're in, so this is mathematically equivalent.
-        .html_rank_of_row <- {
-          .__rk_o <- .gvr_rank_variants(dt)
-          .__rk_r <- integer(nrow(dt))
-          .__rk_r[.__rk_o] <- seq_len(nrow(dt))
-          .__rk_r
-        }
+                # vN+9: build per-token row-index cache ONCE -- shared by .dd_project
+                # (payload size estimate) and .dd_build_cat (slice construction).
+                # Replaces two full-table passes per token with a single split() per
+                # category.
+                # vN+10: precompute global rank-of-row ONCE so .dd_build_cat's per-token
+                # loop sorts each pool with a single integer-key lookup instead of
+                # re-running .gvr_rank_variants() per token (was 23.6% of HTML writer
+                # cost in Rprof). The rank keys depend only on row content, not on which
+                # token's pool we're in, so this is mathematically equivalent.
+                .html_rank_of_row <- {
+                    .__rk_o <- .gvr_rank_variants(dt)
+                    .__rk_r <- integer(nrow(dt))
+                    .__rk_r[.__rk_o] <- seq_len(nrow(dt))
+                    .__rk_r
+                }
 
-        .gvr_token_idx_html <- .gvr_build_token_index(dt, .dd_token_specs)
+                .gvr_token_idx_html <- .gvr_build_token_index(dt, .dd_token_specs)
 
-        # Project the embed payload first to decide on fallback.
-        .dd_project <- function() {
-          tot <- 0L
-          for (cat_nm in names(dd_specs)) {
-            spec <- .dd_token_specs[[cat_nm]]
-            if (is.null(spec) || length(spec$tokens) == 0L) next
-            idx_for_cat <- .gvr_token_idx_html[[cat_nm]]
-            for (tok in spec$tokens) {
-              n_tok <- length(idx_for_cat[[as.character(tok)]])
-              tot <- tot + min(n_tok, .HTML_TOPK_CAP)
-            }
-          }
-          tot
-        }
-        payload_proj <- .dd_project()
-        budget_exceeded <- payload_proj > .HTML_PAYLOAD_BUDGET
+                # Project the embed payload first to decide on fallback.
+                .dd_project <- function() {
+                    tot <- 0L
+                    for (cat_nm in names(dd_specs)) {
+                        spec <- .dd_token_specs[[cat_nm]]
+                        if (is.null(spec) || length(spec$tokens) == 0L) next
+                        idx_for_cat <- .gvr_token_idx_html[[cat_nm]]
+                        for (tok in spec$tokens) {
+                            n_tok <- length(idx_for_cat[[as.character(tok)]])
+                            tot <- tot + min(n_tok, .HTML_TOPK_CAP)
+                        }
+                    }
+                    tot
+                }
+                payload_proj <- .dd_project()
+                budget_exceeded <- payload_proj > .HTML_PAYLOAD_BUDGET
 
-        # Build per-category detail_df: concatenation of per-token top-K slices.
-        .dd_build_cat <- function(cat_nm) {
-          # vN+7.1: return a per-TOKEN map (named list, token -> data.frame
-          # of top-K ranked rows). The XLSX writer above produces the
-          # equivalent slice with `cap = Inf`; the per-token order is
-          # identical because both call sites apply .gvr_rank_variants() to
-          # the same per-token mask. This guarantees CS7: XLSX `<PFX>_<tok>`
-          # row 1 == HTML token_map[tok] row 1.
-          sp <- dd_specs[[cat_nm]]
-          spec <- .dd_token_specs[[cat_nm]]
-          cols <- intersect(sp$cols, names(dt))
-          if (is.null(spec) || length(spec$tokens) == 0L) {
-            return(list(token_map = list(), n_pre_total = 0L,
-                        any_capped = FALSE, n_tokens = 0L,
-                        n_nonempty = 0L))
-          }
-          token_map <- list()
-          n_pre_total <- 0L
-          any_capped  <- FALSE
-          n_nonempty  <- 0L
-          idx_for_cat <- .gvr_token_idx_html[[cat_nm]]
-          for (i in seq_along(spec$tokens)) {
-            tok <- spec$tokens[[i]]
-            row_idx <- idx_for_cat[[as.character(tok)]]
-            n_tok <- length(row_idx)
-            n_pre_total <- n_pre_total + n_tok
-            if (n_tok == 0L) next
-            # vN+10: rank each pool by precomputed global key, then cap.
-            ord_idx <- row_idx[order(.html_rank_of_row[row_idx])]
-            if (n_tok > .HTML_TOPK_CAP) {
-              ord_idx <- ord_idx[seq_len(.HTML_TOPK_CAP)]
-              any_capped <- TRUE
-            }
-            sub <- dt[ord_idx]
-            # Project to the rendered 7 columns. No dedup, no concat: each
-            # token's slice is independent and carries its own canonical
-            # ranking.
-            slice_df <- as.data.frame(sub[, ..cols], stringsAsFactors = FALSE)
-            token_map[[as.character(tok)]] <- slice_df
-            n_nonempty <- n_nonempty + 1L
-          }
-          list(token_map = token_map, n_pre_total = n_pre_total,
-               any_capped = any_capped, n_tokens = length(spec$tokens),
-               n_nonempty = n_nonempty)
-        }
+                # Build per-category detail_df: concatenation of per-token top-K slices.
+                .dd_build_cat <- function(cat_nm) {
+                    # vN+7.1: return a per-TOKEN map (named list, token -> data.frame
+                    # of top-K ranked rows). The XLSX writer above produces the
+                    # equivalent slice with `cap = Inf`; the per-token order is
+                    # identical because both call sites apply .gvr_rank_variants() to
+                    # the same per-token mask. This guarantees CS7: XLSX `<PFX>_<tok>`
+                    # row 1 == HTML token_map[tok] row 1.
+                    sp <- dd_specs[[cat_nm]]
+                    spec <- .dd_token_specs[[cat_nm]]
+                    cols <- intersect(sp$cols, names(dt))
+                    if (is.null(spec) || length(spec$tokens) == 0L) {
+                        return(list(token_map = list(), n_pre_total = 0L,
+                            any_capped = FALSE, n_tokens = 0L,
+                            n_nonempty = 0L))
+                    }
+                    token_map <- list()
+                    n_pre_total <- 0L
+                    any_capped  <- FALSE
+                    n_nonempty  <- 0L
+                    idx_for_cat <- .gvr_token_idx_html[[cat_nm]]
+                    for (i in seq_along(spec$tokens)) {
+                        tok <- spec$tokens[[i]]
+                        row_idx <- idx_for_cat[[as.character(tok)]]
+                        n_tok <- length(row_idx)
+                        n_pre_total <- n_pre_total + n_tok
+                        if (n_tok == 0L) next
+                        # vN+10: rank each pool by precomputed global key, then cap.
+                        ord_idx <- row_idx[order(.html_rank_of_row[row_idx])]
+                        if (n_tok > .HTML_TOPK_CAP) {
+                            ord_idx <- ord_idx[seq_len(.HTML_TOPK_CAP)]
+                            any_capped <- TRUE
+                        }
+                        sub <- dt[ord_idx]
+                        # Project to the rendered 7 columns. No dedup, no concat: each
+                        # token's slice is independent and carries its own canonical
+                        # ranking.
+                        slice_df <- as.data.frame(sub[, ..cols], stringsAsFactors = FALSE)
+                        token_map[[as.character(tok)]] <- slice_df
+                        n_nonempty <- n_nonempty + 1L
+                    }
+                    list(token_map = token_map, n_pre_total = n_pre_total,
+                        any_capped = any_capped, n_tokens = length(spec$tokens),
+                        n_nonempty = n_nonempty)
+                }
 
-        dd_map <- if (budget_exceeded) NULL else lapply(names(dd_specs), function(cat_nm) {
-          sp <- dd_specs[[cat_nm]]
-          built <- .dd_build_cat(cat_nm)
-          # If no token has any matching variants (e.g. degenerate cohort),
-          # skip the drill-down entirely -- the section falls back to its
-          # plain summary table via the dd_map[[special]] is.null branch.
-          if (built$n_nonempty == 0L) return(NULL)
-          cap_note <- if (built$any_capped) sprintf(
-            "Each row group is capped at %s variants, ranked by IMPACT severity, sample count, then rarity (gnomADe_AF). The Excel workbook has the full uncapped data per group.",
-            format(.HTML_TOPK_CAP, big.mark = ",")) else NULL
-          .mk_drilldown(sections[[sp$section_key]], built$token_map,
+                dd_map <- if (budget_exceeded) NULL else lapply(names(dd_specs), function(cat_nm) {
+                    sp <- dd_specs[[cat_nm]]
+                    built <- .dd_build_cat(cat_nm)
+                    # If no token has any matching variants (e.g. degenerate cohort),
+                    # skip the drill-down entirely -- the section falls back to its
+                    # plain summary table via the dd_map[[special]] is.null branch.
+                    if (built$n_nonempty == 0L) return(NULL)
+                    cap_note <- if (built$any_capped) sprintf(
+                        "Each row group is capped at %s variants, ranked by IMPACT severity, sample count, then rarity (gnomADe_AF). The Excel workbook has the full uncapped data per group.",
+                        format(.HTML_TOPK_CAP, big.mark = ",")) else NULL
+                    .mk_drilldown(sections[[sp$section_key]], built$token_map,
                         sp$container, sp$filter_col,
                         sp$cap_summary, sp$header_label,
                         cap_note = cap_note)
-        })
-        if (!is.null(dd_map)) names(dd_map) <- names(dd_specs)
+                })
+                if (!is.null(dd_map)) names(dd_map) <- names(dd_specs)
 
-        tbl_specs <- .build_tbl_specs(sections, html = TRUE)
+                tbl_specs <- .build_tbl_specs(sections, html = TRUE)
 
-          .tables_head <- function() {
-            head <- list(sec_h("Tables"))
-            if (is.null(dd_map)) {
-              banner <- htmltools::tags$div(
-                style = paste0("margin:10px 0 14px 0; padding:10px 14px;",
-                               " background:#FAF9F3; border-left:4px solid #FF9400;",
-                               " border-radius:6px; font-size:12.5px; color:#333;"),
-                htmltools::tags$strong(sprintf(
-                  "Cohort has %s variants. ",
-                  format(meta$n_total, big.mark = ","))),
-                "Drill-down detail tables are disabled because the projected ",
-                "inline payload would exceed the HTML self-contain budget. ",
-                "The full per-variant data is available in the Excel workbook ",
-                "(one sheet per token).")
-              head <- c(head, list(banner))
-            }
-            head
-          }
+                .tables_head <- function() {
+                    head <- list(sec_h("Tables"))
+                    if (is.null(dd_map)) {
+                        banner <- htmltools::tags$div(
+                            style = paste0("margin:10px 0 14px 0; padding:10px 14px;",
+                                " background:#FAF9F3; border-left:4px solid #FF9400;",
+                                " border-radius:6px; font-size:12.5px; color:#333;"),
+                            htmltools::tags$strong(sprintf(
+                                "Cohort has %s variants. ",
+                                format(meta$n_total, big.mark = ","))),
+                            "Drill-down detail tables are disabled because the projected ",
+                            "inline payload would exceed the HTML self-contain budget. ",
+                            "The full per-variant data is available in the Excel workbook ",
+                            "(one sheet per token).")
+                        head <- c(head, list(banner))
+                    }
+                    head
+                }
 
-        tables <- htmltools::tagList(c(
-          .tables_head(),
-          lapply(tbl_specs, function(sp) {
-            sec_dt <- if (!is.null(sp$per_sample_key))
-                        sections$top_genes_per_sample[[sp$per_sample_key]]
-                      else sections[[sp$s]]
-            if (!is.null(sp$special) && !is.null(dd_map) && !is.null(dd_map[[sp$special]])) {
-              # Drill-down section (small + medium bands): clickable summary
-              # table on top, cream panel with dynamic header + detail table
-              # below. The panel is hidden until a summary cell is clicked.
-              dd <- dd_map[[sp$special]]
-              htmltools::tags$div(
-                style = "margin:14px 0 26px 0;",
-                htmltools::tags$h3(sp$t,
-                  style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
-                dd$summary_dtbl,
-                dd$panel_tag)
-            } else {
-              # Plain section (non-drill-down sections, OR drill-down sections
-              # falling through here in the large band: dd_map is NULL).
-              htmltools::tags$div(style = "margin:14px 0 26px 0;",
-                                  htmltools::tags$h3(sp$t,
+                tables <- htmltools::tagList(c(
+                    .tables_head(),
+                    lapply(tbl_specs, function(sp) {
+                        sec_dt <- if (!is.null(sp$per_sample_key))
+                            sections$top_genes_per_sample[[sp$per_sample_key]]
+                        else sections[[sp$s]]
+                        if (!is.null(sp$special) && !is.null(dd_map) && !is.null(dd_map[[sp$special]])) {
+                            # Drill-down section (small + medium bands): clickable summary
+                            # table on top, cream panel with dynamic header + detail table
+                            # below. The panel is hidden until a summary cell is clicked.
+                            dd <- dd_map[[sp$special]]
+                            htmltools::tags$div(
+                                style = "margin:14px 0 26px 0;",
+                                htmltools::tags$h3(sp$t,
                                     style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
-                                  .dt_tbl(sec_dt))
+                                dd$summary_dtbl,
+                                dd$panel_tag)
+                        } else {
+                            # Plain section (non-drill-down sections, OR drill-down sections
+                            # falling through here in the large band: dd_map is NULL).
+                            htmltools::tags$div(style = "margin:14px 0 26px 0;",
+                                htmltools::tags$h3(sp$t,
+                                    style = sprintf("color:%s; font-size:15px; margin:0 0 6px 0;", PHYLO_BLUE)),
+                                .dt_tbl(sec_dt))
+                        }
+                    })))
+
+                page <- htmltools::tags$div(
+                    style = paste0("max-width:1100px; margin:24px auto; padding:0 18px;",
+                        " font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"),
+                    header, cards, charts, tables,
+                    htmltools::tags$div(style = "margin-top:40px; color:#888; font-size:11px;",
+                        "Generated by germlinevaR \u00b7 gvr_summary()"))
+
+                # ---- write ---------------------------------------------------------------
+                # A composite page (HTML tags + several plotly/DT widgets) cannot go through
+                # htmlwidgets::saveWidget() (it expects ONE widget; dependency resolution
+                # fails on the plain tags). htmltools::save_html() handles arbitrary tag
+                # trees and writes the widget JS/CSS into a sidecar lib folder. For a single
+                # portable file we then inline that folder with pandoc
+                # (rmarkdown::pandoc_self_contained_html). If pandoc is unavailable we keep
+                # the sidecar form (<prefix>_report_files/) and flag it. All work happens
+                # under tempdir() (the S3-backed mount has no random-access / file locking);
+                # the caller shell-copies the finished artifact(s) out.
+                widget   <- htmltools::browsable(page)
+                base_nm  <- sub("\\.html$", "", basename(final_html))
+                files_nm <- paste0(base_nm, "_files")
+                work_dir <- file.path(tempdir(), paste0("gvrhtml_", as.integer(Sys.time())))
+                if (dir.exists(work_dir)) unlink(work_dir, recursive = TRUE)
+                dir.create(work_dir, showWarnings = FALSE, recursive = TRUE)
+
+                staged_html <- file.path(work_dir, basename(final_html))
+                # Suppress DT "data too big for client-side DataTables" warning via the
+                # DT.warn.size option (checked in DT::datatable's preRenderHook).
+                ow_dt <- options(DT.warn.size = FALSE)
+                htmltools::save_html(widget, staged_html, libdir = files_nm)
+                options(ow_dt)
+
+                # Strip the leading "<!DOCTYPE html>" before pandoc: pandoc treats the input
+                # as an HTML fragment and would otherwise escape the doctype into a visible
+                # "<p>&lt;!DOCTYPE html&gt;</p>" text node atop the self-contained page.
+                # Removing the line lets pandoc's --standalone wrapper emit one clean
+                # document. (Sidecar mode keeps the original file, so its doctype is fine.)
+                # Also inject a <title> tag (pandoc requires one; without it, a verbose
+                # warning is emitted: "This document format requires a nonempty <title>").
+                sc_html  <- file.path(work_dir, paste0(base_nm, ".selfcontained.html"))
+                sidecar  <- FALSE
+                ok_sc <- tryCatch(
+                    {
+                        if (isTRUE(.gvr_pandoc_ok())) {
+                            pre_html <- file.path(work_dir, paste0(base_nm, ".prepandoc.html"))
+                            raw <- paste(readLines(staged_html, warn = FALSE), collapse = "\n")
+                            raw <- sub("(?is)^\\s*<!DOCTYPE[^>]*>\\s*", "", raw, perl = TRUE)
+                            writeLines(raw, pre_html)
+                            # Bypass rmarkdown::pandoc_self_contained_html(): that helper
+                            # reads the input as `markdown_strict`, in which pandoc's parser
+                            # ignores HTML <head> entirely.  As a result any <title> we
+                            # injected into <head> is never seen, and pandoc emits the
+                            # "[WARNING] This document format requires a nonempty <title>"
+                            # message to stderr — which suppressWarnings / suppressMessages /
+                            # capture.output(type="message") cannot reliably catch because
+                            # the subprocess writes directly to fd 2.
+                            #
+                            # Call pandoc_convert() directly with:
+                            #   --metadata title=...  : satisfies pandoc's title requirement
+                            #                            via the metadata layer (read in any
+                            #                            format, including markdown_strict)
+                            #   --quiet               : pandoc's own flag for suppressing
+                            #                            WARNING / INFO messages at the source
+                            # The minimal template emits only $body$ so the body HTML is
+                            # passed through unmodified into the self-contained wrapper.
+                            tpl <- tempfile(fileext = ".html")
+                            writeLines(c(
+                                "<!DOCTYPE html>",
+                                "<html lang=\"en\">",
+                                "<head>",
+                                "<meta charset=\"utf-8\" />",
+                                "<title>$title$</title>",
+                                "</head>",
+                                "<body>",
+                                "$body$",
+                                "</body>",
+                                "</html>"
+                            ), tpl)
+                            on.exit(unlink(tpl), add = TRUE)
+                            from_fmt <- if (rmarkdown::pandoc_available("1.17")) "markdown_strict" else "markdown"
+                            rmarkdown::pandoc_convert(
+                                input   = pre_html,
+                                from    = from_fmt,
+                                output  = sc_html,
+                                options = c(if (rmarkdown::pandoc_available("2.19"))
+                                    c("--embed-resources", "--standalone")
+                                else "--self-contained",
+                                "--template", tpl,
+                                "--metadata", "title=germlinevaR Cohort Summary",
+                                "--quiet"))
+                            file.exists(sc_html) && file.info(sc_html)$size > 0
+                        } else FALSE
+                    },
+                    error = function(e) FALSE)
+
+                if (isTRUE(ok_sc)) {
+                    out_path <- sc_html
+                } else {
+                    sidecar  <- TRUE
+                    out_path <- staged_html
+                }
+                attr(out_path, "sidecar")   <- sidecar
+                attr(out_path, "files_dir") <- if (sidecar) file.path(work_dir, files_nm) else NA_character_
+                out_path
             }
-          })))
 
-        page <- htmltools::tags$div(
-          style = paste0("max-width:1100px; margin:24px auto; padding:0 18px;",
-                         " font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;"),
-          header, cards, charts, tables,
-          htmltools::tags$div(style = "margin-top:40px; color:#888; font-size:11px;",
-                              "Generated by germlinevaR \u00b7 gvr_summary()"))
+            html_name  <- sprintf("%s_report.html", file_prefix)
+            final_html <- file.path(out_subdir, html_name)
+            files_dest <- file.path(out_subdir, sprintf("%s_report_files", file_prefix))
+            if (file.exists(final_html) && isTRUE(verbose))
+                message(sprintf("  Overwriting existing HTML report: %s", final_html))
 
-        # ---- write ---------------------------------------------------------------
-        # A composite page (HTML tags + several plotly/DT widgets) cannot go through
-        # htmlwidgets::saveWidget() (it expects ONE widget; dependency resolution
-        # fails on the plain tags). htmltools::save_html() handles arbitrary tag
-        # trees and writes the widget JS/CSS into a sidecar lib folder. For a single
-        # portable file we then inline that folder with pandoc
-        # (rmarkdown::pandoc_self_contained_html). If pandoc is unavailable we keep
-        # the sidecar form (<prefix>_report_files/) and flag it. All work happens
-        # under tempdir() (the S3-backed mount has no random-access / file locking);
-        # the caller shell-copies the finished artifact(s) out.
-        widget   <- htmltools::browsable(page)
-        base_nm  <- sub("\\.html$", "", basename(final_html))
-        files_nm <- paste0(base_nm, "_files")
-        work_dir <- file.path(tempdir(), paste0("gvrhtml_", as.integer(Sys.time())))
-        if (dir.exists(work_dir)) unlink(work_dir, recursive = TRUE)
-        dir.create(work_dir, showWarnings = FALSE, recursive = TRUE)
-
-        staged_html <- file.path(work_dir, basename(final_html))
-        # Suppress DT "data too big for client-side DataTables" warning via the
-        # DT.warn.size option (checked in DT::datatable's preRenderHook).
-        ow_dt <- options(DT.warn.size = FALSE)
-        htmltools::save_html(widget, staged_html, libdir = files_nm)
-        options(ow_dt)
-
-        # Strip the leading "<!DOCTYPE html>" before pandoc: pandoc treats the input
-        # as an HTML fragment and would otherwise escape the doctype into a visible
-        # "<p>&lt;!DOCTYPE html&gt;</p>" text node atop the self-contained page.
-        # Removing the line lets pandoc's --standalone wrapper emit one clean
-        # document. (Sidecar mode keeps the original file, so its doctype is fine.)
-        # Also inject a <title> tag (pandoc requires one; without it, a verbose
-        # warning is emitted: "This document format requires a nonempty <title>").
-        sc_html  <- file.path(work_dir, paste0(base_nm, ".selfcontained.html"))
-        sidecar  <- FALSE
-        ok_sc <- tryCatch({
-          if (isTRUE(.gvr_pandoc_ok())) {
-            pre_html <- file.path(work_dir, paste0(base_nm, ".prepandoc.html"))
-            raw <- paste(readLines(staged_html, warn = FALSE), collapse = "\n")
-            raw <- sub("(?is)^\\s*<!DOCTYPE[^>]*>\\s*", "", raw, perl = TRUE)
-            writeLines(raw, pre_html)
-            # Bypass rmarkdown::pandoc_self_contained_html(): that helper
-            # reads the input as `markdown_strict`, in which pandoc's parser
-            # ignores HTML <head> entirely.  As a result any <title> we
-            # injected into <head> is never seen, and pandoc emits the
-            # "[WARNING] This document format requires a nonempty <title>"
-            # message to stderr — which suppressWarnings / suppressMessages /
-            # capture.output(type="message") cannot reliably catch because
-            # the subprocess writes directly to fd 2.
-            #
-            # Call pandoc_convert() directly with:
-            #   --metadata title=...  : satisfies pandoc's title requirement
-            #                            via the metadata layer (read in any
-            #                            format, including markdown_strict)
-            #   --quiet               : pandoc's own flag for suppressing
-            #                            WARNING / INFO messages at the source
-            # The minimal template emits only $body$ so the body HTML is
-            # passed through unmodified into the self-contained wrapper.
-            tpl <- tempfile(fileext = ".html")
-            writeLines(c(
-              "<!DOCTYPE html>",
-              "<html lang=\"en\">",
-              "<head>",
-              "<meta charset=\"utf-8\" />",
-              "<title>$title$</title>",
-              "</head>",
-              "<body>",
-              "$body$",
-              "</body>",
-              "</html>"
-            ), tpl)
-            on.exit(unlink(tpl), add = TRUE)
-            from_fmt <- if (rmarkdown::pandoc_available("1.17")) "markdown_strict" else "markdown"
-            rmarkdown::pandoc_convert(
-              input   = pre_html,
-              from    = from_fmt,
-              output  = sc_html,
-              options = c(if (rmarkdown::pandoc_available("2.19"))
-                            c("--embed-resources", "--standalone")
-                          else "--self-contained",
-                          "--template", tpl,
-                          "--metadata", "title=germlinevaR Cohort Summary",
-                          "--quiet"))
-            file.exists(sc_html) && file.info(sc_html)$size > 0
-          } else FALSE
-        }, error = function(e) FALSE)
-
-        if (isTRUE(ok_sc)) {
-          out_path <- sc_html
-        } else {
-          sidecar  <- TRUE
-          out_path <- staged_html
+            ok_html <- tryCatch(
+                {
+                    rendered <- .gvr_summary_html(sections, samples, meta, final_html, file_prefix)
+                    # vN+7.2: Portable copy out of tempdir() to final_html (and, in sidecar
+                    # mode, the _files/ folder). The renderer's internal work_dir is always
+                    # tempdir() because pandoc + htmlwidgets need real-FS random access, so
+                    # the copy here always runs (.gvr_finalize_to_dest handles direct
+                    # tempdir() == final_path case if both happen to coincide, which they do
+                    # not in practice).
+                    copied_html <- .gvr_finalize_to_dest(rendered, final_html, "HTML")
+                    if (isTRUE(attr(rendered, "sidecar"))) {
+                        # refresh any stale assets from a previous run, then copy the folder
+                        files_src <- attr(rendered, "files_dir")
+                        copied_dir <- .gvr_finalize_to_dest(files_src, files_dest, "HTML assets",
+                            recursive = TRUE)
+                        if (isTRUE(verbose))
+                            message(sprintf("  HTML report is NOT self-contained; assets in: %s", copied_dir))
+                    }
+                    file.exists(final_html) && file.info(final_html)$size > 0
+                },
+                error = function(e) {
+                    warning(sprintf("gvr_summary: HTML report failed: %s", conditionMessage(e)))
+                    FALSE
+                })
+            if (isTRUE(ok_html) && isTRUE(verbose)) message(sprintf("  HTML report written: %s", final_html))
         }
-        attr(out_path, "sidecar")   <- sidecar
-        attr(out_path, "files_dir") <- if (sidecar) file.path(work_dir, files_nm) else NA_character_
-        out_path
-      }
-
-      html_name  <- sprintf("%s_report.html", file_prefix)
-      final_html <- file.path(out_subdir, html_name)
-      files_dest <- file.path(out_subdir, sprintf("%s_report_files", file_prefix))
-      if (file.exists(final_html) && isTRUE(verbose))
-        message(sprintf("  Overwriting existing HTML report: %s", final_html))
-
-      ok_html <- tryCatch({
-        rendered <- .gvr_summary_html(sections, samples, meta, final_html, file_prefix)
-        # vN+7.2: Portable copy out of tempdir() to final_html (and, in sidecar
-        # mode, the _files/ folder). The renderer's internal work_dir is always
-        # tempdir() because pandoc + htmlwidgets need real-FS random access, so
-        # the copy here always runs (.gvr_finalize_to_dest handles direct
-        # tempdir() == final_path case if both happen to coincide, which they do
-        # not in practice).
-        copied_html <- .gvr_finalize_to_dest(rendered, final_html, "HTML")
-        if (isTRUE(attr(rendered, "sidecar"))) {
-          # refresh any stale assets from a previous run, then copy the folder
-          files_src <- attr(rendered, "files_dir")
-          copied_dir <- .gvr_finalize_to_dest(files_src, files_dest, "HTML assets",
-                                              recursive = TRUE)
-          if (isTRUE(verbose))
-            message(sprintf("  HTML report is NOT self-contained; assets in: %s", copied_dir))
-        }
-        file.exists(final_html) && file.info(final_html)$size > 0
-      }, error = function(e) {
-        warning(sprintf("gvr_summary: HTML report failed: %s", conditionMessage(e))); FALSE })
-      if (isTRUE(ok_html) && isTRUE(verbose)) message(sprintf("  HTML report written: %s", final_html))
     }
-  }
 
-  invisible(sections)
+    invisible(sections)
 }
 
 # NOTE: globalVariables() declarations for this package are consolidated in

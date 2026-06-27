@@ -99,13 +99,13 @@ same name are overwritten; other files in the folder are left alone.
 \examples{
 ## Load the shipped example table and write plots to a temp directory
 gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                           package = "germlinevaR"))
+    package = "germlinevaR"))
 out_dir <- gvr_sum_plots(gvr, out_dir = tempdir(), verbose = FALSE)
 dir.exists(out_dir)
 
 ## Write PDF outputs into a named subfolder under tempdir()
 gvr_sum_plots(gvr, out_dir = tempdir(), folder_name = "S6_plots",
-              format = "pdf", verbose = FALSE)
+    format = "pdf", verbose = FALSE)
 }
 \seealso{
 \code{\link[=gvr_summary]{gvr_summary()}} for the dashboard view, \code{\link[=read.gvr]{read.gvr()}} for the

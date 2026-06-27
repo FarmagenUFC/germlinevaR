@@ -28,9 +28,9 @@ vignette: >
 
 ```{r, include = FALSE}
 knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment  = "#>",
-  fig.align = "center"
+    collapse = TRUE,
+    comment  = "#>",
+    fig.align = "center"
 )
 ```
 
@@ -135,8 +135,8 @@ read it from there:
 vcf_dir <- tempfile("gvr_vig_")
 dir.create(vcf_dir)
 file.copy(
-  system.file("extdata", "example.vep.vcf.gz", package = "germlinevaR"),
-  file.path(vcf_dir, "example.vep.vcf.gz")
+    system.file("extdata", "example.vep.vcf.gz", package = "germlinevaR"),
+    file.path(vcf_dir, "example.vep.vcf.gz")
 )
 
 gvr <- read.gvr(vcf_dir, verbose = FALSE)
@@ -148,7 +148,7 @@ most-severe transcript, with a canonical 116-column schema:
 
 ```{r show-gvr}
 head(gvr[, .(Hugo_Symbol, Variant_Classification, IMPACT,
-             Tumor_Sample_Barcode)])
+    Tumor_Sample_Barcode)])
 ```
 
 # Filtering: `gvr_filter()`
@@ -207,9 +207,9 @@ disable those side effects here to keep the vignette fast:
 
 ```{r summary}
 summ <- gvr_summary(
-  gvr,
-  save_excel = FALSE, save_pdf = FALSE, save_html = FALSE,
-  verbose    = FALSE
+    gvr,
+    save_excel = FALSE, save_pdf = FALSE, save_html = FALSE,
+    verbose    = FALSE
 )
 names(summ)
 summ$top_genes

@@ -240,26 +240,26 @@ is.function(read.gvr)
 ## result of read.gvr() on the same fixture, minus the ABraOM_AF column
 ## which was added in a later code revision):
 gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                           package = "germlinevaR"))
+    package = "germlinevaR"))
 dim(gvr)
 
 \donttest{
-  ## Real read.gvr() call on the bundled VCF directory:
-  vcf_dir <- system.file("extdata", package = "germlinevaR")
-  gvr <- read.gvr(vcf_dir, verbose = FALSE)
-  dim(gvr)            # 62 rows x 116 columns
+## Real read.gvr() call on the bundled VCF directory:
+vcf_dir <- system.file("extdata", package = "germlinevaR")
+gvr <- read.gvr(vcf_dir, verbose = FALSE)
+dim(gvr)            # 62 rows x 116 columns
 
-  ## Same call but with write-out to tempdir
-  out <- tempdir()
-  gvr2 <- read.gvr(vcf_dir, write_tsv = TRUE, write_rds = TRUE,
-                   out_dir = out, verbose = FALSE)
-  list.files(out, pattern = "\\\\.(tsv|rds)$")
+## Same call but with write-out to tempdir
+out <- tempdir()
+gvr2 <- read.gvr(vcf_dir, write_tsv = TRUE, write_rds = TRUE,
+    out_dir = out, verbose = FALSE)
+list.files(out, pattern = "\\\\.(tsv|rds)$")
 
-  ## Single-file mode: full path to the bundled VCF
-  vcf_file <- system.file("extdata", "example.vep.vcf.gz",
-                          package = "germlinevaR")
-  gvr3 <- read.gvr(vcf_path = vcf_file, verbose = FALSE)
-  nrow(gvr3)
+## Single-file mode: full path to the bundled VCF
+vcf_file <- system.file("extdata", "example.vep.vcf.gz",
+    package = "germlinevaR")
+gvr3 <- read.gvr(vcf_path = vcf_file, verbose = FALSE)
+nrow(gvr3)
 }
 }
 \seealso{

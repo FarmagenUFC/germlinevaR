@@ -20,113 +20,113 @@
 # Canonical keys: lowercase, spaces. Gene vectors: HGNC symbols, uppercase,
 # sorted alphabetically, unique.
 .gvr_panel_registry <- function() {
-  list(
-    "men1" = sort(unique(toupper(c(
-      "AIP", "AP2S1", "CASR", "CDC73", "CDKN1A", "CDKN1B",
-      "CDKN2A", "CDKN2C", "GCM2", "GNA11", "MAX", "MEN1",
-      "RET"
-    )))),
+    list(
+        "men1" = sort(unique(toupper(c(
+            "AIP", "AP2S1", "CASR", "CDC73", "CDKN1A", "CDKN1B",
+            "CDKN2A", "CDKN2C", "GCM2", "GNA11", "MAX", "MEN1",
+            "RET"
+        )))),
 
-    "acromegaly" = sort(unique(toupper(c(
-      "AIP", "CDKN1A", "CDKN1B", "CDKN2A", "GNAS", "GPR101",
-      "HESX1", "LHX3", "LHX4", "MEN1", "NF1", "PDE4A",
-      "PDE4B", "PRKACB", "PROP1", "RB1", "SDHA", "SDHD",
-      "TERT", "TP53", "TSC1", "USP48", "USP8"
-    )))),
+        "acromegaly" = sort(unique(toupper(c(
+            "AIP", "CDKN1A", "CDKN1B", "CDKN2A", "GNAS", "GPR101",
+            "HESX1", "LHX3", "LHX4", "MEN1", "NF1", "PDE4A",
+            "PDE4B", "PRKACB", "PROP1", "RB1", "SDHA", "SDHD",
+            "TERT", "TP53", "TSC1", "USP48", "USP8"
+        )))),
 
-    "pheochromocytoma" = sort(unique(toupper(c(
-      "ATM", "DLST", "EGLN1", "EGLN2", "EPAS1", "FH",
-      "HRAS", "KIF1B", "MAX", "MDH2", "MEN1", "MERTK",
-      "MET", "NF1", "RET", "SDHA", "SDHAF2", "SDHB",
-      "SDHC", "SDHD", "SLC25A11", "TMEM127", "TP53", "VHL"
-    )))),
+        "pheochromocytoma" = sort(unique(toupper(c(
+            "ATM", "DLST", "EGLN1", "EGLN2", "EPAS1", "FH",
+            "HRAS", "KIF1B", "MAX", "MDH2", "MEN1", "MERTK",
+            "MET", "NF1", "RET", "SDHA", "SDHAF2", "SDHB",
+            "SDHC", "SDHD", "SLC25A11", "TMEM127", "TP53", "VHL"
+        )))),
 
-    "hereditary cancer" = sort(unique(toupper(c(
-      "ALK", "APC", "ATM", "AXIN2", "BAP1", "BARD1",
-      "BLM", "BMPR1A", "BRCA1", "BRCA2", "BRIP1", "BUB1B",
-      "CDC73", "CDH1", "CDK4", "CDKN1B", "CDKN2A", "CEP57",
-      "CHEK2", "CTNNA1", "CYLD", "DICER1", "EGFR", "EGLN1",
-      "EPCAM", "EXT1", "EXT2", "FAN1", "FH", "FLCN",
-      "GALNT12", "GREM1", "HOXB13", "HRAS", "KIF1B", "KIT",
-      "LZTR1", "MAX", "MC1R", "MEN1", "MET", "MITF",
-      "MLH1", "MLH3", "MSH2", "MSH3", "MSH6", "MUTYH",
-      "NF1", "NF2", "NTHL1", "PALB2", "PDGFRA", "PHOX2B",
-      "PIK3CA", "PMS2", "POLD1", "POLE", "POT1", "PRKAR1A",
-      "PTCH1", "PTCH2", "PTEN", "RAD51C", "RAD51D", "RB1",
-      "RET", "RHBDF2", "RNF43", "SDHA", "SDHAF2", "SDHB",
-      "SDHC", "SDHD", "SMAD4", "SMARCA4", "SMARCB1", "SMARCE1",
-      "STK11", "SUFU", "TERT", "TMEM127", "TP53", "TSC1",
-      "TSC2", "VHL", "WT1"
-    )))),
+        "hereditary cancer" = sort(unique(toupper(c(
+            "ALK", "APC", "ATM", "AXIN2", "BAP1", "BARD1",
+            "BLM", "BMPR1A", "BRCA1", "BRCA2", "BRIP1", "BUB1B",
+            "CDC73", "CDH1", "CDK4", "CDKN1B", "CDKN2A", "CEP57",
+            "CHEK2", "CTNNA1", "CYLD", "DICER1", "EGFR", "EGLN1",
+            "EPCAM", "EXT1", "EXT2", "FAN1", "FH", "FLCN",
+            "GALNT12", "GREM1", "HOXB13", "HRAS", "KIF1B", "KIT",
+            "LZTR1", "MAX", "MC1R", "MEN1", "MET", "MITF",
+            "MLH1", "MLH3", "MSH2", "MSH3", "MSH6", "MUTYH",
+            "NF1", "NF2", "NTHL1", "PALB2", "PDGFRA", "PHOX2B",
+            "PIK3CA", "PMS2", "POLD1", "POLE", "POT1", "PRKAR1A",
+            "PTCH1", "PTCH2", "PTEN", "RAD51C", "RAD51D", "RB1",
+            "RET", "RHBDF2", "RNF43", "SDHA", "SDHAF2", "SDHB",
+            "SDHC", "SDHD", "SMAD4", "SMARCA4", "SMARCB1", "SMARCE1",
+            "STK11", "SUFU", "TERT", "TMEM127", "TP53", "TSC1",
+            "TSC2", "VHL", "WT1"
+        )))),
 
-    "gist" = sort(unique(toupper(c(
-      "BRAF", "KIT", "NF1", "NTRK1", "NTRK2", "NTRK3",
-      "PDGFRA", "SDHA", "SDHB", "SDHC", "SDHD"
-    )))),
+        "gist" = sort(unique(toupper(c(
+            "BRAF", "KIT", "NF1", "NTRK1", "NTRK2", "NTRK3",
+            "PDGFRA", "SDHA", "SDHB", "SDHC", "SDHD"
+        )))),
 
-    "lynch syndrome" = sort(unique(toupper(c(
-      "EPCAM", "MLH1", "MSH2", "MSH6", "PMS2"
-    )))),
+        "lynch syndrome" = sort(unique(toupper(c(
+            "EPCAM", "MLH1", "MSH2", "MSH6", "PMS2"
+        )))),
 
-    "li-fraumeni syndrome" = sort(unique(toupper(c(
-      "ARHGAP30", "CHEK2", "PIK3CA", "TP53"
-    )))),
+        "li-fraumeni syndrome" = sort(unique(toupper(c(
+            "ARHGAP30", "CHEK2", "PIK3CA", "TP53"
+        )))),
 
-    "hereditary gastric cancer" = sort(unique(toupper(c(
-      "APC", "ATM", "BLM", "BMPR1A", "BRCA1", "BRCA2",
-      "CDH1", "CTNNA1", "EPCAM", "GREM1", "KIT", "MEN1",
-      "MLH1", "MSH2", "MSH6", "MUTYH", "NF1", "PALB2",
-      "PDGFRA", "PMS2", "POLD1", "POLE", "PTEN", "RNF43",
-      "SMAD4", "STK11", "TP53", "VHL"
-    )))),
+        "hereditary gastric cancer" = sort(unique(toupper(c(
+            "APC", "ATM", "BLM", "BMPR1A", "BRCA1", "BRCA2",
+            "CDH1", "CTNNA1", "EPCAM", "GREM1", "KIT", "MEN1",
+            "MLH1", "MSH2", "MSH6", "MUTYH", "NF1", "PALB2",
+            "PDGFRA", "PMS2", "POLD1", "POLE", "PTEN", "RNF43",
+            "SMAD4", "STK11", "TP53", "VHL"
+        )))),
 
-    "hereditary colorectal cancer" = sort(unique(toupper(c(
-      "APC", "ATM", "AXIN2", "BMPR1A", "CDH1", "CHEK2",
-      "EPCAM", "GALNT12", "GREM1", "MLH1", "MSH2", "MSH3",
-      "MSH6", "MUTYH", "NTHL1", "PMS2", "POLD1", "POLE",
-      "PTEN", "RNF43", "SMAD4", "STK11", "TP53"
-    )))),
+        "hereditary colorectal cancer" = sort(unique(toupper(c(
+            "APC", "ATM", "AXIN2", "BMPR1A", "CDH1", "CHEK2",
+            "EPCAM", "GALNT12", "GREM1", "MLH1", "MSH2", "MSH3",
+            "MSH6", "MUTYH", "NTHL1", "PMS2", "POLD1", "POLE",
+            "PTEN", "RNF43", "SMAD4", "STK11", "TP53"
+        )))),
 
-    "familial adenomatous polyposis" = sort(unique(toupper(c(
-      "APC", "AXIN2", "BMPR1A", "EPCAM", "MBD4", "MLH1",
-      "MSH2", "MSH3", "MSH6", "MUTYH", "NTHL1", "PMS2",
-      "POLD1", "POLE", "PTEN", "RNF43", "SMAD4", "STK11",
-      "TP53"
-    )))),
+        "familial adenomatous polyposis" = sort(unique(toupper(c(
+            "APC", "AXIN2", "BMPR1A", "EPCAM", "MBD4", "MLH1",
+            "MSH2", "MSH3", "MSH6", "MUTYH", "NTHL1", "PMS2",
+            "POLD1", "POLE", "PTEN", "RNF43", "SMAD4", "STK11",
+            "TP53"
+        )))),
 
-    "hereditary melanoma cancer" = sort(unique(toupper(c(
-      "BAP1", "BRCA1", "BRCA2", "CDK4", "CDKN2A", "CHEK2",
-      "EPCAM", "MC1R", "MITF", "MLH1", "MSH2", "MSH6",
-      "PMS2", "POT1", "PTCH1", "PTEN", "RB1", "TERT",
-      "TP53", "TYR"
-    )))),
+        "hereditary melanoma cancer" = sort(unique(toupper(c(
+            "BAP1", "BRCA1", "BRCA2", "CDK4", "CDKN2A", "CHEK2",
+            "EPCAM", "MC1R", "MITF", "MLH1", "MSH2", "MSH6",
+            "PMS2", "POT1", "PTCH1", "PTEN", "RB1", "TERT",
+            "TP53", "TYR"
+        )))),
 
-    "hereditary prostate cancer" = sort(unique(toupper(c(
-      "ATM", "ATR", "BRCA1", "BRCA2", "BRIP1", "CHEK2",
-      "EPCAM", "HOXB13", "MLH1", "MRE11", "MSH2", "MSH6",
-      "NBN", "PALB2", "PMS2", "PTEN", "RAD51C", "RAD51D",
-      "TP53"
-    )))),
+        "hereditary prostate cancer" = sort(unique(toupper(c(
+            "ATM", "ATR", "BRCA1", "BRCA2", "BRIP1", "CHEK2",
+            "EPCAM", "HOXB13", "MLH1", "MRE11", "MSH2", "MSH6",
+            "NBN", "PALB2", "PMS2", "PTEN", "RAD51C", "RAD51D",
+            "TP53"
+        )))),
 
-    "hereditary breast and ovarian cancer" = sort(unique(toupper(c(
-      "ATM", "BARD1", "BRCA1", "BRCA2", "BRIP1", "CDH1",
-      "CHEK2", "EPCAM", "MLH1", "MRE11", "MSH2", "MSH6",
-      "NBN", "NF1", "PALB2", "PMS1", "PMS2", "PTEN",
-      "RAD50", "RAD51C", "RAD51D", "SMARCA4", "STK11", "TP53",
-      "XRCC2"
-    )))),
+        "hereditary breast and ovarian cancer" = sort(unique(toupper(c(
+            "ATM", "BARD1", "BRCA1", "BRCA2", "BRIP1", "CDH1",
+            "CHEK2", "EPCAM", "MLH1", "MRE11", "MSH2", "MSH6",
+            "NBN", "NF1", "PALB2", "PMS1", "PMS2", "PTEN",
+            "RAD50", "RAD51C", "RAD51D", "SMARCA4", "STK11", "TP53",
+            "XRCC2"
+        )))),
 
-    "breast cancer" = sort(unique(toupper(c(
-      "AKT1", "ATM", "BARD1", "BRCA1", "BRCA2", "BRIP1",
-      "CDH1", "CHEK2", "EPCAM", "ERBB2", "ESR1", "MLH1",
-      "MSH2", "MSH6", "NBN", "NF1", "PALB2", "PIK3CA",
-      "PMS2", "PTEN", "RAD51C", "RAD51D", "STK11", "TP53"
-    )))),
+        "breast cancer" = sort(unique(toupper(c(
+            "AKT1", "ATM", "BARD1", "BRCA1", "BRCA2", "BRIP1",
+            "CDH1", "CHEK2", "EPCAM", "ERBB2", "ESR1", "MLH1",
+            "MSH2", "MSH6", "NBN", "NF1", "PALB2", "PIK3CA",
+            "PMS2", "PTEN", "RAD51C", "RAD51D", "STK11", "TP53"
+        )))),
 
-    "breast cancer somatic" = sort(unique(toupper(c(
-      "AKT1", "BRCA1", "BRCA2", "ERBB2", "ESR1", "PIK3CA"
-    ))))
-  )
+        "breast cancer somatic" = sort(unique(toupper(c(
+            "AKT1", "BRCA1", "BRCA2", "ERBB2", "ESR1", "PIK3CA"
+        ))))
+    )
 }
 
 
@@ -135,11 +135,11 @@
 # .gvr_panel_normalise() basic normalisation. Returning an empty vector
 # is fine; lookups just fall through.
 .gvr_panel_alias_map <- function() {
-  c(
-    "gastrointestinal stromal tumor" = "gist",
-    "pheocromocytoma"                = "pheochromocytoma",
-    "breast cancer somatic panel"    = "breast cancer somatic"
-  )
+    c(
+        "gastrointestinal stromal tumor" = "gist",
+        "pheocromocytoma"                = "pheochromocytoma",
+        "breast cancer somatic panel"    = "breast cancer somatic"
+    )
 }
 
 
@@ -148,29 +148,29 @@
 # then apply the panel-name alias map.
 # Returns "" if the input does not normalise to a non-empty string.
 .gvr_panel_normalise <- function(x) {
-  if (is.null(x)) return(character(0L))
-  s <- as.character(x)
-  s <- s[!is.na(s)]
-  if (length(s) == 0L) return(character(0L))
-  s <- trimws(s)
-  s <- tolower(s)
-  s <- gsub("_+", " ", s, perl = TRUE)
-  s <- gsub("[[:space:]]+", " ", s, perl = TRUE)
-  amap <- .gvr_panel_alias_map()
-  hit  <- s %in% names(amap)
-  s[hit] <- amap[s[hit]]
-  s
+    if (is.null(x)) return(character(0L))
+    s <- as.character(x)
+    s <- s[!is.na(s)]
+    if (length(s) == 0L) return(character(0L))
+    s <- trimws(s)
+    s <- tolower(s)
+    s <- gsub("_+", " ", s, perl = TRUE)
+    s <- gsub("[[:space:]]+", " ", s, perl = TRUE)
+    amap <- .gvr_panel_alias_map()
+    hit  <- s %in% names(amap)
+    s[hit] <- amap[s[hit]]
+    s
 }
 
 
 # Internal: a single helpful catalog string used in error messages.
 .gvr_panel_catalog <- function() {
-  reg <- .gvr_panel_registry()
-  nm  <- sort(names(reg))
-  lines <- vapply(nm, function(n) {
-    sprintf("  - %s (%d genes)", n, length(reg[[n]]))
-  }, character(1L), USE.NAMES = FALSE)
-  paste(c("Available panels:", lines), collapse = "\n")
+    reg <- .gvr_panel_registry()
+    nm  <- sort(names(reg))
+    lines <- vapply(nm, function(n) {
+        sprintf("  - %s (%d genes)", n, length(reg[[n]]))
+    }, character(1L), USE.NAMES = FALSE)
+    paste(c("Available panels:", lines), collapse = "\n")
 }
 
 
@@ -220,7 +220,7 @@
 #' ## the gvr table at read time. Equivalent post-hoc filter on the
 #' ## pre-parsed example table (instantaneous; no VCF re-parse):
 #' gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-#'                            package = "germlinevaR"))
+#'     package = "germlinevaR"))
 #' panel_genes <- gvr_panel_genes("breast cancer")
 #' nrow(gvr[gvr$Hugo_Symbol %in% panel_genes, ])
 #' @seealso [gvr_panel_genes()], [read.gvr()].
@@ -228,7 +228,7 @@
 #' @author germlinevaR authors
 #' @export
 gvr_list_panels <- function() {
-  sort(names(.gvr_panel_registry()))
+    sort(names(.gvr_panel_registry()))
 }
 
 
@@ -260,32 +260,32 @@ gvr_list_panels <- function() {
 #' ## Combine multiple panels and post-hoc filter the pre-parsed example
 #' ## table (equivalent to read.gvr(..., panel = c(...)) but instantaneous):
 #' gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-#'                            package = "germlinevaR"))
+#'     package = "germlinevaR"))
 #' multi_panel <- unique(c(gvr_panel_genes("breast cancer"),
-#'                         gvr_panel_genes("hereditary prostate cancer")))
+#'     gvr_panel_genes("hereditary prostate cancer")))
 #' nrow(gvr[gvr$Hugo_Symbol %in% multi_panel, ])
 #' @seealso [gvr_list_panels()], [read.gvr()].
 #' @family germlinevaR
 #' @author germlinevaR authors
 #' @export
 gvr_panel_genes <- function(panel) {
-  if (missing(panel) || is.null(panel))
-    stop("gvr_panel_genes: 'panel' is required.\n", .gvr_panel_catalog(),
-         call. = FALSE)
-  if (length(panel) != 1L)
-    stop("gvr_panel_genes: 'panel' must be a single name (length 1). ",
-         "To union multiple panels, pass a vector to read.gvr(panel = ...).\n",
-         .gvr_panel_catalog(),
-         call. = FALSE)
+    if (missing(panel) || is.null(panel))
+        stop("gvr_panel_genes: 'panel' is required.\n", .gvr_panel_catalog(),
+            call. = FALSE)
+    if (length(panel) != 1L)
+        stop("gvr_panel_genes: 'panel' must be a single name (length 1). ",
+            "To union multiple panels, pass a vector to read.gvr(panel = ...).\n",
+            .gvr_panel_catalog(),
+            call. = FALSE)
 
-  key <- .gvr_panel_normalise(panel)
-  reg <- .gvr_panel_registry()
-  if (length(key) == 0L || !nzchar(key) || !(key %in% names(reg))) {
-    stop(sprintf("gvr_panel_genes: unknown panel '%s'.\n%s",
-                 as.character(panel), .gvr_panel_catalog()),
-         call. = FALSE)
-  }
-  reg[[key]]
+    key <- .gvr_panel_normalise(panel)
+    reg <- .gvr_panel_registry()
+    if (length(key) == 0L || !nzchar(key) || !(key %in% names(reg))) {
+        stop(sprintf("gvr_panel_genes: unknown panel '%s'.\n%s",
+            as.character(panel), .gvr_panel_catalog()),
+        call. = FALSE)
+    }
+    reg[[key]]
 }
 
 
@@ -297,10 +297,9 @@ gvr_panel_genes <- function(panel) {
 # gvr_panel_genes().
 # ---------------------------------------------------------------------------
 .gvr_resolve_panels <- function(panel) {
-  if (is.null(panel)) return(character(0L))
-  v <- as.character(panel)
-  v <- v[!is.na(v) & nzchar(trimws(v))]
-  if (length(v) == 0L) return(character(0L))
-  unique(toupper(unlist(lapply(v, gvr_panel_genes), use.names = FALSE)))
+    if (is.null(panel)) return(character(0L))
+    v <- as.character(panel)
+    v <- v[!is.na(v) & nzchar(trimws(v))]
+    if (length(v) == 0L) return(character(0L))
+    unique(toupper(unlist(lapply(v, gvr_panel_genes), use.names = FALSE)))
 }
-

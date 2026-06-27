@@ -35,9 +35,9 @@ gvr_panel_genes("hereditary prostate cancer")
 ## Combine multiple panels and post-hoc filter the pre-parsed example
 ## table (equivalent to read.gvr(..., panel = c(...)) but instantaneous):
 gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                           package = "germlinevaR"))
+    package = "germlinevaR"))
 multi_panel <- unique(c(gvr_panel_genes("breast cancer"),
-                        gvr_panel_genes("hereditary prostate cancer")))
+    gvr_panel_genes("hereditary prostate cancer")))
 nrow(gvr[gvr$Hugo_Symbol \%in\% multi_panel, ])
 }
 \seealso{

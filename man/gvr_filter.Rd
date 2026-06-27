@@ -157,7 +157,7 @@ The input is never modified: filtering operates on an internal \code{data.table}
 \examples{
 ## Load the shipped example table
 gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                           package = "germlinevaR"))
+    package = "germlinevaR"))
 ## Default filter (rare + clinically relevant + called genotypes).
 ## The example table was built without ABraOM annotation, so we
 ## disable the ABraOM_AF filter to avoid a "column not found" warning.
@@ -168,25 +168,25 @@ dim(filt)
 
 ## Add protein-coding biotype filter:
 gvr_filter(gvr, ABraOM_AF = NULL,
-           biotype_keep = c("protein_coding", "protein_coding_LoF"),
-           verbose = FALSE)
+    biotype_keep = c("protein_coding", "protein_coding_LoF"),
+    verbose = FALSE)
 
 ## Only the rarity filter on gnomAD exome AF, nothing else:
 gvr_filter(gvr, gnomADe_AF = 0.001, AF = NULL, ABraOM_AF = NULL,
-           clin_sig_terms = NULL, gt_exclude = NULL,
-           vc_nonSyn = FALSE, genes = NULL, verbose = FALSE)
+    clin_sig_terms = NULL, gt_exclude = NULL,
+    vc_nonSyn = FALSE, genes = NULL, verbose = FALSE)
 
 ## Pathogenic-only, protein-coding:
 gvr_filter(gvr, ABraOM_AF = NULL,
-           clin_sig_terms = c("pathogenic", "likely_pathogenic"),
-           biotype_keep = "protein_coding", verbose = FALSE)
+    clin_sig_terms = c("pathogenic", "likely_pathogenic"),
+    biotype_keep = "protein_coding", verbose = FALSE)
 
 ## Remove benign annotations (including likely_benign and compound entries):
 gvr_filter(gvr, ABraOM_AF = NULL, remove_benign = TRUE, verbose = FALSE)
 
 ## Keep only protein-altering variants and a gene panel:
 gvr_filter(gvr, ABraOM_AF = NULL, vc_nonSyn = TRUE,
-           genes = c("TP53", "BRCA1", "BRCA2"), verbose = FALSE)
+    genes = c("TP53", "BRCA1", "BRCA2"), verbose = FALSE)
 }
 \seealso{
 \code{\link[=read.gvr]{read.gvr()}} to build the table, \code{\link[=gvr_summary]{gvr_summary()}} to summarise the filtered

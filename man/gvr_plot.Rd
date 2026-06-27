@@ -126,14 +126,14 @@ Uses \pkg{ComplexHeatmap} (a \pkg{Bioconductor} package, listed in \code{Imports
 \examples{
 ## Load the shipped example table; write plot to a temp directory
 gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                           package = "germlinevaR"))
+    package = "germlinevaR"))
 p <- gvr_plot(gvr, out_dir = tempdir(), verbose = FALSE)
 class(p)
 
 ## Smaller top-genes variant matrix of filtered hits to a temp folder
 filt <- gvr_filter(gvr, ABraOM_AF = NULL, verbose = FALSE)
 if (nrow(filt) > 0L) {
-  gvr_plot(filt, top_n = 15, out_dir = tempdir(), verbose = FALSE)
+    gvr_plot(filt, top_n = 15, out_dir = tempdir(), verbose = FALSE)
 }
 }
 \seealso{

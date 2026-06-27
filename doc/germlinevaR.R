@@ -1,8 +1,8 @@
 ## ----include = FALSE----------------------------------------------------------
 knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment  = "#>",
-  fig.align = "center"
+    collapse = TRUE,
+    comment  = "#>",
+    fig.align = "center"
 )
 
 ## ----install, eval=FALSE------------------------------------------------------
@@ -23,8 +23,8 @@ library(data.table)
 vcf_dir <- tempfile("gvr_vig_")
 dir.create(vcf_dir)
 file.copy(
-  system.file("extdata", "example.vep.vcf.gz", package = "germlinevaR"),
-  file.path(vcf_dir, "example.vep.vcf.gz")
+    system.file("extdata", "example.vep.vcf.gz", package = "germlinevaR"),
+    file.path(vcf_dir, "example.vep.vcf.gz")
 )
 
 gvr <- read.gvr(vcf_dir, verbose = FALSE)
@@ -32,7 +32,7 @@ dim(gvr)
 
 ## ----show-gvr-----------------------------------------------------------------
 head(gvr[, .(Hugo_Symbol, Variant_Classification, IMPACT,
-             Tumor_Sample_Barcode)])
+    Tumor_Sample_Barcode)])
 
 ## ----filter-default-----------------------------------------------------------
 filt <- gvr_filter(gvr, verbose = FALSE)
@@ -54,9 +54,9 @@ novel[, .(Hugo_Symbol, HGVSp_Short, Variant_Classification, IMPACT)]
 
 ## ----summary------------------------------------------------------------------
 summ <- gvr_summary(
-  gvr,
-  save_excel = FALSE, save_pdf = FALSE, save_html = FALSE,
-  verbose    = FALSE
+    gvr,
+    save_excel = FALSE, save_pdf = FALSE, save_html = FALSE,
+    verbose    = FALSE
 )
 names(summ)
 summ$top_genes
