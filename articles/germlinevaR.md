@@ -112,8 +112,8 @@ and read it from there:
 vcf_dir <- tempfile("gvr_vig_")
 dir.create(vcf_dir)
 file.copy(
-  system.file("extdata", "example.vep.vcf.gz", package = "germlinevaR"),
-  file.path(vcf_dir, "example.vep.vcf.gz")
+    system.file("extdata", "example.vep.vcf.gz", package = "germlinevaR"),
+    file.path(vcf_dir, "example.vep.vcf.gz")
 )
 #> [1] TRUE
 
@@ -129,7 +129,7 @@ most-severe transcript, with a canonical 116-column schema:
 ``` r
 
 head(gvr[, .(Hugo_Symbol, Variant_Classification, IMPACT,
-             Tumor_Sample_Barcode)])
+    Tumor_Sample_Barcode)])
 #>    Hugo_Symbol Variant_Classification   IMPACT Tumor_Sample_Barcode
 #>         <char>                 <char>   <char>               <char>
 #> 1:       OR4F5                 Silent      LOW            Sample_01
@@ -238,9 +238,9 @@ effects here to keep the vignette fast:
 ``` r
 
 summ <- gvr_summary(
-  gvr,
-  save_excel = FALSE, save_pdf = FALSE, save_html = FALSE,
-  verbose    = FALSE
+    gvr,
+    save_excel = FALSE, save_pdf = FALSE, save_html = FALSE,
+    verbose    = FALSE
 )
 names(summ)
 #> [1] "overview"               "top_genes"              "top_genes_per_sample"  

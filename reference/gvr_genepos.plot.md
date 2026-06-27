@@ -229,47 +229,47 @@ a Gencode/Ensembl GTF to skip REST entirely; this requires suggesting
 
 ``` r
 if (requireNamespace("ggplot2", quietly = TRUE)) {
-  ## Load the shipped example table; we only confirm the function is
-  ## available. A real call to gvr_genepos.plot(gvr, "BRCA1") needs
-  ## either network access (Ensembl REST) or a local GTF file.
-  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                             package = "germlinevaR"))
-  is.function(gvr_genepos.plot)
+    ## Load the shipped example table; we only confirm the function is
+    ## available. A real call to gvr_genepos.plot(gvr, "BRCA1") needs
+    ## either network access (Ensembl REST) or a local GTF file.
+    gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+        package = "germlinevaR"))
+    is.function(gvr_genepos.plot)
 }
 #> [1] TRUE
 
 # \donttest{
-  ## Auto-resolve the MANE / canonical transcript for BRCA1 via the
-  ## Ensembl REST API (requires internet access). out_dir = NULL
-  ## returns the ggplot object only — no file is written.
-  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                             package = "germlinevaR"))
-  p <- gvr_genepos.plot(gvr, "BRCA1", out_dir = NULL)
+## Auto-resolve the MANE / canonical transcript for BRCA1 via the
+## Ensembl REST API (requires internet access). out_dir = NULL
+## returns the ggplot object only — no file is written.
+gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+    package = "germlinevaR"))
+p <- gvr_genepos.plot(gvr, "BRCA1", out_dir = NULL)
 #> gvr_genepos.plot: resolved transcript -> ENST00000357654
 #> gvr_genepos.plot: cache_dir = /home/runner/.cache/R/germlinevaR
 #> gvr_genepos.plot: REST GET https://rest.ensembl.org/lookup/id/ENST00000357654?expand=1;utr=1
 #> gvr_genepos.plot: cached -> /home/runner/.cache/R/germlinevaR/genestruct_ensembl_ENST00000357654_GRCh38.rds
 #> Warning: no non-missing arguments to max; returning -Inf
 
-  ## Pin transcript and use proportional intron scaling, still in-memory.
-  gvr_genepos.plot(gvr, "BRCA1",
-                   transcript_id = "ENST00000357654",
-                   intron_scale  = "proportional",
-                   out_dir       = NULL)
+## Pin transcript and use proportional intron scaling, still in-memory.
+gvr_genepos.plot(gvr, "BRCA1",
+    transcript_id = "ENST00000357654",
+    intron_scale  = "proportional",
+    out_dir       = NULL)
 #> gvr_genepos.plot: cache_dir = /home/runner/.cache/R/germlinevaR
 #> gvr_genepos.plot: cache hit /home/runner/.cache/R/germlinevaR/genestruct_ensembl_ENST00000357654_GRCh38.rds
 #> Warning: no non-missing arguments to max; returning -Inf
 
-  ## Demonstrate file output by writing the PNG to a temp directory.
-  out_dir <- file.path(tempdir(), "gvr_genepos_demo")
-  gvr_genepos.plot(gvr, "BRCA1",
-                   transcript_id = "ENST00000357654",
-                   out_dir       = out_dir,
-                   verbose       = FALSE)
+## Demonstrate file output by writing the PNG to a temp directory.
+out_dir <- file.path(tempdir(), "gvr_genepos_demo")
+gvr_genepos.plot(gvr, "BRCA1",
+    transcript_id = "ENST00000357654",
+    out_dir       = out_dir,
+    verbose       = FALSE)
 #> Warning: no non-missing arguments to max; returning -Inf
 #> Ignoring unknown labels:
 #> • colour : "Variant class"
-  list.files(file.path(out_dir, "gvr_genepos"), pattern = "\\.png$")
+list.files(file.path(out_dir, "gvr_genepos"), pattern = "\\.png$")
 #> [1] "BRCA1_ENST00000357654.png"
 # }
 ```

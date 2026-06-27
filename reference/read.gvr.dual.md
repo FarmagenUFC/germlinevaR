@@ -318,13 +318,13 @@ is.function(read.gvr.dual)
 #> [1] TRUE
 
 # \donttest{
-  ## read.gvr.dual() expects VCFs annotated with BOTH VEP (CSQ INFO field)
-  ## AND SnpEff (ANN INFO field) in the same record. The shipped example
-  ## VCF is VEP-only, so a real dual-annotated example needs your own
-  ## VCFs; we therefore guard the call on the directory existing, so the
-  ## example skips cleanly on machines without the data.
-  dual_dir <- "/path/to/dual-annotated-vcfs/"
-  if (dir.exists(dual_dir)) {
+## read.gvr.dual() expects VCFs annotated with BOTH VEP (CSQ INFO field)
+## AND SnpEff (ANN INFO field) in the same record. The shipped example
+## VCF is VEP-only, so a real dual-annotated example needs your own
+## VCFs; we therefore guard the call on the directory existing, so the
+## example skips cleanly on machines without the data.
+dual_dir <- "/path/to/dual-annotated-vcfs/"
+if (dir.exists(dual_dir)) {
     gvr <- read.gvr.dual(folder = dual_dir)
 
     ## Or via the auto-router in read.gvr() when the VCF header declares
@@ -334,7 +334,7 @@ is.function(read.gvr.dual)
     ## Compare VEP vs SnpEff picks on high-impact variants:
     gvr[IMPACT == "HIGH" & snpeff_impact != "" & IMPACT != snpeff_impact,
         .(Hugo_Symbol, Consequence, IMPACT, snpeff_gene, snpeff_consequence,
-          snpeff_impact)]
-  }
+            snpeff_impact)]
+}
 # }
 ```

@@ -84,7 +84,7 @@ the input.
 ``` r
 ## Load the shipped example table and find candidate novel variants
 gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                           package = "germlinevaR"))
+    package = "germlinevaR"))
 nov <- gvr_novel(gvr, verbose = FALSE)
 dim(nov)
 #> [1]   3 115

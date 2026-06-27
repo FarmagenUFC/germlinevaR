@@ -388,24 +388,24 @@ entrypoint, which auto-routes SnpEff input to this function),
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># \donttest{</span></span></span>
-<span class="r-in"><span>  <span class="co">## read.gvr.snpeff() expects VCFs annotated by SnpEff (ANN/LOF/NMD</span></span></span>
-<span class="r-in"><span>  <span class="co">## INFO fields). The shipped example VCF is VEP-annotated, so a real</span></span></span>
-<span class="r-in"><span>  <span class="co">## SnpEff example needs your own VCFs; we therefore guard each call on</span></span></span>
-<span class="r-in"><span>  <span class="co">## the path existing, so the example skips cleanly on machines without</span></span></span>
-<span class="r-in"><span>  <span class="co">## the data.</span></span></span>
-<span class="r-in"><span>  <span class="va">snpeff_dir</span> <span class="op">&lt;-</span> <span class="st">"/path/to/snpeff-vcfs/"</span></span></span>
-<span class="r-in"><span>  <span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/files2.html" class="external-link">dir.exists</a></span><span class="op">(</span><span class="va">snpeff_dir</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span></span>
+<span class="r-in"><span><span class="co">## read.gvr.snpeff() expects VCFs annotated by SnpEff (ANN/LOF/NMD</span></span></span>
+<span class="r-in"><span><span class="co">## INFO fields). The shipped example VCF is VEP-annotated, so a real</span></span></span>
+<span class="r-in"><span><span class="co">## SnpEff example needs your own VCFs; we therefore guard each call on</span></span></span>
+<span class="r-in"><span><span class="co">## the path existing, so the example skips cleanly on machines without</span></span></span>
+<span class="r-in"><span><span class="co">## the data.</span></span></span>
+<span class="r-in"><span><span class="va">snpeff_dir</span> <span class="op">&lt;-</span> <span class="st">"/path/to/snpeff-vcfs/"</span></span></span>
+<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/files2.html" class="external-link">dir.exists</a></span><span class="op">(</span><span class="va">snpeff_dir</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span></span>
 <span class="r-in"><span>    <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu">read.gvr.snpeff</span><span class="op">(</span><span class="va">snpeff_dir</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span>    <span class="co">## Or via the auto-router when the VCF header declares SnpEff fields:</span></span></span>
 <span class="r-in"><span>    <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="read.gvr.html">read.gvr</a></span><span class="op">(</span><span class="va">snpeff_dir</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="op">}</span></span></span>
+<span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Single-file mode: full path</span></span></span>
-<span class="r-in"><span>  <span class="va">snpeff_vcf</span> <span class="op">&lt;-</span> <span class="st">"/path/to/SAMPLE_01.snpeff.vcf.gz"</span></span></span>
-<span class="r-in"><span>  <span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/files.html" class="external-link">file.exists</a></span><span class="op">(</span><span class="va">snpeff_vcf</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span></span>
+<span class="r-in"><span><span class="co">## Single-file mode: full path</span></span></span>
+<span class="r-in"><span><span class="va">snpeff_vcf</span> <span class="op">&lt;-</span> <span class="st">"/path/to/SAMPLE_01.snpeff.vcf.gz"</span></span></span>
+<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/files.html" class="external-link">file.exists</a></span><span class="op">(</span><span class="va">snpeff_vcf</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span></span>
 <span class="r-in"><span>    <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu">read.gvr.snpeff</span><span class="op">(</span>vcf_path <span class="op">=</span> <span class="va">snpeff_vcf</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="op">}</span></span></span>
+<span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-in"><span><span class="co"># }</span></span></span>
 <span class="r-in"><span></span></span>
 </code></pre></div>

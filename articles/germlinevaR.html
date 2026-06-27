@@ -198,8 +198,8 @@ shipped example into a temporary directory and read it from there:</p>
 <code class="sourceCode R"><span><span class="va">vcf_dir</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempfile</a></span><span class="op">(</span><span class="st">"gvr_vig_"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/files2.html" class="external-link">dir.create</a></span><span class="op">(</span><span class="va">vcf_dir</span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/files.html" class="external-link">file.copy</a></span><span class="op">(</span></span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example.vep.vcf.gz"</span>, package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">vcf_dir</span>, <span class="st">"example.vep.vcf.gz"</span><span class="op">)</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example.vep.vcf.gz"</span>, package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">vcf_dir</span>, <span class="st">"example.vep.vcf.gz"</span><span class="op">)</span></span>
 <span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] TRUE</span></span>
 <span></span>
@@ -211,7 +211,7 @@ shipped example into a temporary directory and read it from there:</p>
 on the most-severe transcript, with a canonical 116-column schema:</p>
 <div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="https://rdrr.io/r/utils/head.html" class="external-link">head</a></span><span class="op">(</span><span class="va">gvr</span><span class="op">[</span>, <span class="fu">.</span><span class="op">(</span><span class="va">Hugo_Symbol</span>, <span class="va">Variant_Classification</span>, <span class="va">IMPACT</span>,</span>
-<span>             <span class="va">Tumor_Sample_Barcode</span><span class="op">)</span><span class="op">]</span><span class="op">)</span></span>
+<span>    <span class="va">Tumor_Sample_Barcode</span><span class="op">)</span><span class="op">]</span><span class="op">)</span></span>
 <span><span class="co">#&gt;    Hugo_Symbol Variant_Classification   IMPACT Tumor_Sample_Barcode</span></span>
 <span><span class="co">#&gt;         &lt;char&gt;                 &lt;char&gt;   &lt;char&gt;               &lt;char&gt;</span></span>
 <span><span class="co">#&gt; 1:       OR4F5                 Silent      LOW            Sample_01</span></span>
@@ -308,9 +308,9 @@ dashboard with plotly drill-downs and DT tables; we disable those side
 effects here to keep the vignette fast:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">summ</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/gvr_summary.html">gvr_summary</a></span><span class="op">(</span></span>
-<span>  <span class="va">gvr</span>,</span>
-<span>  save_excel <span class="op">=</span> <span class="cn">FALSE</span>, save_pdf <span class="op">=</span> <span class="cn">FALSE</span>, save_html <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  verbose    <span class="op">=</span> <span class="cn">FALSE</span></span>
+<span>    <span class="va">gvr</span>,</span>
+<span>    save_excel <span class="op">=</span> <span class="cn">FALSE</span>, save_pdf <span class="op">=</span> <span class="cn">FALSE</span>, save_html <span class="op">=</span> <span class="cn">FALSE</span>,</span>
+<span>    verbose    <span class="op">=</span> <span class="cn">FALSE</span></span>
 <span><span class="op">)</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/names.html" class="external-link">names</a></span><span class="op">(</span><span class="va">summ</span><span class="op">)</span></span>
 <span><span class="co">#&gt; [1] "overview"               "top_genes"              "top_genes_per_sample"  </span></span>

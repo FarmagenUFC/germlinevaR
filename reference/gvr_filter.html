@@ -256,7 +256,7 @@ variants.</p>
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co">## Load the shipped example table</span></span></span>
 <span class="r-in"><span><span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example_gvr.rds"</span>,</span></span>
-<span class="r-in"><span>                           package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="co">## Default filter (rare + clinically relevant + called genotypes).</span></span></span>
 <span class="r-in"><span><span class="co">## The example table was built without ABraOM annotation, so we</span></span></span>
 <span class="r-in"><span><span class="co">## disable the ABraOM_AF filter to avoid a "column not found" warning.</span></span></span>
@@ -268,8 +268,8 @@ variants.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## Add protein-coding biotype filter:</span></span></span>
 <span class="r-in"><span><span class="fu">gvr_filter</span><span class="op">(</span><span class="va">gvr</span>, ABraOM_AF <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
-<span class="r-in"><span>           biotype_keep <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"protein_coding"</span>, <span class="st">"protein_coding_LoF"</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>           verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    biotype_keep <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"protein_coding"</span>, <span class="st">"protein_coding_LoF"</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>    verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    Hugo_Symbol Entrez_Gene_Id Center NCBI_Build Chromosome Start_Position</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         &lt;char&gt;         &lt;char&gt; &lt;char&gt;     &lt;char&gt;     &lt;char&gt;          &lt;num&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1:      ATAD3B              0      .     GRCh38       chr1        1479267</span>
@@ -480,8 +480,8 @@ variants.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## Only the rarity filter on gnomAD exome AF, nothing else:</span></span></span>
 <span class="r-in"><span><span class="fu">gvr_filter</span><span class="op">(</span><span class="va">gvr</span>, gnomADe_AF <span class="op">=</span> <span class="fl">0.001</span>, AF <span class="op">=</span> <span class="cn">NULL</span>, ABraOM_AF <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
-<span class="r-in"><span>           clin_sig_terms <span class="op">=</span> <span class="cn">NULL</span>, gt_exclude <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
-<span class="r-in"><span>           vc_nonSyn <span class="op">=</span> <span class="cn">FALSE</span>, genes <span class="op">=</span> <span class="cn">NULL</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    clin_sig_terms <span class="op">=</span> <span class="cn">NULL</span>, gt_exclude <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
+<span class="r-in"><span>    vc_nonSyn <span class="op">=</span> <span class="cn">FALSE</span>, genes <span class="op">=</span> <span class="cn">NULL</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>     Hugo_Symbol Entrez_Gene_Id Center NCBI_Build Chromosome Start_Position</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>          &lt;char&gt;         &lt;char&gt; &lt;char&gt;     &lt;char&gt;     &lt;char&gt;          &lt;num&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>  1:      KLHL17              0      .     GRCh38       chr1         965299</span>
@@ -875,8 +875,8 @@ variants.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## Pathogenic-only, protein-coding:</span></span></span>
 <span class="r-in"><span><span class="fu">gvr_filter</span><span class="op">(</span><span class="va">gvr</span>, ABraOM_AF <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
-<span class="r-in"><span>           clin_sig_terms <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"pathogenic"</span>, <span class="st">"likely_pathogenic"</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>           biotype_keep <span class="op">=</span> <span class="st">"protein_coding"</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    clin_sig_terms <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"pathogenic"</span>, <span class="st">"likely_pathogenic"</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>    biotype_keep <span class="op">=</span> <span class="st">"protein_coding"</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    Hugo_Symbol Entrez_Gene_Id Center NCBI_Build Chromosome Start_Position</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         &lt;char&gt;         &lt;char&gt; &lt;char&gt;     &lt;char&gt;     &lt;char&gt;          &lt;num&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1:      ATAD3B              0      .     GRCh38       chr1        1479267</span>
@@ -1274,7 +1274,7 @@ variants.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">## Keep only protein-altering variants and a gene panel:</span></span></span>
 <span class="r-in"><span><span class="fu">gvr_filter</span><span class="op">(</span><span class="va">gvr</span>, ABraOM_AF <span class="op">=</span> <span class="cn">NULL</span>, vc_nonSyn <span class="op">=</span> <span class="cn">TRUE</span>,</span></span>
-<span class="r-in"><span>           genes <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"TP53"</span>, <span class="st">"BRCA1"</span>, <span class="st">"BRCA2"</span><span class="op">)</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    genes <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"TP53"</span>, <span class="st">"BRCA1"</span>, <span class="st">"BRCA2"</span><span class="op">)</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>    Hugo_Symbol Entrez_Gene_Id Center NCBI_Build Chromosome Start_Position</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>         &lt;char&gt;         &lt;char&gt; &lt;char&gt;     &lt;char&gt;     &lt;char&gt;          &lt;num&gt;</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1:       BRCA2              0      .     GRCh38      chr13       32338482</span>

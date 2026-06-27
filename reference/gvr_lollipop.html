@@ -482,37 +482,37 @@ object regardless of whether files were written.</p>
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/ns-load.html" class="external-link">requireNamespace</a></span><span class="op">(</span><span class="st">"ggplot2"</span>, quietly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span></span>
-<span class="r-in"><span>  <span class="co">## Load the shipped example table; pass domains = NULL to skip the</span></span></span>
-<span class="r-in"><span>  <span class="co">## InterPro REST call (needs network), and out_dir = NULL to return</span></span></span>
-<span class="r-in"><span>  <span class="co">## the ggplot object instead of writing files.</span></span></span>
-<span class="r-in"><span>  <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example_gvr.rds"</span>,</span></span>
-<span class="r-in"><span>                             package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="co">## OR4F5 is the first gene in the example</span></span></span>
-<span class="r-in"><span>  <span class="va">p</span> <span class="op">&lt;-</span> <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">gvr</span>, gene <span class="op">=</span> <span class="st">"OR4F5"</span>, domains <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
-<span class="r-in"><span>                    out_dir <span class="op">=</span> <span class="cn">NULL</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">p</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="co">## Load the shipped example table; pass domains = NULL to skip the</span></span></span>
+<span class="r-in"><span>    <span class="co">## InterPro REST call (needs network), and out_dir = NULL to return</span></span></span>
+<span class="r-in"><span>    <span class="co">## the ggplot object instead of writing files.</span></span></span>
+<span class="r-in"><span>    <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example_gvr.rds"</span>,</span></span>
+<span class="r-in"><span>        package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="co">## OR4F5 is the first gene in the example</span></span></span>
+<span class="r-in"><span>    <span class="va">p</span> <span class="op">&lt;-</span> <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">gvr</span>, gene <span class="op">=</span> <span class="st">"OR4F5"</span>, domains <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
+<span class="r-in"><span>        out_dir <span class="op">=</span> <span class="cn">NULL</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="fu"><a href="https://rdrr.io/r/base/class.html" class="external-link">class</a></span><span class="op">(</span><span class="va">p</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] "ggplot2::ggplot" "ggplot"          "ggplot2::gg"     "S7_object"      </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [5] "gg"             </span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/ns-load.html" class="external-link">requireNamespace</a></span><span class="op">(</span><span class="st">"ggplot2"</span>, quietly <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span><span class="op">)</span> <span class="op">{</span></span></span>
-<span class="r-in"><span>  <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example_gvr.rds"</span>,</span></span>
-<span class="r-in"><span>                             package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="co">## Plain bar plot, no domain rectangles, returning the ggplot</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">gvr</span>, <span class="st">"OR4F5"</span>, domains <span class="op">=</span> <span class="cn">NULL</span>, out_dir <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
-<span class="r-in"><span>               verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example_gvr.rds"</span>,</span></span>
+<span class="r-in"><span>        package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="co">## Plain bar plot, no domain rectangles, returning the ggplot</span></span></span>
+<span class="r-in"><span>    <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">gvr</span>, <span class="st">"OR4F5"</span>, domains <span class="op">=</span> <span class="cn">NULL</span>, out_dir <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
+<span class="r-in"><span>        verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## User-supplied domains (canonical TP53 / UniProt P04637)</span></span></span>
-<span class="r-in"><span>  <span class="va">tp53_dom</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span></span>
-<span class="r-in"><span>    start <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">95</span>,  <span class="fl">323</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>    end   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">288</span>, <span class="fl">356</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>    name  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"DNA-binding"</span>, <span class="st">"Tetramerization"</span><span class="op">)</span>,</span></span>
-<span class="r-in"><span>    color <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"#FF9400"</span>, <span class="st">"#75A025"</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="co">## Use any gene present in the shipped table</span></span></span>
-<span class="r-in"><span>  <span class="va">gene</span> <span class="op">&lt;-</span> <span class="va">gvr</span><span class="op">$</span><span class="va">Hugo_Symbol</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span></span></span>
-<span class="r-in"><span>  <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">gvr</span>, <span class="va">gene</span>, domains <span class="op">=</span> <span class="va">tp53_dom</span>, out_dir <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
-<span class="r-in"><span>               verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="co">## User-supplied domains (canonical TP53 / UniProt P04637)</span></span></span>
+<span class="r-in"><span>    <span class="va">tp53_dom</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/data.frame.html" class="external-link">data.frame</a></span><span class="op">(</span></span></span>
+<span class="r-in"><span>        start <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">95</span>,  <span class="fl">323</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>        end   <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="fl">288</span>, <span class="fl">356</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>        name  <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"DNA-binding"</span>, <span class="st">"Tetramerization"</span><span class="op">)</span>,</span></span>
+<span class="r-in"><span>        color <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"#FF9400"</span>, <span class="st">"#75A025"</span><span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="op">)</span></span></span>
+<span class="r-in"><span>    <span class="co">## Use any gene present in the shipped table</span></span></span>
+<span class="r-in"><span>    <span class="va">gene</span> <span class="op">&lt;-</span> <span class="va">gvr</span><span class="op">$</span><span class="va">Hugo_Symbol</span><span class="op">[</span><span class="fl">1</span><span class="op">]</span></span></span>
+<span class="r-in"><span>    <span class="fu">gvr_lollipop</span><span class="op">(</span><span class="va">gvr</span>, <span class="va">gene</span>, domains <span class="op">=</span> <span class="va">tp53_dom</span>, out_dir <span class="op">=</span> <span class="cn">NULL</span>,</span></span>
+<span class="r-in"><span>        verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
 <span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-plt img"><img src="gvr_lollipop-1.png" alt="" width="700" height="433"></span>
 <span class="r-plt img"><img src="gvr_lollipop-2.png" alt="" width="700" height="433"></span>

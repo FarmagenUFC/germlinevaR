@@ -355,32 +355,32 @@ is.function(read.gvr)
 ## result of read.gvr() on the same fixture, minus the ABraOM_AF column
 ## which was added in a later code revision):
 gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                           package = "germlinevaR"))
+    package = "germlinevaR"))
 dim(gvr)
 #> [1]  62 115
 
 # \donttest{
-  ## Real read.gvr() call on the bundled VCF directory:
-  vcf_dir <- system.file("extdata", package = "germlinevaR")
-  gvr <- read.gvr(vcf_dir, verbose = FALSE)
+## Real read.gvr() call on the bundled VCF directory:
+vcf_dir <- system.file("extdata", package = "germlinevaR")
+gvr <- read.gvr(vcf_dir, verbose = FALSE)
 #> Warning: read.gvr: ABraOM reference unreadable; 'ABraOM_AF' left blank.
-  dim(gvr)            # 62 rows x 116 columns
+dim(gvr)            # 62 rows x 116 columns
 #> [1]  62 116
 
-  ## Same call but with write-out to tempdir
-  out <- tempdir()
-  gvr2 <- read.gvr(vcf_dir, write_tsv = TRUE, write_rds = TRUE,
-                   out_dir = out, verbose = FALSE)
+## Same call but with write-out to tempdir
+out <- tempdir()
+gvr2 <- read.gvr(vcf_dir, write_tsv = TRUE, write_rds = TRUE,
+    out_dir = out, verbose = FALSE)
 #> Warning: read.gvr: ABraOM reference unreadable; 'ABraOM_AF' left blank.
-  list.files(out, pattern = "\\.(tsv|rds)$")
+list.files(out, pattern = "\\.(tsv|rds)$")
 #> [1] "example.vep.gvr.tsv.rds" "example.vep.gvr.tsv.tsv"
 
-  ## Single-file mode: full path to the bundled VCF
-  vcf_file <- system.file("extdata", "example.vep.vcf.gz",
-                          package = "germlinevaR")
-  gvr3 <- read.gvr(vcf_path = vcf_file, verbose = FALSE)
+## Single-file mode: full path to the bundled VCF
+vcf_file <- system.file("extdata", "example.vep.vcf.gz",
+    package = "germlinevaR")
+gvr3 <- read.gvr(vcf_path = vcf_file, verbose = FALSE)
 #> Warning: read.gvr: ABraOM reference unreadable; 'ABraOM_AF' left blank.
-  nrow(gvr3)
+nrow(gvr3)
 #> [1] 62
 # }
 ```

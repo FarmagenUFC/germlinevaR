@@ -220,9 +220,9 @@ germlinevaR authors
 ``` r
 ## Load the shipped example table and run summary (no file output)
 gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                           package = "germlinevaR"))
+    package = "germlinevaR"))
 summ <- gvr_summary(gvr, save_excel = FALSE, save_pdf = FALSE,
-                    save_html = FALSE, verbose = FALSE)
+    save_html = FALSE, verbose = FALSE)
 names(summ)
 #> [1] "overview"               "top_genes"              "top_genes_per_sample"  
 #> [4] "variant_classification" "variant_type"           "clin_sig"              
@@ -232,8 +232,8 @@ names(summ)
 ## dashboard to a temp directory.
 out_dir <- file.path(tempdir(), "gvr_summary")
 s <- gvr_summary(gvr, out_dir = out_dir,
-                 save_excel = TRUE, save_pdf = TRUE, save_html = TRUE,
-                 verbose = FALSE)
+    save_excel = TRUE, save_pdf = TRUE, save_html = TRUE,
+    verbose = FALSE)
 ## Inspect a section table
 head(s$variant_classification)
 #>    Variant_Classification Sample_01 Total

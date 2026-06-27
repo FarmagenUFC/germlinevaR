@@ -487,37 +487,37 @@ object regardless of whether files were written.
 
 ``` r
 if (requireNamespace("ggplot2", quietly = TRUE)) {
-  ## Load the shipped example table; pass domains = NULL to skip the
-  ## InterPro REST call (needs network), and out_dir = NULL to return
-  ## the ggplot object instead of writing files.
-  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                             package = "germlinevaR"))
-  ## OR4F5 is the first gene in the example
-  p <- gvr_lollipop(gvr, gene = "OR4F5", domains = NULL,
-                    out_dir = NULL, verbose = FALSE)
-  class(p)
+    ## Load the shipped example table; pass domains = NULL to skip the
+    ## InterPro REST call (needs network), and out_dir = NULL to return
+    ## the ggplot object instead of writing files.
+    gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+        package = "germlinevaR"))
+    ## OR4F5 is the first gene in the example
+    p <- gvr_lollipop(gvr, gene = "OR4F5", domains = NULL,
+        out_dir = NULL, verbose = FALSE)
+    class(p)
 }
 #> [1] "ggplot2::ggplot" "ggplot"          "ggplot2::gg"     "S7_object"      
 #> [5] "gg"             
 
 if (requireNamespace("ggplot2", quietly = TRUE)) {
-  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                             package = "germlinevaR"))
-  ## Plain bar plot, no domain rectangles, returning the ggplot
-  gvr_lollipop(gvr, "OR4F5", domains = NULL, out_dir = NULL,
-               verbose = FALSE)
+    gvr <- readRDS(system.file("extdata", "example_gvr.rds",
+        package = "germlinevaR"))
+    ## Plain bar plot, no domain rectangles, returning the ggplot
+    gvr_lollipop(gvr, "OR4F5", domains = NULL, out_dir = NULL,
+        verbose = FALSE)
 
-  ## User-supplied domains (canonical TP53 / UniProt P04637)
-  tp53_dom <- data.frame(
-    start = c(95,  323),
-    end   = c(288, 356),
-    name  = c("DNA-binding", "Tetramerization"),
-    color = c("#FF9400", "#75A025")
-  )
-  ## Use any gene present in the shipped table
-  gene <- gvr$Hugo_Symbol[1]
-  gvr_lollipop(gvr, gene, domains = tp53_dom, out_dir = NULL,
-               verbose = FALSE)
+    ## User-supplied domains (canonical TP53 / UniProt P04637)
+    tp53_dom <- data.frame(
+        start = c(95,  323),
+        end   = c(288, 356),
+        name  = c("DNA-binding", "Tetramerization"),
+        color = c("#FF9400", "#75A025")
+    )
+    ## Use any gene present in the shipped table
+    gene <- gvr$Hugo_Symbol[1]
+    gvr_lollipop(gvr, gene, domains = tp53_dom, out_dir = NULL,
+        verbose = FALSE)
 }
 
 ```

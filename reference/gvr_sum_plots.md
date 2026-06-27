@@ -148,12 +148,12 @@ Thiago Loreto Matos
 ``` r
 ## Load the shipped example table and write plots to a temp directory
 gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                           package = "germlinevaR"))
+    package = "germlinevaR"))
 out_dir <- gvr_sum_plots(gvr, out_dir = tempdir(), verbose = FALSE)
 dir.exists(out_dir)
 #> [1] TRUE
 
 ## Write PDF outputs into a named subfolder under tempdir()
 gvr_sum_plots(gvr, out_dir = tempdir(), folder_name = "S6_plots",
-              format = "pdf", verbose = FALSE)
+    format = "pdf", verbose = FALSE)
 ```

@@ -376,23 +376,23 @@ is.function(read.gvr.snpeff)
 #> [1] TRUE
 
 # \donttest{
-  ## read.gvr.snpeff() expects VCFs annotated by SnpEff (ANN/LOF/NMD
-  ## INFO fields). The shipped example VCF is VEP-annotated, so a real
-  ## SnpEff example needs your own VCFs; we therefore guard each call on
-  ## the path existing, so the example skips cleanly on machines without
-  ## the data.
-  snpeff_dir <- "/path/to/snpeff-vcfs/"
-  if (dir.exists(snpeff_dir)) {
+## read.gvr.snpeff() expects VCFs annotated by SnpEff (ANN/LOF/NMD
+## INFO fields). The shipped example VCF is VEP-annotated, so a real
+## SnpEff example needs your own VCFs; we therefore guard each call on
+## the path existing, so the example skips cleanly on machines without
+## the data.
+snpeff_dir <- "/path/to/snpeff-vcfs/"
+if (dir.exists(snpeff_dir)) {
     gvr <- read.gvr.snpeff(snpeff_dir)
 
     ## Or via the auto-router when the VCF header declares SnpEff fields:
     gvr <- read.gvr(snpeff_dir)
-  }
+}
 
-  ## Single-file mode: full path
-  snpeff_vcf <- "/path/to/SAMPLE_01.snpeff.vcf.gz"
-  if (file.exists(snpeff_vcf)) {
+## Single-file mode: full path
+snpeff_vcf <- "/path/to/SAMPLE_01.snpeff.vcf.gz"
+if (file.exists(snpeff_vcf)) {
     gvr <- read.gvr.snpeff(vcf_path = snpeff_vcf)
-  }
+}
 # }
 ```
