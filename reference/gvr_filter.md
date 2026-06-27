@@ -250,7 +250,6 @@ filt <- gvr_filter(gvr, ABraOM_AF = NULL, verbose = FALSE)
 dim(filt)
 #> [1]   7 115
 
-# \donttest{
 ## Variations on the default pipeline using the shipped example table
 
 ## Add protein-coding biotype filter:
@@ -1322,5 +1321,4 @@ gvr_filter(gvr, ABraOM_AF = NULL, vc_nonSyn = TRUE,
 #>    INFO_AF INFO_MQ INFO_QD  CNN_1D     GT     AD sample_DP     GQ
 #>     <char>  <char>  <char>  <char> <char> <char>    <char> <char>
 #> 1:   0.500   60.00    0.86 -15.246    0/1 136,29       165     99
-# }
 ```

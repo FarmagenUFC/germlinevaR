@@ -228,17 +228,14 @@ names(summ)
 #> [4] "variant_classification" "variant_type"           "clin_sig"              
 #> [7] "impact"                 "top_variants"          
 
-# \donttest{
-  ## Write the XLSX workbook + multi-page PDF + interactive HTML
-  ## dashboard to a temp directory.
-  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                             package = "germlinevaR"))
-  out_dir <- file.path(tempdir(), "gvr_summary")
-  s <- gvr_summary(gvr, out_dir = out_dir,
-                   save_excel = TRUE, save_pdf = TRUE, save_html = TRUE,
-                   verbose = FALSE)
-  ## Inspect a section table
-  head(s$variant_classification)
+## Write the XLSX workbook + multi-page PDF + interactive HTML
+## dashboard to a temp directory.
+out_dir <- file.path(tempdir(), "gvr_summary")
+s <- gvr_summary(gvr, out_dir = out_dir,
+                 save_excel = TRUE, save_pdf = TRUE, save_html = TRUE,
+                 verbose = FALSE)
+## Inspect a section table
+head(s$variant_classification)
 #>    Variant_Classification Sample_01 Total
 #>                    <char>     <int> <num>
 #> 1:                 Intron        14    14
@@ -247,11 +244,4 @@ names(summ)
 #> 4:                    RNA         4     4
 #> 5:            Splice_Site         4     4
 #> 6:                  3'UTR         3     3
-
-  ## Compute only, no files (still returns the section tables)
-  s2 <- gvr_summary(gvr, save_excel = FALSE, save_pdf = FALSE,
-                    save_html = FALSE, verbose = FALSE)
-  identical(names(s), names(s2))
-#> [1] TRUE
-# }
 ```

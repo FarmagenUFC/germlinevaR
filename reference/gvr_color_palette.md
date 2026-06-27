@@ -110,15 +110,12 @@ gvr_list_palettes()
 #> [49] "purple_orange" "cool_warm"     "blue_yellow"   "rainbow"      
 #> [53] "heat"          "terrain"       "topo"          "cm"           
 
-# \donttest{
-  if (requireNamespace("ggplot2", quietly = TRUE)) {
-    # Use directly in a ggplot2 plot
-    ggplot2::ggplot(iris,
-        ggplot2::aes(Sepal.Length, Sepal.Width, color = Species)) +
-      ggplot2::geom_point() +
-      ggplot2::scale_color_manual(
-        values = gvr_color_palette("viridis", 3))
-  }
-
-# }
+if (requireNamespace("ggplot2", quietly = TRUE)) {
+  # Use directly in a ggplot2 plot
+  ggplot2::ggplot(iris,
+      ggplot2::aes(Sepal.Length, Sepal.Width, color = Species)) +
+    ggplot2::geom_point() +
+    ggplot2::scale_color_manual(
+      values = gvr_color_palette("viridis", 3))
+}
 ```

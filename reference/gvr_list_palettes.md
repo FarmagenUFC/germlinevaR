@@ -82,8 +82,7 @@ gvr_list_palettes()
 #> [49] "purple_orange" "cool_warm"     "blue_yellow"   "rainbow"      
 #> [53] "heat"          "terrain"       "topo"          "cm"           
 # Generate a 5-color sample of every palette
-# \donttest{
-  lapply(gvr_list_palettes(), gvr_color_palette, n = 5)
+lapply(gvr_list_palettes(), gvr_color_palette, n = 5)
 #> [[1]]
 #> [1] "#F8766D" "#A3A500" "#00BF7D" "#00B0F6" "#E76BF3"
 #> 
@@ -252,5 +251,4 @@ gvr_list_palettes()
 #> [[56]]
 #> [1] "#80FFFF" "#BFFFFF" "#FFFFFF" "#FFBFFF" "#FF80FF"
 #> 
-# }
 ```

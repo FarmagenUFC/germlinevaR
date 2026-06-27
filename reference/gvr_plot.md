@@ -196,13 +196,9 @@ p <- gvr_plot(gvr, out_dir = tempdir(), verbose = FALSE)
 class(p)
 #> [1] "character"
 
-# \donttest{
-  ## Smaller top-genes variant matrix of filtered hits to a temp folder
-  gvr <- readRDS(system.file("extdata", "example_gvr.rds",
-                             package = "germlinevaR"))
-  filt <- gvr_filter(gvr, ABraOM_AF = NULL, verbose = FALSE)
-  if (nrow(filt) > 0L) {
-    gvr_plot(filt, top_n = 15, out_dir = tempdir(), verbose = FALSE)
-  }
-# }
+## Smaller top-genes variant matrix of filtered hits to a temp folder
+filt <- gvr_filter(gvr, ABraOM_AF = NULL, verbose = FALSE)
+if (nrow(filt) > 0L) {
+  gvr_plot(filt, top_n = 15, out_dir = tempdir(), verbose = FALSE)
+}
 ```

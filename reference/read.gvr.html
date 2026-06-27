@@ -357,14 +357,31 @@ VEP and SnpEff annotations.</p>
 
     <div class="section level2">
     <h2 id="ref-examples">Examples<a class="anchor" aria-label="anchor" href="#ref-examples"></a></h2>
-    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co">## Read the shipped example VEP-annotated VCF.</span></span></span>
-<span class="r-in"><span><span class="va">vcf_dir</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu">read.gvr</span><span class="op">(</span><span class="va">vcf_dir</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
-<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>read.gvr: ABraOM reference unreadable; 'ABraOM_AF' left blank.</span>
-<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="va">gvr</span><span class="op">)</span>            <span class="co"># 62 rows x 116 columns</span></span></span>
-<span class="r-out co"><span class="r-pr">#&gt;</span> [1]  62 116</span>
+    <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co">## read.gvr() reads VEP/SnpEff-annotated VCFs and returns a parsed</span></span></span>
+<span class="r-in"><span><span class="co">## data.table. Reading the bundled 62-variant fixture takes ~20s on</span></span></span>
+<span class="r-in"><span><span class="co">## a typical CI worker, so the real read.gvr() calls are wrapped in</span></span></span>
+<span class="r-in"><span><span class="co">## a donttest block below; a pre-parsed equivalent .rds is also bundled.</span></span></span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co">## The function is exported and callable:</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/is.function.html" class="external-link">is.function</a></span><span class="op">(</span><span class="va">read.gvr</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
+<span class="r-in"><span></span></span>
+<span class="r-in"><span><span class="co">## Pre-parsed equivalent (instantaneous; same shape and content as the</span></span></span>
+<span class="r-in"><span><span class="co">## result of read.gvr() on the same fixture, minus the ABraOM_AF column</span></span></span>
+<span class="r-in"><span><span class="co">## which was added in a later code revision):</span></span></span>
+<span class="r-in"><span><span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example_gvr.rds"</span>,</span></span>
+<span class="r-in"><span>                           package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span><span class="op">)</span></span></span>
+<span class="r-in"><span><span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="va">gvr</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1]  62 115</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># \donttest{</span></span></span>
+<span class="r-in"><span>  <span class="co">## Real read.gvr() call on the bundled VCF directory:</span></span></span>
+<span class="r-in"><span>  <span class="va">vcf_dir</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span></span></span>
+<span class="r-in"><span>  <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu">read.gvr</span><span class="op">(</span><span class="va">vcf_dir</span>, verbose <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>read.gvr: ABraOM reference unreadable; 'ABraOM_AF' left blank.</span>
+<span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/base/dim.html" class="external-link">dim</a></span><span class="op">(</span><span class="va">gvr</span><span class="op">)</span>            <span class="co"># 62 rows x 116 columns</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1]  62 116</span>
+<span class="r-in"><span></span></span>
 <span class="r-in"><span>  <span class="co">## Same call but with write-out to tempdir</span></span></span>
 <span class="r-in"><span>  <span class="va">out</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span></span></span>
 <span class="r-in"><span>  <span class="va">gvr2</span> <span class="op">&lt;-</span> <span class="fu">read.gvr</span><span class="op">(</span><span class="va">vcf_dir</span>, write_tsv <span class="op">=</span> <span class="cn">TRUE</span>, write_rds <span class="op">=</span> <span class="cn">TRUE</span>,</span></span>

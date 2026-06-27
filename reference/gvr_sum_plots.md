@@ -153,9 +153,7 @@ out_dir <- gvr_sum_plots(gvr, out_dir = tempdir(), verbose = FALSE)
 dir.exists(out_dir)
 #> [1] TRUE
 
-# \donttest{
-  ## Write PDF outputs into a named subfolder under tempdir()
-  gvr_sum_plots(gvr, out_dir = tempdir(), folder_name = "S6_plots",
-                format = "pdf", verbose = FALSE)
-# }
+## Write PDF outputs into a named subfolder under tempdir()
+gvr_sum_plots(gvr, out_dir = tempdir(), folder_name = "S6_plots",
+              format = "pdf", verbose = FALSE)
 ```
