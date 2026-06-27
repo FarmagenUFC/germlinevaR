@@ -194,7 +194,7 @@ when <code>domain_label_mode = "number"</code> (all domains labelled) or <code>"
 <dt id="arg-domain-label-mode">domain_label_mode<a class="anchor" aria-label="anchor" href="#arg-domain-label-mode"></a></dt>
 <dd><p>One of <code>"name"</code> (default), <code>"id"</code>, <code>"number"</code>,
 or <code>"none"</code>. Controls how domain rectangles are labelled.</p><ul><li><p><code>"name"</code>: human-readable InterPro name, repelled below the bar with
-leader lines (uses <code><a href="https://ggrepel.slowkow.com/reference/geom_text_repel.html" class="external-link">ggrepel::geom_text_repel()</a></code> when available).</p></li>
+leader lines (uses <code><a href="https://rdrr.io/pkg/ggrepel/man/geom_text_repel.html" class="external-link">ggrepel::geom_text_repel()</a></code> when available).</p></li>
 <li><p><code>"id"</code>: InterPro accession (e.g. <code>IPR011615</code>); falls back to name
 when accession is missing (user-supplied data.frame without it).</p></li>
 <li><p><code>"number"</code>: numbers 1..N centered in each rectangle, with a
@@ -425,7 +425,7 @@ top of the protein-body bar up to the top of the stack.</p>
 a position, the most-common one is shown followed by <code>(+N more)</code>. Set
 <code>label_top = 0</code> to disable labels, <code>label_top = Inf</code> to label every
 position. If <span class="pkg">ggrepel</span> is installed, labels are placed via
-<code><a href="https://ggrepel.slowkow.com/reference/geom_text_repel.html" class="external-link">ggrepel::geom_text_repel()</a></code>; otherwise a plain <code>geom_text()</code> is used.</p>
+<code><a href="https://rdrr.io/pkg/ggrepel/man/geom_text_repel.html" class="external-link">ggrepel::geom_text_repel()</a></code>; otherwise a plain <code>geom_text()</code> is used.</p>
 <p>Protein-body bar: a thin horizontal rectangle is drawn straddling <code>y = 0</code>
 from x = 0 to x = <code>protein_length</code>. Bar height scales with the visible
 stack height (about 4 percent of the y range, clamped to <code>[0.15, 0.5]</code>).

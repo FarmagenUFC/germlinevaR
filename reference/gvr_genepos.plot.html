@@ -288,22 +288,40 @@ suggesting <code>rtracklayer</code> or falls back to a tiny streaming parser.</p
 <span class="r-in"><span><span class="op">}</span></span></span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> [1] TRUE</span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span><span class="kw">if</span> <span class="op">(</span><span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span> <span class="co"># \dontrun{</span></span></span>
+<span class="r-in"><span><span class="co"># \donttest{</span></span></span>
 <span class="r-in"><span>  <span class="co">## Auto-resolve the MANE / canonical transcript for BRCA1 via the</span></span></span>
-<span class="r-in"><span>  <span class="co">## Ensembl REST API (requires internet access).</span></span></span>
+<span class="r-in"><span>  <span class="co">## Ensembl REST API (requires internet access). out_dir = NULL</span></span></span>
+<span class="r-in"><span>  <span class="co">## returns the ggplot object only — no file is written.</span></span></span>
 <span class="r-in"><span>  <span class="va">gvr</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/readRDS.html" class="external-link">readRDS</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"extdata"</span>, <span class="st">"example_gvr.rds"</span>,</span></span>
 <span class="r-in"><span>                             package <span class="op">=</span> <span class="st">"germlinevaR"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-in"><span>  <span class="va">p</span> <span class="op">&lt;-</span> <span class="fu">gvr_genepos.plot</span><span class="op">(</span><span class="va">gvr</span>, <span class="st">"BRCA1"</span><span class="op">)</span></span></span>
+<span class="r-in"><span>  <span class="va">p</span> <span class="op">&lt;-</span> <span class="fu">gvr_genepos.plot</span><span class="op">(</span><span class="va">gvr</span>, <span class="st">"BRCA1"</span>, out_dir <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> gvr_genepos.plot: resolved transcript -&gt; ENST00000357654</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> gvr_genepos.plot: cache_dir = /home/runner/.cache/R/germlinevaR</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> gvr_genepos.plot: REST GET https://rest.ensembl.org/lookup/id/ENST00000357654?expand=1;utr=1</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> gvr_genepos.plot: cached -&gt; /home/runner/.cache/R/germlinevaR/genestruct_ensembl_ENST00000357654_GRCh38.rds</span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>no non-missing arguments to max; returning -Inf</span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Pin transcript and use proportional intron scaling</span></span></span>
+<span class="r-in"><span>  <span class="co">## Pin transcript and use proportional intron scaling, still in-memory.</span></span></span>
 <span class="r-in"><span>  <span class="fu">gvr_genepos.plot</span><span class="op">(</span><span class="va">gvr</span>, <span class="st">"BRCA1"</span>,</span></span>
 <span class="r-in"><span>                   transcript_id <span class="op">=</span> <span class="st">"ENST00000357654"</span>,</span></span>
-<span class="r-in"><span>                   intron_scale  <span class="op">=</span> <span class="st">"proportional"</span><span class="op">)</span></span></span>
+<span class="r-in"><span>                   intron_scale  <span class="op">=</span> <span class="st">"proportional"</span>,</span></span>
+<span class="r-in"><span>                   out_dir       <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> gvr_genepos.plot: cache_dir = /home/runner/.cache/R/germlinevaR</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> gvr_genepos.plot: cache hit /home/runner/.cache/R/germlinevaR/genestruct_ensembl_ENST00000357654_GRCh38.rds</span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>no non-missing arguments to max; returning -Inf</span>
 <span class="r-in"><span></span></span>
-<span class="r-in"><span>  <span class="co">## Fully offline using a local GTF (path supplied by the user)</span></span></span>
+<span class="r-in"><span>  <span class="co">## Demonstrate file output by writing the PNG to a temp directory.</span></span></span>
+<span class="r-in"><span>  <span class="va">out_dir</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/tempfile.html" class="external-link">tempdir</a></span><span class="op">(</span><span class="op">)</span>, <span class="st">"gvr_genepos_demo"</span><span class="op">)</span></span></span>
 <span class="r-in"><span>  <span class="fu">gvr_genepos.plot</span><span class="op">(</span><span class="va">gvr</span>, <span class="st">"BRCA1"</span>,</span></span>
-<span class="r-in"><span>                   gtf_path <span class="op">=</span> <span class="st">"gencode.v44.annotation.gtf.gz"</span><span class="op">)</span></span></span>
-<span class="r-in"><span><span class="op">}</span> <span class="co"># }</span></span></span>
+<span class="r-in"><span>                   transcript_id <span class="op">=</span> <span class="st">"ENST00000357654"</span>,</span></span>
+<span class="r-in"><span>                   out_dir       <span class="op">=</span> <span class="va">out_dir</span>,</span></span>
+<span class="r-in"><span>                   verbose       <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></span>
+<span class="r-wrn co"><span class="r-pr">#&gt;</span> <span class="warning">Warning: </span>no non-missing arguments to max; returning -Inf</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> Ignoring unknown labels:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">•</span> <span style="color: #00BB00;">colour</span> : <span style="color: #0000BB;">"Variant class"</span></span>
+<span class="r-in"><span>  <span class="fu"><a href="https://rdrr.io/r/base/list.files.html" class="external-link">list.files</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/file.path.html" class="external-link">file.path</a></span><span class="op">(</span><span class="va">out_dir</span>, <span class="st">"gvr_genepos"</span><span class="op">)</span>, pattern <span class="op">=</span> <span class="st">"\\.png$"</span><span class="op">)</span></span></span>
+<span class="r-out co"><span class="r-pr">#&gt;</span> [1] "BRCA1_ENST00000357654.png"</span>
+<span class="r-in"><span><span class="co"># }</span></span></span>
 </code></pre></div>
     </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

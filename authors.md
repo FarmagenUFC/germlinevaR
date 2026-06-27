@@ -3,6 +3,7 @@
 ## Authors
 
 - **Thiago Loreto Matos**. Author, maintainer.
+  [](https://orcid.org/0000-0003-4531-9616)
 
 - **Felipe Pantoja Mesquita**. Author.
 
