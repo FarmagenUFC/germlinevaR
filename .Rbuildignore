@@ -8,3 +8,6 @@
 ^codecov\.yml$
 ^\.Rproj\.user$
 ^.*\.Rproj$
+^doc$
+^META$
+^README\.Rmd$
