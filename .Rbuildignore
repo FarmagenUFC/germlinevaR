@@ -1,10 +1,10 @@
+^BIOC_COVER_LETTER\.md$
+^CHANGES\.md$
+^\.github$
 ^_pkgdown\.yml$
 ^docs$
-^doc$
-^\.github$
 ^pkgdown$
-^README\.Rmd$
-^\.gitignore$
-^CHANGES\.md$
-^.*\.Rproj$
+^cran-comments\.md$
+^codecov\.yml$
 ^\.Rproj\.user$
+^.*\.Rproj$
