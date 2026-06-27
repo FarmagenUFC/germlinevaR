@@ -151,7 +151,7 @@ gvr_lollipop(
 
   - `"name"`: human-readable InterPro name, repelled below the bar with
     leader lines (uses
-    [`ggrepel::geom_text_repel()`](https://rdrr.io/pkg/ggrepel/man/geom_text_repel.html)
+    [`ggrepel::geom_text_repel()`](https://ggrepel.slowkow.com/reference/geom_text_repel.html)
     when available).
 
   - `"id"`: InterPro accession (e.g. `IPR011615`); falls back to name
@@ -395,7 +395,7 @@ Labels: the top-`label_top` positions by count are annotated with their
 share a position, the most-common one is shown followed by `(+N more)`.
 Set `label_top = 0` to disable labels, `label_top = Inf` to label every
 position. If ggrepel is installed, labels are placed via
-[`ggrepel::geom_text_repel()`](https://rdrr.io/pkg/ggrepel/man/geom_text_repel.html);
+[`ggrepel::geom_text_repel()`](https://ggrepel.slowkow.com/reference/geom_text_repel.html);
 otherwise a plain `geom_text()` is used.
 
 Protein-body bar: a thin horizontal rectangle is drawn straddling
