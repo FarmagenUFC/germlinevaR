@@ -20,6 +20,11 @@ gvr_filter(
   vc_nonSyn = FALSE,
   missense_only = FALSE,
   genes = NULL,
+  hpo = NULL,
+  hpo_path = NULL,
+  hpo_url = "https://purl.obolibrary.org/obo/hp/hpoa/phenotype_to_genes.txt",
+  hpo_cache_dir = NULL,
+  hpo_refresh_cache = FALSE,
   save_excel = FALSE,
   out_dir = NULL,
   file_prefix = "gvr_filter",
@@ -92,6 +97,24 @@ subset. Errors with a clear message if \code{Variant_Classification} is missing.
 \item{genes}{Character vector of \code{Hugo_Symbol}s to keep (exact, case-insensitive),
 or \code{NULL} (default) to keep all genes.}
 
+\item{hpo}{Character vector of Human Phenotype Ontology identifiers, e.g.
+\code{"HP:0003002"}. When supplied, genes associated with the HPO term(s) are
+retrieved with \code{\link[=gvr_hpo_genes]{gvr_hpo_genes()}} and combined with \code{genes}. Filtering then
+keeps rows whose \code{Hugo_Symbol} belongs to the union of manually supplied
+genes and HPO-derived genes.}
+
+\item{hpo_path}{Optional path to a local HPO \code{phenotype_to_genes.txt} file.
+If supplied, no download is attempted.}
+
+\item{hpo_url}{URL used to retrieve the HPO phenotype-to-gene table when
+\code{hpo_path = NULL}.}
+
+\item{hpo_cache_dir}{Directory used to cache the downloaded HPO table.
+\code{NULL} uses \code{tools::R_user_dir("germlinevaR", "cache")}.}
+
+\item{hpo_refresh_cache}{Logical. If \code{TRUE}, force re-download of the HPO
+phenotype-to-gene table. Default \code{FALSE}.}
+
 \item{save_excel}{Logical; if TRUE, also write the FILTERED table to an \code{.xlsx}
 workbook (single \code{"Filtered"} sheet) at \verb{<out_dir>/<file_prefix>.xlsx}. Requires
 the \pkg{openxlsx} package (a \code{Suggests} dependency); if it is not installed the
@@ -133,7 +156,7 @@ previous one:
 \item Biotype                - \code{biotype_keep}
 \item Genotype exclusion     - \code{gt_exclude}
 \item Variant classification - \code{vc_nonSyn}
-\item Gene subset            - \code{genes}
+\item Gene subset            - \code{genes} and/or HPO-derived genes from \code{hpo}
 }
 
 Important data notes (true of \code{\link[=read.gvr]{read.gvr()}} output):
@@ -192,13 +215,14 @@ gvr_filter(gvr, ABraOM_AF = NULL, vc_nonSyn = TRUE,
 \code{\link[=read.gvr]{read.gvr()}} to build the table, \code{\link[=gvr_summary]{gvr_summary()}} to summarise the filtered
 variants.
 
-Other germlinevaR: 
-\code{\link{gvr_list_panels}()},
-\code{\link{gvr_panel_genes}()},
-\code{\link{gvr_plot}()},
-\code{\link{gvr_summary}()},
-\code{\link{read.gvr}()},
-\code{\link{read.gvr.snpeff}()}
+Other germlinevaR:
+\code{\link[=gvr_hpo_genes]{gvr_hpo_genes()}},
+\code{\link[=gvr_list_panels]{gvr_list_panels()}},
+\code{\link[=gvr_panel_genes]{gvr_panel_genes()}},
+\code{\link[=gvr_plot]{gvr_plot()}},
+\code{\link[=gvr_summary]{gvr_summary()}},
+\code{\link[=read.gvr]{read.gvr()}},
+\code{\link[=read.gvr.snpeff]{read.gvr.snpeff()}}
 }
 \author{
 germlinevaR authors
