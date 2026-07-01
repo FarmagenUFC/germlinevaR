@@ -46,6 +46,7 @@ reference:
     contents:
       - gvr_panel_genes
       - gvr_list_panels
+      - gvr_hpo_genes
 
   - title: "Cohort summary"
     contents:
