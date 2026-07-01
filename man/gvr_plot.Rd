@@ -142,6 +142,7 @@ if (nrow(filt) > 0L) {
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},
+\code{\link{gvr_hpo_genes}()},
 \code{\link{gvr_list_panels}()},
 \code{\link{gvr_panel_genes}()},
 \code{\link{gvr_summary}()},

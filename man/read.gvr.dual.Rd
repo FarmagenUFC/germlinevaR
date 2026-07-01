@@ -29,6 +29,7 @@ read.gvr.dual(
   min_GQ = 30,
   genes = NULL,
   panel = NULL,
+  hpo = NULL,
   vc_nonSyn = FALSE,
   canonical_only = TRUE,
   ncores = 1L,
@@ -142,6 +143,20 @@ currently ships 15 panels; see \code{\link[=gvr_list_panels]{gvr_list_panels()}}
 An unknown name raises an error listing the available panels. \code{NULL}
 (default) disables panel filtering; behaviour is then byte-identical to
 omitting the argument.}
+
+\item{hpo}{Character vector of Human Phenotype Ontology (HPO) term
+identifier(s), e.g. \code{"HP:0003002"} (Breast carcinoma) or
+\code{c("HP:0003002", "HP:0025022")}. Each term is resolved to a gene
+vector via \code{\link[=gvr_hpo_genes]{gvr_hpo_genes()}} and the union of all resolved genes is
+added to any genes already produced by \code{genes} and \code{panel}
+(deduplicated, uppercased). Lenient input is accepted: \code{"HP:0003002"},
+\code{"hp:0003002"}, \code{"3002"}, and \code{"0003002"} all normalise to the
+canonical \code{"HP:0003002"} form. Only exact-term associations are used
+(no ontology-descendant expansion). The HPO phenotype-to-gene table is
+downloaded and cached under \code{tools::R_user_dir("germlinevaR", "cache")}
+and auto-refreshed after 30 days; see \code{\link[=gvr_hpo_genes]{gvr_hpo_genes()}} for offline /
+air-gapped usage via \verb{hpo_path=}. \code{NULL} (default) disables HPO
+filtering; behaviour is then byte-identical to omitting the argument.}
 
 \item{vc_nonSyn}{Logical or character vector. Controls which
 \code{Variant_Classification} values are retained (mirroring the

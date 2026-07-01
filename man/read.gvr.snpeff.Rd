@@ -29,6 +29,7 @@ read.gvr.snpeff(
   min_GQ = 30,
   genes = NULL,
   panel = NULL,
+  hpo = NULL,
   vc_nonSyn = FALSE,
   canonical_only = TRUE,
   ncores = 1L,
@@ -141,6 +142,22 @@ currently ships 15 panels; see \code{\link[=gvr_list_panels]{gvr_list_panels()}}
 An unknown name raises an error listing the available panels. \code{NULL}
 (default) disables panel filtering; behaviour is then byte-identical to
 omitting the argument.}
+
+\item{hpo}{Character vector of Human Phenotype Ontology term id(s)
+(e.g. \code{"HP:0003002"}, \code{c("HP:0003002", "HP:0025022")}). Each id is
+resolved to its gene vector via \code{\link[=gvr_hpo_genes]{gvr_hpo_genes()}} using the HPO
+\code{phenotype_to_genes.txt} annotation file, and the union of all
+resolved genes is taken with \code{genes} and any panel genes
+(deduplicated, uppercased). Lenient input forms are accepted and
+normalised: \code{"HP:0003002"}, \code{"hp:0003002"}, \code{"hp:3002"}, \code{"3002"},
+and \code{"0003002"} all coerce to canonical \code{"HP:0003002"}. Only the
+exact terms are used; descendants in the ontology are NOT expanded.
+The annotation file is fetched once per session and cached under
+\code{\link[tools:userdir]{tools::R_user_dir()}} \code{"germlinevaR"} \code{"cache"}; the cache is
+auto-refreshed after 30 days. For offline / hermetic runs, point
+\code{options(gvr.hpo_path = )} at a local copy. \code{NULL} (default)
+disables HPO filtering; behaviour is then byte-identical to omitting
+the argument.}
 
 \item{vc_nonSyn}{Logical or character vector. Controls which
 \code{Variant_Classification} values are retained (mirroring the
@@ -287,6 +304,7 @@ entrypoint, which auto-routes SnpEff input to this function),
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},
+\code{\link{gvr_hpo_genes}()},
 \code{\link{gvr_list_panels}()},
 \code{\link{gvr_panel_genes}()},
 \code{\link{gvr_plot}()},

@@ -1,0 +1,51 @@
+#format: hpo_id<tab>hpo_name<tab>ncbi_gene_id<tab>gene_symbol<tab>disease_id
+hpo_id	hpo_name	ncbi_gene_id	gene_symbol	disease_id
+HP:0003002	Breast carcinoma	672	BRCA1	OMIM:604370
+HP:0003002	Breast carcinoma	675	BRCA2	OMIM:612555
+HP:0003002	Breast carcinoma	7157	TP53	OMIM:151623
+HP:0003002	Breast carcinoma	5889	PALB2	OMIM:610355
+HP:0003002	Breast carcinoma	472	ATM	OMIM:114480
+HP:0003002	Breast carcinoma	11200	CHEK2	OMIM:604373
+HP:0003002	Breast carcinoma	83990	BRIP1	OMIM:114480
+HP:0003002	Breast carcinoma	580	BARD1	OMIM:114480
+HP:0003002	Breast carcinoma	4763	NF1	OMIM:162200
+HP:0003002	Breast carcinoma	5395	PMS2	OMIM:600259
+HP:0100013	Neoplasm of the breast	672	BRCA1	OMIM:604370
+HP:0100013	Neoplasm of the breast	675	BRCA2	OMIM:612555
+HP:0100013	Neoplasm of the breast	7157	TP53	OMIM:151623
+HP:0100013	Neoplasm of the breast	5889	PALB2	OMIM:610355
+HP:0100013	Neoplasm of the breast	324	APC	OMIM:175100
+HP:0100013	Neoplasm of the breast	5728	PTEN	OMIM:158350
+HP:0100013	Neoplasm of the breast	4436	MSH2	OMIM:120435
+HP:0100013	Neoplasm of the breast	4292	MLH1	OMIM:120436
+HP:0100013	Neoplasm of the breast	545	ATR	OMIM:210900
+HP:0025022	Ehlers-Danlos syndrome classic type	1289	COL5A1	OMIM:130000
+HP:0025022	Ehlers-Danlos syndrome classic type	1290	COL5A2	OMIM:130010
+HP:0025022	Ehlers-Danlos syndrome classic type	7148	TNXB	OMIM:130020
+HP:0001939	Abnormality of metabolism/homeostasis	443	ASPA	OMIM:271900
+HP:0001939	Abnormality of metabolism/homeostasis	2653	GCH1	OMIM:233910
+HP:0001939	Abnormality of metabolism/homeostasis	3155	HMBS	OMIM:176000
+HP:0001939	Abnormality of metabolism/homeostasis	5053	PAH	OMIM:261600
+HP:0001939	Abnormality of metabolism/homeostasis	2645	GCK	OMIM:606176
+HP:0000006	Autosomal dominant inheritance	4763	NF1	OMIM:162200
+HP:0000006	Autosomal dominant inheritance	324	APC	OMIM:175100
+HP:0000006	Autosomal dominant inheritance	7157	TP53	OMIM:151623
+HP:0000006	Autosomal dominant inheritance	672	BRCA1	OMIM:604370
+HP:0000007	Autosomal recessive inheritance	4292	MLH1	OMIM:120436
+HP:0000007	Autosomal recessive inheritance	4436	MSH2	OMIM:120435
+HP:0000007	Autosomal recessive inheritance	11200	CHEK2	OMIM:604373
+HP:0000834	Adrenal insufficiency	367	AR	OMIM:300068
+HP:0000834	Adrenal insufficiency	1584	CYP11B1	OMIM:610613
+HP:0000834	Adrenal insufficiency	1585	CYP11B2	OMIM:610600
+HP:0001250	Seizure	5629	PROX1	OMIM:601546
+HP:0001250	Seizure	2903	GRIN2A	OMIM:245570
+HP:0001250	Seizure	2891	GRIA2	OMIM:618825
+HP:0001250	Seizure	2890	GRIA1	OMIM:618828
+HP:0001250	Seizure	3782	KCNC1	OMIM:616187
+HP:0001034	Hypomelanotic macule	3417	IDH1	OMIM:601626
+HP:0001034	Hypomelanotic macule	3418	IDH2	OMIM:613643
+HP:0002664	Neoplasm	7157	TP53	OMIM:151623
+HP:0002664	Neoplasm	672	BRCA1	OMIM:604370
+HP:0002664	Neoplasm	675	BRCA2	OMIM:612555
+HP:0002664	Neoplasm	4763	NF1	OMIM:162200
+HP:0002664	Neoplasm	1289	COL5A1	ORPHA:98249

@@ -45,6 +45,7 @@ nrow(gvr[gvr$Hugo_Symbol \%in\% multi_panel, ])
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},
+\code{\link{gvr_hpo_genes}()},
 \code{\link{gvr_list_panels}()},
 \code{\link{gvr_plot}()},
 \code{\link{gvr_summary}()},

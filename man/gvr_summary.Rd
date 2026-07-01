@@ -172,6 +172,7 @@ summarising, \code{\link[=gvr_plot]{gvr_plot()}} for a cohort top-genes variant 
 
 Other germlinevaR: 
 \code{\link{gvr_filter}()},
+\code{\link{gvr_hpo_genes}()},
 \code{\link{gvr_list_panels}()},
 \code{\link{gvr_panel_genes}()},
 \code{\link{gvr_plot}()},

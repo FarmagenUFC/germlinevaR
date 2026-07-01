@@ -19,7 +19,7 @@
 #'   \item Biotype                - `biotype_keep`
 #'   \item Genotype exclusion     - `gt_exclude`
 #'   \item Variant classification - `vc_nonSyn`
-#'   \item Gene subset            - `genes`
+#'   \item Gene subset            - `genes` (unioned with `panel` and `hpo`)
 #' }
 #'
 #' Important data notes (true of [read.gvr()] output):
@@ -92,6 +92,22 @@
 #'   subset. Errors with a clear message if `Variant_Classification` is missing.
 #' @param genes Character vector of `Hugo_Symbol`s to keep (exact, case-insensitive),
 #'   or `NULL` (default) to keep all genes.
+#' @param panel Character vector of curated disease panel name(s) (e.g.
+#'   `"breast cancer"`, `"hereditary prostate cancer"`, `"gist"`). Resolved to
+#'   gene vectors via [gvr_panel_genes()] and unioned with `genes` (dedup,
+#'   uppercased) before the "Gene subset" filter runs. See
+#'   [gvr_list_panels()] for the full registry. `NULL` (default) disables
+#'   panel filtering; behaviour is then byte-identical to omitting the argument.
+#' @param hpo Character vector of Human Phenotype Ontology (HPO) term id(s),
+#'   e.g. `"HP:0003002"` (Breast carcinoma). Resolved to gene vectors via
+#'   [gvr_hpo_genes()] and unioned with any genes from `genes` / `panel`
+#'   before the "Gene subset" filter runs. Lenient input accepted:
+#'   `"HP:0003002"`, `"hp:0003002"`, `"3002"`, and `"0003002"` all normalise
+#'   to canonical `"HP:0003002"`. Only exact-term associations are used (no
+#'   ontology-descendant expansion). The HPO table is downloaded and cached
+#'   under `tools::R_user_dir("germlinevaR", "cache")`; see [gvr_hpo_genes()]
+#'   for offline / air-gapped use via `hpo_path=`. `NULL` (default) disables
+#'   HPO filtering; behaviour is then byte-identical to omitting the argument.
 #' @param save_excel Logical; if TRUE, also write the FILTERED table to an `.xlsx`
 #'   workbook (single `"Filtered"` sheet) at `<out_dir>/<file_prefix>.xlsx`. Requires
 #'   the \pkg{openxlsx} package (a `Suggests` dependency); if it is not installed the
@@ -168,6 +184,8 @@ gvr_filter <- function(gvr,
                        vc_nonSyn = FALSE,
                        missense_only = FALSE,  # vN+5: strict missense-only filter (Variant_Classification == "Missense_Mutation")
                        genes = NULL,
+                       panel = NULL,          # vN+2: curated disease gene panel(s); union'd with `genes`
+                       hpo   = NULL,          # vN+2: HPO term id(s); union'd with `genes` and `panel`
                        save_excel = FALSE,
                        out_dir = NULL,
                        file_prefix = "gvr_filter",
@@ -351,6 +369,69 @@ gvr_filter <- function(gvr,
         keep <- !.is_missing(vc) & vc == "Missense_Mutation"
         dt <- dt[keep]
         .log_step("missense_only", before, nrow(dt))
+    }
+
+    # ============================================================================
+    # 8b. Panel + HPO union into `genes` (vN+2)
+    #   Mirrors the design of read.gvr(): if `panel` or `hpo` is supplied,
+    #   resolve each to a gene vector and UNION with any explicit `genes`. The
+    #   downstream "9. Gene subset" block is unchanged (same semantics as
+    #   before). When both `panel` and `hpo` are NULL this block is a strict
+    #   no-op and `genes` is byte-identical to the caller-supplied value.
+    # ============================================================================
+    if (!is.null(panel)) {
+        if (!exists(".gvr_resolve_panels", mode = "function", inherits = TRUE)) {
+            stop("gvr_filter: panel resolution requires gvr_panels.R; please source/load the package.")
+        }
+        panel_genes <- .gvr_resolve_panels(panel)   # uppercased, deduplicated
+        if (length(panel_genes) > 0L) {
+            eff <- unique(toupper(trimws(c(panel_genes, as.character(genes)))))
+            eff <- eff[!is.na(eff) & nzchar(eff)]
+            if (isTRUE(verbose)) {
+                message(sprintf(
+                    "panel: resolved %d panel(s) -> %d unique Hugo_Symbol(s)%s.",
+                    length(unique(as.character(panel))),
+                    length(eff),
+                    if (!is.null(genes) && length(as.character(genes)) > 0L)
+                        sprintf(" (panel %d + extras %d)",
+                            length(panel_genes),
+                            length(setdiff(toupper(trimws(as.character(genes))),
+                                           panel_genes)))
+                    else ""))
+            }
+            genes <- eff
+        }
+    }
+    if (!is.null(hpo)) {
+        if (!exists("gvr_hpo_genes", mode = "function", inherits = TRUE)) {
+            stop("gvr_filter: HPO resolution requires gvr_hpo.R; please source/load the package.")
+        }
+        # Testing hook: options(gvr.hpo_path=...) lets hermetic tests read a
+        # local fixture instead of downloading. Not a documented public API.
+        .hpo_path_opt <- getOption("gvr.hpo_path", NULL)
+        hpo_genes <- gvr_hpo_genes(hpo,
+                                   hpo_path = .hpo_path_opt,
+                                   verbose  = verbose)
+        if (length(hpo_genes) > 0L) {
+            eff <- unique(toupper(trimws(c(hpo_genes, as.character(genes)))))
+            eff <- eff[!is.na(eff) & nzchar(eff)]
+            if (isTRUE(verbose)) {
+                message(sprintf(
+                    "hpo: resolved %d HPO term(s) -> %d unique Hugo_Symbol(s)%s.",
+                    length(unique(trimws(as.character(hpo)))),
+                    length(eff),
+                    if (!is.null(genes) && length(as.character(genes)) > 0L)
+                        sprintf(" (hpo %d + extras %d)",
+                            length(hpo_genes),
+                            length(setdiff(toupper(trimws(as.character(genes))),
+                                           hpo_genes)))
+                    else ""))
+            }
+            genes <- eff
+        } else if (isTRUE(verbose)) {
+            message("hpo: no genes resolved for supplied HPO term(s); ",
+                    "no additional gene restriction applied.")
+        }
     }
 
     # ============================================================================

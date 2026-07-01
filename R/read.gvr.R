@@ -133,6 +133,19 @@
 #'   An unknown name raises an error listing the available panels. `NULL`
 #'   (default) disables panel filtering; behaviour is then byte-identical to
 #'   omitting the argument.
+#' @param hpo Character vector of Human Phenotype Ontology (HPO) term
+#'   identifier(s), e.g. `"HP:0003002"` (Breast carcinoma) or
+#'   `c("HP:0003002", "HP:0025022")`. Each term is resolved to a gene
+#'   vector via [gvr_hpo_genes()] and the union of all resolved genes is
+#'   added to any genes already produced by `genes` and `panel`
+#'   (deduplicated, uppercased). Lenient input is accepted: `"HP:0003002"`,
+#'   `"hp:0003002"`, `"3002"`, and `"0003002"` all normalise to the
+#'   canonical `"HP:0003002"` form. Only exact-term associations are used
+#'   (no ontology-descendant expansion). The HPO phenotype-to-gene table is
+#'   downloaded and cached under `tools::R_user_dir("germlinevaR", "cache")`
+#'   and auto-refreshed after 30 days; see [gvr_hpo_genes()] for offline /
+#'   air-gapped usage via `hpo_path=`. `NULL` (default) disables HPO
+#'   filtering; behaviour is then byte-identical to omitting the argument.
 #' @param vc_nonSyn Logical or character vector. Controls which
 #'   `Variant_Classification` values are retained (mirroring the
 #'   convention of the `vc_nonSyn` argument). `FALSE` (default) keeps ALL variant classifications.
@@ -231,6 +244,7 @@ read.gvr <- function(folder = ".",
                      min_GQ            = 30,     # v4: keep only GQ > min_GQ (NULL = no GQ filter)
                      genes             = NULL,   # v4: keep only these Hugo_Symbols
                      panel             = NULL,   # vN: curated disease gene panel(s); union'd with `genes`
+                     hpo               = NULL,   # vN+2: HPO term id(s); union'd with `genes` and `panel`
                      vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                      canonical_only    = TRUE,   # vN+4: drop rows whose chosen CSQ block has CANONICAL != "YES"
                      ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
@@ -300,6 +314,58 @@ read.gvr <- function(folder = ".",
                     else ""))
             }
             genes <- effective_genes
+        }
+    }
+
+    # ==========================================================================
+    # vN+2 setup: HPO phenotype-term resolution (Phase N+2)
+    #   If `hpo` is supplied, resolve each HPO id to its gene vector via
+    #   gvr_hpo_genes() and UNION with the existing `genes` (which may already
+    #   include panel members from the vN block above). Runs AFTER panel so an
+    #   HPO term augments, never replaces, a panel-supplied gene list. When
+    #   `hpo = NULL` this block is a strict no-op and `genes` is byte-identical
+    #   to what the vN block emitted.
+    # ==========================================================================
+    if (!is.null(hpo)) {
+        if (!exists("gvr_hpo_genes", mode = "function", inherits = TRUE)) {
+            stop("read.gvr: HPO resolution requires gvr_hpo.R; please source/load the package.")
+        }
+        # Optional testing/CI hook: setting options(gvr.hpo_path="...") lets
+        # hermetic test runs point at a bundled fixture without touching the
+        # network. Not a documented public API; use gvr_hpo_genes() directly
+        # for advanced offline workflows.
+        .hpo_path_opt <- getOption("gvr.hpo_path", NULL)
+        hpo_genes <- gvr_hpo_genes(hpo,
+                                   hpo_path = .hpo_path_opt,
+                                   verbose  = verbose)         # uppercased, deduped
+        if (length(hpo_genes) > 0L) {
+            effective_genes <- unique(toupper(trimws(c(hpo_genes, as.character(genes)))))
+            effective_genes <- effective_genes[!is.na(effective_genes) & nzchar(effective_genes)]
+            # Capture pre-union HPO state for the post-filter "hpo subset:"
+            # coverage message (sibling of "panel subset:" and "gene subset:").
+            .hpo_terms_for_summary   <- unique(trimws(as.character(hpo)))
+            .hpo_genes_for_summary   <- hpo_genes
+            .hpo_extras_for_summary  <- setdiff(
+                toupper(trimws(as.character(genes))), hpo_genes
+            )
+            .hpo_extras_for_summary <- .hpo_extras_for_summary[
+                !is.na(.hpo_extras_for_summary) & nzchar(.hpo_extras_for_summary)
+            ]
+            if (verbose) {
+                message(sprintf(
+                    "hpo: resolved %d HPO term(s) -> %d unique Hugo_Symbol(s)%s.",
+                    length(.hpo_terms_for_summary),
+                    length(effective_genes),
+                    if (!is.null(genes) && length(as.character(genes)) > 0L)
+                        sprintf(" (hpo %d + extras %d)",
+                            length(hpo_genes),
+                            length(setdiff(toupper(trimws(as.character(genes))), hpo_genes)))
+                    else ""))
+            }
+            genes <- effective_genes
+        } else if (verbose) {
+            message("hpo: no genes resolved for supplied HPO term(s); ",
+                    "no additional gene restriction applied.")
         }
     }
 
@@ -1194,6 +1260,35 @@ read.gvr <- function(folder = ".",
             "panel subset: %d / %d panel gene(s) present: %s%s%s.",
             length(p_present), length(.panel_genes_for_summary),
             if (length(p_present) > 0L) paste(p_present, collapse = ", ") else "(none)",
+            missing_chunk, extras_chunk))
+    }
+
+    ## 3d-bis3. Phase N+2: post-filter HPO coverage message --------------------
+    ##     Sibling of "panel subset:" (3d-bis2). Fires only when `hpo` was
+    ##     supplied AND resolved to >=1 gene (gated on
+    ##     exists(.hpo_genes_for_summary), which was set inside the vN+2 setup
+    ##     block at the top of the body). Reports how many of the ORIGINAL
+    ##     (pre-union) HPO genes are present in the post-filter result, lists
+    ##     the input terms, and (when `hpo` was combined with explicit `genes`
+    ##     or `panel` extras) names those extras inline.
+    if (verbose && exists(".hpo_genes_for_summary", inherits = FALSE)) {
+        data.table::setDT(gvr)
+        have_syms <- unique(toupper(trimws(as.character(gvr$Hugo_Symbol))))
+        h_present <- intersect(.hpo_genes_for_summary, have_syms)
+        h_missing <- setdiff(.hpo_genes_for_summary, have_syms)
+        extras_chunk <- if (length(.hpo_extras_for_summary) > 0L) {
+            sprintf(" (+ %d extra gene(s) from `genes`/`panel`: %s)",
+                length(.hpo_extras_for_summary),
+                paste(.hpo_extras_for_summary, collapse = ", "))
+        } else ""
+        missing_chunk <- if (length(h_missing) > 0L) {
+            sprintf(" (missing: %s)", paste(h_missing, collapse = ", "))
+        } else ""
+        message(sprintf(
+            "hpo subset: %d / %d HPO gene(s) present for %s: %s%s%s.",
+            length(h_present), length(.hpo_genes_for_summary),
+            paste(.hpo_terms_for_summary, collapse = ", "),
+            if (length(h_present) > 0L) paste(h_present, collapse = ", ") else "(none)",
             missing_chunk, extras_chunk))
     }
 

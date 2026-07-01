@@ -20,6 +20,8 @@ gvr_filter(
   vc_nonSyn = FALSE,
   missense_only = FALSE,
   genes = NULL,
+  panel = NULL,
+  hpo = NULL,
   save_excel = FALSE,
   out_dir = NULL,
   file_prefix = "gvr_filter",
@@ -92,6 +94,24 @@ subset. Errors with a clear message if \code{Variant_Classification} is missing.
 \item{genes}{Character vector of \code{Hugo_Symbol}s to keep (exact, case-insensitive),
 or \code{NULL} (default) to keep all genes.}
 
+\item{panel}{Character vector of curated disease panel name(s) (e.g.
+\code{"breast cancer"}, \code{"hereditary prostate cancer"}, \code{"gist"}). Resolved to
+gene vectors via \code{\link[=gvr_panel_genes]{gvr_panel_genes()}} and unioned with \code{genes} (dedup,
+uppercased) before the "Gene subset" filter runs. See
+\code{\link[=gvr_list_panels]{gvr_list_panels()}} for the full registry. \code{NULL} (default) disables
+panel filtering; behaviour is then byte-identical to omitting the argument.}
+
+\item{hpo}{Character vector of Human Phenotype Ontology (HPO) term id(s),
+e.g. \code{"HP:0003002"} (Breast carcinoma). Resolved to gene vectors via
+\code{\link[=gvr_hpo_genes]{gvr_hpo_genes()}} and unioned with any genes from \code{genes} / \code{panel}
+before the "Gene subset" filter runs. Lenient input accepted:
+\code{"HP:0003002"}, \code{"hp:0003002"}, \code{"3002"}, and \code{"0003002"} all normalise
+to canonical \code{"HP:0003002"}. Only exact-term associations are used (no
+ontology-descendant expansion). The HPO table is downloaded and cached
+under \code{tools::R_user_dir("germlinevaR", "cache")}; see \code{\link[=gvr_hpo_genes]{gvr_hpo_genes()}}
+for offline / air-gapped use via \verb{hpo_path=}. \code{NULL} (default) disables
+HPO filtering; behaviour is then byte-identical to omitting the argument.}
+
 \item{save_excel}{Logical; if TRUE, also write the FILTERED table to an \code{.xlsx}
 workbook (single \code{"Filtered"} sheet) at \verb{<out_dir>/<file_prefix>.xlsx}. Requires
 the \pkg{openxlsx} package (a \code{Suggests} dependency); if it is not installed the
@@ -133,7 +153,7 @@ previous one:
 \item Biotype                - \code{biotype_keep}
 \item Genotype exclusion     - \code{gt_exclude}
 \item Variant classification - \code{vc_nonSyn}
-\item Gene subset            - \code{genes}
+\item Gene subset            - \code{genes} (unioned with \code{panel} and \code{hpo})
 }
 
 Important data notes (true of \code{\link[=read.gvr]{read.gvr()}} output):
@@ -193,6 +213,7 @@ gvr_filter(gvr, ABraOM_AF = NULL, vc_nonSyn = TRUE,
 variants.
 
 Other germlinevaR: 
+\code{\link{gvr_hpo_genes}()},
 \code{\link{gvr_list_panels}()},
 \code{\link{gvr_panel_genes}()},
 \code{\link{gvr_plot}()},
