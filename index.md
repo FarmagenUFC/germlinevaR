@@ -81,7 +81,7 @@ around the **germline single-sample** case.
 |----|----|
 | Readers | `read.gvr` (auto-routed) `read.gvr.dual` `read.gvr.snpeff` |
 | Filtering | `gvr_filter` `gvr_novel` |
-| Panels | `gvr_panel_genes` `gvr_list_panels` |
+| Panels | `gvr_panel_genes` `gvr_list_panels` `gvr_hpo_genes` |
 | Summary | `gvr_summary` `gvr_sum_plots` |
 | Per-gene plots | `gvr_plot` (top-genes variant matrix) `gvr_lollipop` `gvr_genepos.plot` |
 | Palette / cache | `gvr_color_palette` `gvr_list_palettes` `gvr_domain_cache_clear` |
