@@ -54,6 +54,7 @@ read.gvr.snpeff(
   vc_nonSyn = FALSE,
   canonical_only = TRUE,
   ncores = 1L,
+  normalize_alleles = TRUE,
   verbose = TRUE
 )
 ```
@@ -270,6 +271,16 @@ read.gvr.snpeff(
   than one VCF is being read (each file is an independent task) and are
   clamped to `min(ncores, detectCores(), n_files)`. On non-fork
   platforms it falls back to sequential. A single file is unaffected.
+
+- normalize_alleles:
+
+  Logical; if `TRUE` (default, since 0.99.2) apply bcftools-norm-style
+  trimming of common REF/ALT prefix and suffix nucleotides before
+  deriving MAF-like coords. See
+  [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md)
+  for full rationale. Set `FALSE` to reproduce pre-0.99.2 coords for
+  reproducibility with an older analysis; not recommended for new
+  research.
 
 - verbose:
 

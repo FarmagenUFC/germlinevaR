@@ -38,6 +38,48 @@
     </div>
 
     <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.99.2" id="germlinevar-0992">germlinevaR 0.99.2<a class="anchor" aria-label="anchor" href="#germlinevar-0992"></a></h2>
+<div class="section level3">
+<h3 id="bug-fixes-0-99-2">Bug fixes<a class="anchor" aria-label="anchor" href="#bug-fixes-0-99-2"></a></h3>
+<ul><li>
+<code><a href="../reference/read.gvr.dual.html">read.gvr.dual()</a></code> no longer fails on VCFs whose multi-ALT indel records share a left-anchored REF base. Previously, the reader built the SnpEff side-table keyed on <code>(chrom, pos, ref, alt)</code> using untrimmed coordinates, which collapsed real distinct ALT alleles onto the same key and threw a duplicate-key error at the join step. The reader now trims common left-anchor and right-anchor bases from each <code>(ref, alt)</code> pair before computing MAF-style coordinates (see below), so each ALT allele gets a unique key that matches the canonical form used by the VEP side.</li>
+</ul></div>
+<div class="section level3">
+<h3 id="breaking-changes-0-99-2">Breaking changes<a class="anchor" aria-label="anchor" href="#breaking-changes-0-99-2"></a></h3>
+<ul><li>
+<p>Coordinates emitted by <code><a href="../reference/read.gvr.html">read.gvr()</a></code>, <code><a href="../reference/read.gvr.snpeff.html">read.gvr.snpeff()</a></code>, and <code><a href="../reference/read.gvr.dual.html">read.gvr.dual()</a></code> for indel ALT alleles are now MAF-normalised via a <code>bcftools norm</code>-equivalent trim before conversion. Downstream tables (<code>Start_Position</code>, <code>Reference_Allele</code>, <code>Tumor_Seq_Allele2</code>) reflect the trimmed representation. SNVs are unaffected.</p>
+<p>Example (<code>chr1:6095864</code>, <code>TCCCCCCCCCTGCCC</code>, <code>TCCCCCCCCCCTGCCC,TCCCCACCCCCTGCCC</code>):</p>
+<table class="table"><colgroup><col width="30%"><col width="34%"><col width="34%"></colgroup><thead><tr><th></th>
+<th>ALT1 (real 1 bp C ins)</th>
+<th>ALT2 (compound event)</th>
+</tr></thead><tbody><tr><td>0.99.1 and earlier</td>
+<td>
+<code>6095878 - C</code> (INS)</td>
+<td>
+<code>6095878 - C</code> (INS)</td>
+</tr><tr><td>0.99.2 default</td>
+<td>
+<code>6095874 - T</code> (INS)</td>
+<td>
+<code>6095869 - C</code> (INS)</td>
+</tr></tbody></table><p>The pre-0.99.2 behaviour is available via <code>normalize_alleles = FALSE</code> on every reader, purely as an escape hatch for reproducing historical outputs; it re-exposes the multi-ALT collision bug and is not recommended for new analyses.</p>
+</li>
+</ul></div>
+<div class="section level3">
+<h3 id="new-features-0-99-2">New features<a class="anchor" aria-label="anchor" href="#new-features-0-99-2"></a></h3>
+<ul><li>New <code>normalize_alleles</code> argument (default <code>TRUE</code>) on <code><a href="../reference/read.gvr.html">read.gvr()</a></code>, <code><a href="../reference/read.gvr.snpeff.html">read.gvr.snpeff()</a></code>, and <code><a href="../reference/read.gvr.dual.html">read.gvr.dual()</a></code>. Controls whether ALT-allele coordinates are MAF-normalised via <code>bcftools norm</code>-style left-and-right trimming before conversion. Setting <code>FALSE</code> restores pre-0.99.2 output for byte-level comparison against legacy tables.</li>
+<li>
+<code><a href="../reference/read.gvr.dual.html">read.gvr.dual()</a></code> output now carries an <code>snpeff_collisions_discarded</code> attribute (via <code><a href="https://rdrr.io/r/base/attr.html" class="external-link">attr()</a></code>) when the SnpEff side-table has residual <code>(chrom, pos, ref, alt)</code> collisions after MAF-normalisation. The attribute is a <code>data.table</code> of the rows that were dropped by the Annotation_Impact-ranked deduper, so downstream code can audit which SnpEff annotations were superseded. Absent when no collisions occur. Residual collisions are expected on homopolymer runs where two ALT alleles collapse to the same MAF-key even after trimming (e.g. <code>chr10:68173832</code> in the accompanying test fixture).</li>
+<li>Verbose mode on <code><a href="../reference/read.gvr.dual.html">read.gvr.dual()</a></code> prints a new one-line summary of the Annotation_Impact-ranked dedupe pass on the SnpEff side-table when residual collisions are collapsed (format: <code>snpeff collisions: N MAF-key tuple(s) had M duplicate row(s); collapsed by Annotation_Impact rank</code>).</li>
+</ul></div>
+<div class="section level3">
+<h3 id="internal-0-99-2">Internal<a class="anchor" aria-label="anchor" href="#internal-0-99-2"></a></h3>
+<ul><li>New unexported helper <code>.gvr_trim_alleles()</code> implements the bcftools-norm left-and-right trim used by <code>.gvr_coords()</code>.</li>
+<li>New unexported helper <code>.gvr_dual_dedupe_snpeff()</code> implements the Annotation_Impact-ranked collision-resolution pass on the SnpEff side-table, gated behind the <code>normalize_alleles</code> path.</li>
+<li>SnpEff-only reader’s inlined <code>gvr_coords()</code> closure now delegates to the shared <code>.gvr_coords()</code> for consistency across all three readers.</li>
+</ul></div>
+</div>
+    <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.99.1" id="germlinevar-0991">germlinevaR 0.99.1<a class="anchor" aria-label="anchor" href="#germlinevar-0991"></a></h2>
 <div class="section level3">
 <h3 id="new-features-0-99-1">New features<a class="anchor" aria-label="anchor" href="#new-features-0-99-1"></a></h3>

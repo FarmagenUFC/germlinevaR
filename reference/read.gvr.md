@@ -50,6 +50,7 @@ read.gvr(
   vc_nonSyn = FALSE,
   canonical_only = TRUE,
   ncores = 1L,
+  normalize_alleles = TRUE,
   verbose = TRUE
 )
 ```
@@ -270,6 +271,19 @@ read.gvr(
   than one VCF is being read (each file is an independent task) and are
   clamped to `min(ncores, detectCores(), n_files)`. On non-fork
   platforms it falls back to sequential. A single file is unaffected.
+
+- normalize_alleles:
+
+  Logical; if `TRUE` (default, since 0.99.2) apply bcftools-norm-style
+  trimming of common REF/ALT prefix and suffix nucleotides before
+  deriving MAF-like coords (`Start_Position`, `Reference_Allele`,
+  `Tumor_Seq_Allele2`). This is the recommended behaviour: it puts each
+  variant on its unique minimal representation and prevents distinct
+  multi-ALT records from collapsing to the same MAF key (which could
+  previously drop or scramble annotations on the SnpEff side of the dual
+  reader; VEP-only reads were unaffected). Set `FALSE` to reproduce
+  pre-0.99.2 coords for reproducibility with an older analysis; note
+  this is not recommended for new research.
 
 - verbose:
 

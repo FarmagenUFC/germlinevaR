@@ -109,6 +109,7 @@ pipelines.</p>
 <span>  vc_nonSyn <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  canonical_only <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  ncores <span class="op">=</span> <span class="fl">1L</span>,</span>
+<span>  normalize_alleles <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  verbose <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -315,6 +316,14 @@ Default <code>1L</code> runs sequentially and is byte-identical to previous beha
 Values <code>&gt; 1</code> only help when more than one VCF is being read (each file is an
 independent task) and are clamped to <code>min(ncores, detectCores(), n_files)</code>. On
 non-fork platforms it falls back to sequential. A single file is unaffected.</p></dd>
+
+
+<dt id="arg-normalize-alleles">normalize_alleles<a class="anchor" aria-label="anchor" href="#arg-normalize-alleles"></a></dt>
+<dd><p>Logical; if <code>TRUE</code> (default, since 0.99.2) apply
+bcftools-norm-style trimming of common REF/ALT prefix and suffix nucleotides
+before deriving MAF-like coords. See <code><a href="read.gvr.html">read.gvr()</a></code> for full rationale. Set
+<code>FALSE</code> to reproduce pre-0.99.2 coords for reproducibility with an older
+analysis; not recommended for new research.</p></dd>
 
 
 <dt id="arg-verbose">verbose<a class="anchor" aria-label="anchor" href="#arg-verbose"></a></dt>
