@@ -236,36 +236,11 @@ read.gvr <- function(folder = ".",
                      ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
                      verbose    = TRUE) {
     # ===========================================================================
-    # Nested helper: .read_gvr_locate_sibling() + auto-source siblings
-    # ---------------------------------------------------------------------------
-    # In standalone mode (source()'d from a directory), read.gvr() tries to
-    # auto-source its sibling files (read.gvr.snpeff.R for SnpEff-only dispatch,
-    # read.gvr.dual.R for dual-annotated dispatch) so that auto-routing works
-    # without manual setup. In a package, all R/*.R files are loaded into the
-    # namespace automatically, so the auto-source is skipped.
-    # ===========================================================================
-    .read_gvr_locate_sibling <- function(basename_) {
-        # 1) Use the active source file's directory if R can tell us where THIS
-        #    script lives (works for source() and Rscript). Recent R: getSrcFilename
-        #    on a function defined HERE returns this file's path.
-        this_dir <- tryCatch(
-            {
-                fn <- function() {}
-                fp <- utils::getSrcFilename(fn, full.names = TRUE)
-                if (length(fp) && nzchar(fp)) normalizePath(dirname(fp), mustWork = FALSE) else NULL
-            },
-            error = function(e) NULL)
-        # 2) Fallback: look in current working directory.
-        if (is.null(this_dir) || !nzchar(this_dir)) this_dir <- getwd()
-        candidate <- file.path(this_dir, basename_)
-        if (file.exists(candidate)) return(candidate)
-        NULL
-    }
 
     # Auto-source siblings if not already available
     # (in a package, they always are; in standalone mode, this provides them)
     if (!exists("read.gvr.snpeff", mode = "function", inherits = TRUE)) {
-        sib <- .read_gvr_locate_sibling("read.gvr.snpeff.R")
+        sib <- .gvr_locate_sibling("read.gvr.snpeff.R")
         if (!is.null(sib)) {
             tryCatch(
                 source(sib, local = FALSE, chdir = FALSE),
@@ -275,7 +250,7 @@ read.gvr <- function(folder = ".",
         }
     }
     if (!exists("read.gvr.dual", mode = "function", inherits = TRUE)) {
-        sib <- .read_gvr_locate_sibling("read.gvr.dual.R")
+        sib <- .gvr_locate_sibling("read.gvr.dual.R")
         if (!is.null(sib)) {
             tryCatch(
                 source(sib, local = FALSE, chdir = FALSE),
@@ -284,148 +259,6 @@ read.gvr <- function(folder = ".",
             )
         }
     }
-
-    # ===========================================================================
-    # Nested helper: .detect_annotator()
-    # ---------------------------------------------------------------------------
-    # Was previously top-level (defined in read.gvr.snpeff.R and source()d via
-    # the sibling auto-loader above). Nested here so read.gvr() is self-
-    # contained for package hygiene. The sibling read.gvr.snpeff.R file also
-    # nests its own copy. Both are byte-identical pure functions.
-    # ===========================================================================
-
-    .detect_annotator <- function(path) {
-        con <- gzfile(path, "r")
-        on.exit(close(con))
-        csq_found <- FALSE
-        ann_found <- FALSE
-        info_tags <- character(0L)
-        repeat {
-            line <- readLines(con, n = 1L, warn = FALSE)
-            if (length(line) == 0L) break              # EOF before any record line
-            if (!startsWith(line, "##")) break          # hit body / #CHROM header
-            if (startsWith(line, "##INFO=<ID=")) {
-                tag <- sub("^##INFO=<ID=([^,>]+).*$", "\\1", line)
-                info_tags <- c(info_tags, tag)
-                if (identical(tag, "CSQ")) csq_found <- TRUE
-                if (identical(tag, "ANN")) ann_found <- TRUE
-            }
-        }
-        if (csq_found && ann_found) {
-            # Both annotators present -> route to read.gvr.dual() (sibling). This
-            # preserves both VEP CSQ (authoritative for shared fields) and SnpEff
-            # ANN (used for LOF/NMD and side-by-side comparison columns).
-            res <- "dual"
-        } else if (csq_found) {
-            res <- "vep"
-        } else if (ann_found) {
-            res <- "snpeff"
-        } else {
-            res <- NA_character_
-        }
-        attr(res, "info_tags") <- info_tags
-        res
-    }
-
-
-    # ===========================================================================
-    # Nested helper: .detect_build()  (Phase N+2)
-    # ---------------------------------------------------------------------------
-    # Reads a VCF header and returns a list:
-    #   list(label = <canonical or NA_character_>,
-    #        confidence = c("high", "low", "none"),
-    #        signals = list(vep = ..., snpeff = ..., contig = ...))
-    # Canonical labels: "GRCh38", "GRCh37", "T2T-CHM13v2.0".
-    # Sources combined: VEP `##VEP=` `assembly=` attr, SnpEff `##SnpEffCmd=`
-    # database token, and the FIRST `##contig=<ID=...>` whose ID matches a
-    # standard autosome -- length is compared against a small built-in table.
-    # confidence='high' when >=2 signals agree on a canonical label;
-    # confidence='low' when exactly one signal is present; 'none' otherwise.
-    # ===========================================================================
-    .detect_build <- function(path) {
-        # Canonical contig lookup. chr1 length is the most discriminating signal:
-        #   GRCh38         chr1 = 248,956,422  (NCBI GRCh38.p14)
-        #   GRCh37         chr1 = 249,250,621  (NCBI GRCh37.p13)
-        #   T2T-CHM13v2.0  chr1 = 248,387,328  (T2T consortium)
-        contig_lookup <- list(
-            `1` = list(`248956422` = "GRCh38",
-                `249250621` = "GRCh37",
-                `248387328` = "T2T-CHM13v2.0"),
-            `M` = list(`16569` = "GRCh38",  `16571` = "GRCh37")  # chrM tiebreaker
-        )
-
-        con <- gzfile(path, "r")
-        on.exit(close(con))
-        vep_sig <- NA_character_
-        snpeff_sig <- NA_character_
-        contig_sig <- NA_character_
-        first_std_contig_seen <- FALSE
-        repeat {
-            line <- readLines(con, n = 1L, warn = FALSE)
-            if (length(line) == 0L) break
-            if (!startsWith(line, "##")) break
-
-            # VEP signal: ##VEP="v113.0" ... assembly="GRCh38.p14" ...
-            if (is.na(vep_sig) && startsWith(line, "##VEP=")) {
-                m <- regmatches(line, regexec("assembly=\"(GRCh3[78])", line))[[1]]
-                if (length(m) == 2L) vep_sig <- m[2]
-            }
-
-            # SnpEff signal: ##SnpEffCmd="SnpEff ... GRCh38.99 input.vcf"
-            if (is.na(snpeff_sig) && startsWith(line, "##SnpEffCmd=")) {
-                # database token is the first GRCh38.x / GRCh37.x / hg38 / hg19 occurrence
-                m <- regmatches(line, regexec("\\b(GRCh3[78])\\.[0-9]+\\b", line))[[1]]
-                if (length(m) == 2L) {
-                    snpeff_sig <- m[2]
-                } else {
-                    m2 <- regmatches(line, regexec("\\b(hg19|hg38)\\b", line))[[1]]
-                    if (length(m2) == 2L) {
-                        snpeff_sig <- c(hg19 = "GRCh37", hg38 = "GRCh38")[m2[2]]
-                    }
-                }
-            }
-
-            # Contig signal: first ##contig=<ID=(chr)?(1|M),length=N>
-            if (!first_std_contig_seen && startsWith(line, "##contig=<ID=")) {
-                m <- regmatches(line, regexec(
-                    "^##contig=<ID=(?:chr)?([0-9XYM]+),length=([0-9]+)", line))[[1]]
-                if (length(m) == 3L) {
-                    first_std_contig_seen <- TRUE
-                    chrom_key <- m[2]
-                    len_key   <- m[3]
-                    if (!is.null(contig_lookup[[chrom_key]]) &&
-                        !is.null(contig_lookup[[chrom_key]][[len_key]])) {
-                        contig_sig <- contig_lookup[[chrom_key]][[len_key]]
-                    }
-                    # else: first std contig found but length doesn't match any known build
-                }
-            }
-        }
-
-        # Combine signals: 2-of-3 agreement => high confidence;
-        # 1 signal => low confidence; 0 or all-disagree => none.
-        sigs <- c(vep = vep_sig, snpeff = snpeff_sig, contig = contig_sig)
-        sigs_present <- sigs[!is.na(sigs)]
-        if (length(sigs_present) == 0L) {
-            return(list(label = NA_character_, confidence = "none",
-                signals = as.list(sigs)))
-        }
-        tbl <- sort(table(sigs_present), decreasing = TRUE)
-        top <- names(tbl)[1L]
-        top_count <- as.integer(tbl[1L])
-        if (top_count >= 2L) {
-            return(list(label = top, confidence = "high",
-                signals = as.list(sigs)))
-        }
-        if (length(sigs_present) == 1L) {
-            return(list(label = top, confidence = "low",
-                signals = as.list(sigs)))
-        }
-        # All 2-3 signals present but no two agree -> conflict
-        list(label = NA_character_, confidence = "none",
-            signals = as.list(sigs))
-    }
-
 
     # ==========================================================================
     # vN setup: disease-panel resolution (Phase N)
@@ -544,7 +377,7 @@ read.gvr <- function(folder = ".",
     #     batches are delegated to read.gvr.snpeff(). In a package, the sibling
     #     is always available; in standalone mode, the auto-source above loads it.
     # ==========================================================================
-    detected <- vapply(vcf_paths, .detect_annotator, character(1L))
+    detected <- vapply(vcf_paths, .gvr_detect_annotator, character(1L))
     # Internal override: read.gvr.dual() sets a flag in the package's private
     # env via .gvr_set_force_annotator() before calling read.gvr(), then this
     # block consumes-and-clears the flag. The clear-on-read guarantees the
@@ -560,9 +393,9 @@ read.gvr <- function(folder = ".",
     if (any(na_mask)) {
         ## Surface up to 7 INFO tags from the first un-annotated file so the user
         ## can see what *was* annotated (e.g. raw GATK output vs. exotic annotator).
-        ## .detect_annotator() returns NA with attr 'info_tags' attached.
+        ## .gvr_detect_annotator() returns NA with attr 'info_tags' attached.
         .unann_first <- vcf_paths[na_mask][1L]
-        .tags_first  <- attr(.detect_annotator(.unann_first), "info_tags")
+        .tags_first  <- attr(.gvr_detect_annotator(.unann_first), "info_tags")
         .tag_str <- if (length(.tags_first))
             sprintf("INFO tags found in '%s': %s.\n",
                 basename(.unann_first),
@@ -670,7 +503,7 @@ read.gvr <- function(folder = ".",
     # 0c. Resolve ncbi_build: auto-detect from VCF header(s), honour user override.
     #     (Phase N+2)
     #     - ncbi_build = "auto" (default): inspect first file's header via
-    #       .detect_build(); use detected canonical label; fall back to "GRCh38"
+    #       .gvr_detect_build(); use detected canonical label; fall back to "GRCh38"
     #       when detection is ambiguous; emit a verbose diagnostic either way.
     #     - ncbi_build = <any literal> (override): use the value verbatim; warn()
     #       loudly if auto-detection finds a CONFIDENT canonical label that
@@ -678,7 +511,7 @@ read.gvr <- function(folder = ".",
     # ==========================================================================
     {
         .bd_first <- vcf_paths[1L]
-        .bd <- tryCatch(.detect_build(.bd_first),
+        .bd <- tryCatch(.gvr_detect_build(.bd_first),
             error = function(e) list(label = NA_character_,
                 confidence = "none",
                 signals = list(vep = NA_character_,
@@ -739,260 +572,16 @@ read.gvr <- function(folder = ".",
     }
 
 
+
     # ==========================================================================
-    # 1. Local helper definitions (kept inside the function => fully self-contained)
-    #    [UNCHANGED CORE ENGINE from v1]
+    # Per-call memoisation caches for consequence-resolution helpers (Turn 5a).
+    # The helpers themselves now live in R/read_gvr_consequence.R and accept
+    # `cache` as an argument; we create fresh envs here so the cache lifetime
+    # is scoped to a single read.gvr() invocation (identical to pre-Turn-5a
+    # behaviour).
     # ==========================================================================
-
-    ## 1a. Ensembl consequence severity priority (vcf2maf-style; lower = more severe)
-    effect_priority <- c(
-        "transcript_ablation" = 1, "exon_loss_variant" = 2, "splice_donor_variant" = 3,
-        "splice_acceptor_variant" = 3, "stop_gained" = 4, "frameshift_variant" = 5,
-        "stop_lost" = 6, "start_lost" = 7, "initiator_codon_variant" = 8,
-        "transcript_amplification" = 9, "protein_altering_variant" = 10,
-        "missense_variant" = 11, "conservative_missense_variant" = 11,
-        "rare_amino_acid_variant" = 11, "incomplete_terminal_codon_variant" = 14,
-        "splice_region_variant" = 13, "splice_donor_5th_base_variant" = 13,
-        "splice_donor_region_variant" = 13, "splice_polypyrimidine_tract_variant" = 13,
-        "stop_retained_variant" = 15, "synonymous_variant" = 15, "coding_sequence_variant" = 16,
-        "mature_miRNA_variant" = 17, "5_prime_UTR_variant" = 18,
-        "5_prime_UTR_premature_start_codon_gain_variant" = 18, "3_prime_UTR_variant" = 19,
-        "non_coding_transcript_exon_variant" = 20, "non_coding_exon_variant" = 20,
-        "intron_variant" = 21, "non_coding_transcript_variant" = 22, "nc_transcript_variant" = 22,
-        "NMD_transcript_variant" = 23, "upstream_gene_variant" = 24, "downstream_gene_variant" = 25,
-        "TFBS_ablation" = 26, "TFBS_amplification" = 27, "TF_binding_site_variant" = 28,
-        "regulatory_region_ablation" = 29, "regulatory_region_amplification" = 30,
-        "regulatory_region_variant" = 31, "feature_elongation" = 32, "feature_truncation" = 33,
-        "intergenic_variant" = 34
-    )
-
-    # B2 + A2(memoized): single pass that returns BOTH the most-severe term AND its rank.
-    # The computation (strsplit on '&' + effect_priority lookup) is a PURE function of the
-    # raw Consequence string, drawn from only ~107 distinct values across ~148k allele-rows,
-    # so results are cached in a per-call environment keyed by the exact string. On a hit the
-    # stored list is returned; on a miss the value is computed by the unchanged inner function
-    # and stored. Output is byte-identical to the uncached path by construction (same function,
-    # same input). The thin most_severe_term()/consequence_rank() wrappers route through the
-    # cached resolver, so all three call sites share one cache.
-    .mstr_cache <- new.env(parent = emptyenv())
-    .most_severe_term_and_rank_uncached <- function(consequence) {
-        if (is.na(consequence) || consequence == "")
-            return(list(term = NA_character_, rank = 999L))
-        terms <- strsplit(consequence, "&", fixed = TRUE)[[1]]
-        pr <- effect_priority[terms]
-        pr[is.na(pr)] <- 999L
-        wm <- which.min(pr)
-        list(term = terms[wm], rank = as.integer(pr[wm]))
-    }
-    most_severe_term_and_rank <- function(consequence) {
-        key <- if (is.na(consequence)) "\001NA" else consequence
-        hit <- .mstr_cache[[key]]
-        if (!is.null(hit)) return(hit)
-        val <- .most_severe_term_and_rank_uncached(consequence)
-        assign(key, val, envir = .mstr_cache)
-        val
-    }
-    most_severe_term <- function(consequence) most_severe_term_and_rank(consequence)$term
-    consequence_rank <- function(consequence) most_severe_term_and_rank(consequence)$rank
-
-    ## 1b. VEP consequence -> Variant_Classification  (A2: memoized)
-    ## var_class is a PURE function of (top_term, var_type); both are small-cardinality
-    ## (19 distinct classes; a handful of var_types), so cache on the composite key.
-    ## Inner function unchanged; cached value byte-identical.
-    .v2m_cache <- new.env(parent = emptyenv())
-    .vep_to_gvr_class_uncached <- function(term, var_type) {
-        m <- switch(term,
-            "splice_acceptor_variant" = "Splice_Site", "splice_donor_variant" = "Splice_Site",
-            "transcript_ablation" = "Splice_Site", "exon_loss_variant" = "Splice_Site",
-            "stop_gained" = "Nonsense_Mutation", "stop_lost" = "Nonstop_Mutation",
-            "start_lost" = "Translation_Start_Site", "initiator_codon_variant" = "Translation_Start_Site",
-            "missense_variant" = "Missense_Mutation", "conservative_missense_variant" = "Missense_Mutation",
-            "rare_amino_acid_variant" = "Missense_Mutation", "protein_altering_variant" = "Missense_Mutation",
-            "transcript_amplification" = "Intron", "splice_region_variant" = "Splice_Region",
-            "splice_donor_5th_base_variant" = "Splice_Region", "splice_donor_region_variant" = "Splice_Region",
-            "splice_polypyrimidine_tract_variant" = "Splice_Region", "stop_retained_variant" = "Silent",
-            "synonymous_variant" = "Silent", "incomplete_terminal_codon_variant" = "Silent",
-            "coding_sequence_variant" = "Missense_Mutation", "mature_miRNA_variant" = "RNA",
-            "5_prime_UTR_variant" = "5'UTR", "5_prime_UTR_premature_start_codon_gain_variant" = "5'UTR",
-            "3_prime_UTR_variant" = "3'UTR", "non_coding_transcript_exon_variant" = "RNA",
-            "non_coding_exon_variant" = "RNA", "non_coding_transcript_variant" = "RNA",
-            "nc_transcript_variant" = "RNA", "NMD_transcript_variant" = "Silent",
-            "intron_variant" = "Intron", "upstream_gene_variant" = "5'Flank",
-            "downstream_gene_variant" = "3'Flank", "TFBS_ablation" = "Targeted_Region",
-            "TFBS_amplification" = "Targeted_Region", "TF_binding_site_variant" = "IGR",
-            "regulatory_region_ablation" = "Targeted_Region", "regulatory_region_amplification" = "Targeted_Region",
-            "regulatory_region_variant" = "IGR", "feature_elongation" = "Targeted_Region",
-            "feature_truncation" = "Targeted_Region", "intergenic_variant" = "IGR",
-            "Targeted_Region"
-        )
-        if (term == "frameshift_variant") m <- if (var_type == "DEL") "Frame_Shift_Del" else "Frame_Shift_Ins"
-        if (term == "inframe_insertion") m <- "In_Frame_Ins"
-        if (term == "inframe_deletion") m <- "In_Frame_Del"
-        if (term == "disruptive_inframe_insertion") m <- "In_Frame_Ins"
-        if (term == "disruptive_inframe_deletion") m <- "In_Frame_Del"
-        m
-    }
-    vep_to_gvr_class <- function(term, var_type) {
-        key <- paste0(if (is.na(term)) "\001NA" else term, "\002",
-            if (is.na(var_type)) "\001NA" else var_type)
-        hit <- .v2m_cache[[key]]
-        if (!is.null(hit)) return(hit)
-        val <- .vep_to_gvr_class_uncached(term, var_type)
-        assign(key, val, envir = .v2m_cache)
-        val
-    }
-
-    ## 1c. Amino-acid 3->1 and HGVSp_Short
-    aa3to1 <- c(Ala = "A", Arg = "R", Asn = "N", Asp = "D", Cys = "C", Gln = "Q", Glu = "E", Gly = "G",
-        His = "H", Ile = "I", Leu = "L", Lys = "K", Met = "M", Phe = "F", Pro = "P", Ser = "S",
-        Thr = "T", Trp = "W", Tyr = "Y", Val = "V", Ter = "*", Sec = "U", Pyl = "O", Asx = "B",
-        Glx = "Z", Xaa = "X", Xle = "J")
-    url_decode <- function(x) {
-        if (is.na(x) || x == "") return(x)
-        x <- gsub("%3D", "=", x, fixed = TRUE)
-        x <- gsub("%3B", ";", x, fixed = TRUE)
-        x <- gsub("%2C", ",", x, fixed = TRUE)
-        x <- gsub("%3A", ":", x, fixed = TRUE)
-        x
-    }
-    ## C2: single-pass 3-letter -> 1-letter amino-acid substitution. The 27 codes are
-    ## mutually non-overlapping (no code is a substring of another) and the 1-letter
-    ## outputs can never re-match a 3-letter code, so a single regex alternation pass is
-    ## order-independent and byte-identical to the original 27 sequential gsub() calls
-    ## (verified: 0 diffs over all 28,686 unique real HGVSp strings). aa3to1_pat is built
-    ## once (all codes are literal alpha, regex-safe).
-    aa3to1_pat <- paste(names(aa3to1), collapse = "|")
-    make_hgvsp_short <- function(hgvsp) {
-        if (is.na(hgvsp) || hgvsp == "") return("")
-        s <- url_decode(hgvsp)
-        s <- sub("^[^:]*:", "", s)
-        s <- gsub("[()]", "", s)
-        m <- gregexpr(aa3to1_pat, s, perl = TRUE)
-        regmatches(s, m) <- lapply(regmatches(s, m), function(hit) unname(aa3to1[hit]))
-        s
-    }
-
-    ## 1d. Candidate VEP CSQ-allele encodings (priority order: anchor, LCP, bidir, raw)
-    vep_allele_candidates <- function(ref, alt) {
-        if (alt == "*") return("*")
-        if (nchar(ref) == 1 && nchar(alt) == 1) return(alt)            # SNV
-        rl <- nchar(ref)
-        al <- nchar(alt)
-        cand <- character(0)
-        # (a) anchor-trim: drop exactly one leading base
-        r1 <- substr(ref, 2, rl)
-        a1 <- substr(alt, 2, al)
-        cand <- c(cand, if (nchar(a1) == 0) "-" else if (nchar(r1) == 0) a1 else a1)
-        # (b) longest-common-prefix trim
-        k <- 0L
-        mx <- min(rl, al)
-        while (k < mx && substr(ref, k + 1, k + 1) == substr(alt, k + 1, k + 1)) k <- k + 1L
-        rp <- substr(ref, k + 1, rl)
-        ap <- substr(alt, k + 1, al)
-        cand <- c(cand, if (nchar(ap) == 0) "-" else if (nchar(rp) == 0) ap else ap)
-        # (c) bidirectional trim (repeat-aware): common suffix then common prefix
-        rr <- ref
-        aa <- alt
-        while (nchar(rr) > 0 && nchar(aa) > 0 &&
-            substr(rr, nchar(rr), nchar(rr)) == substr(aa, nchar(aa), nchar(aa))) {
-            rr <- substr(rr, 1, nchar(rr) - 1)
-            aa <- substr(aa, 1, nchar(aa) - 1)
-        }
-        j <- 0L
-        mx2 <- min(nchar(rr), nchar(aa))
-        while (j < mx2 && substr(rr, j + 1, j + 1) == substr(aa, j + 1, j + 1)) j <- j + 1L
-        rb <- substr(rr, j + 1, nchar(rr))
-        ab <- substr(aa, j + 1, nchar(aa))
-        cand <- c(cand, if (nchar(ab) == 0) "-" else if (nchar(rb) == 0) ab else ab)
-        # (d) raw ALT
-        cand <- c(cand, alt)
-        unique(cand[cand != ""])
-    }
-
-    ## 1e. MAF coordinate + allele conversion for one REF/ALT pair
-    gvr_coords <- function(pos, ref, alt) {
-        pos <- as.integer(pos)
-        if (alt == "*") return(list(var_type = "DEL", start = pos, end = pos,
-            ref_allele = ref, tum_allele2 = "*"))
-        rl <- nchar(ref)
-        al <- nchar(alt)
-        if (rl == al && rl == 1)
-            return(list(var_type = "SNP", start = pos, end = pos, ref_allele = ref, tum_allele2 = alt))
-        if (rl == al && rl > 1) {
-            vt <- switch(as.character(rl), "2" = "DNP", "3" = "TNP", "ONP")
-            return(list(var_type = vt, start = pos, end = pos + rl - 1, ref_allele = ref, tum_allele2 = alt))
-        }
-        if (al > rl) {                                   # insertion
-            ins <- substr(alt, rl + 1, al)
-            return(list(var_type = "INS", start = pos + rl - 1, end = pos + rl,
-                ref_allele = "-", tum_allele2 = ins))
-        } else {                                         # deletion
-            del <- substr(ref, al + 1, rl)
-            return(list(var_type = "DEL", start = pos + al, end = pos + rl - 1,
-                ref_allele = del, tum_allele2 = "-"))
-        }
-    }
-
-    ## 1f. INFO field accessor
-    info_get <- function(info_str, key) {
-        pat <- paste0("(^|;)", key, "=([^;]*)")
-        m <- regmatches(info_str, regexec(pat, info_str))[[1]]
-        if (length(m) >= 3) m[3] else NA_character_
-    }
-    ## C1: parse an INFO string ONCE into a named character vector, then look keys up
-    ## by name. Equivalent to calling info_get() per key (verified 0 mismatches over
-    ## 35,000 real comparisons): only "key=value" tokens are kept, so a missing key OR a
-    ## bare flag returns NA exactly as info_get() does. ~5.7x faster than 6+ regex scans.
-    info_parse <- function(info_str) {
-        if (is.na(info_str) || info_str == "") return(setNames(character(0), character(0)))
-        kv  <- strsplit(info_str, ";", fixed = TRUE)[[1]]
-        eq  <- regexpr("=", kv, fixed = TRUE)
-        has <- eq > 0L
-        keys <- substr(kv, 1L, eq - 1L)            # only meaningful where has==TRUE
-        vals <- substr(kv, eq + 1L, nchar(kv))
-        setNames(vals[has], keys[has])
-    }
-
-    ## 1g. Zygosity-aware genotype allele CODES for a split row (Allele2 = this ALT)
-    gt_codes_for_alt <- function(gt, ai) {
-        ai <- as.integer(ai)
-        # why: as.integer() on a split genotype string; '.' and other non-numeric tokens become NA and are dropped by !is.na() below.
-        gidx <- suppressWarnings(as.integer(strsplit(gt, "[/|]")[[1]]))
-        gidx <- gidx[!is.na(gidx)]
-        if (length(gidx) == 0L) return(list(c1 = NA_integer_, c2 = ai))
-        others <- gidx[gidx != ai]
-        if (length(others) == 0L) return(list(c1 = ai, c2 = ai))   # hom-alt
-        partner <- if (0L %in% others) 0L else others[1]
-        list(c1 = partner, c2 = ai)
-    }
-
-    ## 1h. Header parsers
-    get_csq_fields <- function(path) {
-        con <- gzfile(path, "r")
-        on.exit(close(con))
-        repeat {
-            line <- readLines(con, n = 1L)
-            if (length(line) == 0L) stop("CSQ header not found")
-            if (startsWith(line, "##INFO=<ID=CSQ")) {
-                fmt <- sub(".*Format: ", "", line)
-                fmt <- sub('">$', "", fmt)
-                return(strsplit(fmt, "|", fixed = TRUE)[[1]])
-            }
-            if (startsWith(line, "#CHROM")) stop("Reached #CHROM before CSQ header")
-        }
-    }
-    get_sample_name <- function(path) {
-        con <- gzfile(path, "r")
-        on.exit(close(con))
-        repeat {
-            line <- readLines(con, n = 1L)
-            if (length(line) == 0L) stop("#CHROM not found")
-            if (startsWith(line, "#CHROM")) {
-                cols <- strsplit(line, "\t", fixed = TRUE)[[1]]
-                return(cols[length(cols)])
-            }
-        }
-    }
+    .gvr_mstr_cache <- new.env(parent = emptyenv())
+    .gvr_v2m_cache  <- new.env(parent = emptyenv())
 
     ## 1i. Convert one chunk (data.table of raw VCF rows) -> table rows
     ## C3 (conservative): the per-record control flow is UNCHANGED (the CSQ-block -> ALT
@@ -1002,311 +591,44 @@ read.gvr <- function(folder = ".",
     ## plain atomic vectors ONCE per chunk, so the hot loop indexes vectors (chrom_v[r])
     ## instead of doing data.table `$`/is.factor dispatch on every field of every record
     ## (~4.7x faster for the indexing step in isolation). Output is identical.
+    ## 1j. Convert ONE chunk of a VCF file to a MAF-like data.table.
+    ##
+    ## Turn-5b refactor: the per-chunk parsing pipeline (originally a single 454-line
+    ## function body) was lifted into 5 themed package-internal helpers in
+    ## `read_gvr_chunk.R`: setup_columns, resolve_format, filter_dpgq, filter_rough,
+    ## build_record. The orchestrator here calls them in order, threading a `state`
+    ## list of chunk-level vectors through each filter, then iterates over surviving
+    ## records to produce per-ALT MAF rows. PERF tricks (O1/O2/O6/O7/O8/A3/P1/P2)
+    ## and `# why:` comments are preserved verbatim inside the helpers. Numeric
+    ## equality vs Turn-5a is gated by `data.table::all.equal()`; the hero PDF
+    ## SHA256 gate is the final byte-identity check.
+    ##
+    ## Closure captures from `read.gvr()` scope:
+    ##   - filter_dp, filter_gq, min_DP, min_GQ, genes, vc_nonSyn, canonical_only,
+    ##     ncbi_build (the 8 user-facing args)
+    ##   - .gvr_mstr_cache, .gvr_v2m_cache (per-call cache envs, defined at L583-584)
     convert_chunk <- function(dt, csq_fields, sample_name) {
-        n_csq <- length(csq_fields)
-        ci <- function(name) match(name, csq_fields)
-        P_Allele <- ci("Allele")
-        P_Cons <- ci("Consequence")
-        P_SYMBOL <- ci("SYMBOL")
-        P_Feature <- ci("Feature")
-        P_HGVSc <- ci("HGVSc")
-        P_HGVSp <- ci("HGVSp")
-        P_Existing <- ci("Existing_variation")
-        P_CANONICAL <- ci("CANONICAL")
-        P_MANESEL <- ci("MANE_SELECT")
+        # 1) Lift VCF columns + cache CSQ field positions (C3 + O2 + ci()).
+        state <- .gvr_chunk_setup_columns(dt, csq_fields)
+        # 2) Resolve FORMAT/SAMPLE -> chunk-level GT/AD/DP/GQ vectors when constant (O1).
+        state <- utils::modifyList(state, .gvr_chunk_resolve_format(state$FORMAT_v, state$SAMPLE_v))
+        # 3) Vectorized DP/GQ pre-filter (O6).
+        dpgq <- .gvr_chunk_filter_dpgq(state, filter_dp, filter_gq, min_DP, min_GQ)
+        state <- dpgq$state
+        # 4) Rough gene + vc_nonSyn pre-filters on raw INFO (O7 + O8).
+        rough <- .gvr_chunk_filter_rough(state, genes, vc_nonSyn)
+        state <- rough$state
 
-        # C3: hoist columns to plain vectors once (kills per-record `$`/is.factor overhead)
-        CHROM_v <- dt$CHROM
-        POS_v <- dt$POS
-        ID_v <- dt$ID
-        REF_v <- dt$REF
-        ALT_v <- dt$ALT
-        QUAL_v <- dt$QUAL
-        FILTER_v <- dt$FILTER
-        INFO_v <- dt$INFO
-        FORMAT_v <- dt$FORMAT
-        SAMPLE_v <- dt$SAMPLE
-        nrow_dt <- nrow(dt)
-
-        # O2 (PERF): split the ALT column ONCE for the whole chunk instead of calling
-        # strsplit(altf, ",") per record. base strsplit() over a character vector returns
-        # a list-of-vectors; alts_all[[r]] is byte-identical to the old per-record
-        # strsplit(ALT_v[r], ",", fixed=TRUE)[[1]]. ~30x faster on the isolated split
-        # (multi-ALT is rare, so per-record calls were almost pure call-overhead).
-        alts_all <- strsplit(ALT_v, ",", fixed = TRUE)
-
-        # O1 (PERF): the per-record loop split FORMAT and SAMPLE on ":" every iteration and
-        # then looked GT/AD/DP/GQ up BY NAME. In real VEP/GATK germline VCFs the FORMAT
-        # string is almost always constant within a chunk (e.g. "GT:AD:DP:GQ:PL"). When it
-        # IS constant we resolve the GT/AD/DP/GQ field POSITIONS once and pull them with a
-        # single vectorized tstrsplit(SAMPLE, ":") over the whole column (~4x faster). If
-        # FORMAT varies anywhere in the chunk we fall back to the exact per-record path, so
-        # output is byte-identical in every case (verified by the validation gate).
-        fmt_u <- unique(FORMAT_v)
-        fmt_constant <- length(fmt_u) == 1L && !is.na(fmt_u[1L])
-        if (fmt_constant) {
-            fmt_keys0 <- strsplit(fmt_u[1L], ":", fixed = TRUE)[[1]]
-            pos_GT <- match("GT", fmt_keys0)
-            pos_AD <- match("AD", fmt_keys0)
-            pos_DP <- match("DP", fmt_keys0)
-            pos_GQ <- match("GQ", fmt_keys0)
-            smp_split <- data.table::tstrsplit(SAMPLE_v, ":", fixed = TRUE)
-            n_smp_fields <- length(smp_split)
-            # Pre-extract per-record GT/AD/DP/GQ vectors. A position is only valid if it
-            # exists in FORMAT (pos_* not NA) AND the SAMPLE column actually carried that
-            # many fields. tstrsplit pads short rows with NA, matching the by-name lookup
-            # (a field absent from a given SAMPLE yielded NA / the default there too).
-            GT_col <- if (!is.na(pos_GT) && pos_GT <= n_smp_fields) smp_split[[pos_GT]] else NULL
-            AD_col <- if (!is.na(pos_AD) && pos_AD <= n_smp_fields) smp_split[[pos_AD]] else NULL
-            DP_col <- if (!is.na(pos_DP) && pos_DP <= n_smp_fields) smp_split[[pos_DP]] else NULL
-            GQ_col <- if (!is.na(pos_GQ) && pos_GQ <= n_smp_fields) smp_split[[pos_GQ]] else NULL
-        }
-
-        # --- O6 (PERF): vectorized DP/GQ pre-filter BEFORE the heavy loop ---------------
-        # When DP/GQ filtering is active, ~45% of records fail and are discarded. Doing
-        # this check INSIDE the loop means all the expensive CSQ work (strsplit, block
-        # assignment, consequence ranking) runs on records that are immediately dropped.
-        # By vectorizing the check over the whole chunk and subsetting BEFORE the loop,
-        # we skip ~45% of the heaviest work. The DP/GQ values used here are the SAME ones
-        # the loop would extract (from the O1 pre-split), so the filter is byte-identical.
-        # Missing/non-numeric DP or GQ never causes a drop (treated as "pass"), matching
-        # the original per-record behaviour.
-        n_dropped_dpgq <- 0L
-        if (filter_dp || filter_gq) {
-            keep <- rep(TRUE, nrow_dt)
-            if (fmt_constant) {
-                # Fast path: DP/GQ already extracted as chunk-level vectors
-                if (filter_dp && !is.null(DP_col)) {
-                    # why: as.numeric() on the DP field which may contain '' for missing; NAs are passed through the keep filter via is.na(dp_num)|dp_num>min_DP.
-                    dp_num <- suppressWarnings(as.numeric(DP_col))
-                    keep <- keep & (is.na(dp_num) | dp_num > min_DP)
-                }
-                if (filter_gq && !is.null(GQ_col)) {
-                    # why: as.numeric() on the GQ field which may contain ''; NAs propagated by the same is.na()|>thr pattern.
-                    gq_num <- suppressWarnings(as.numeric(GQ_col))
-                    keep <- keep & (is.na(gq_num) | gq_num > min_GQ)
-                }
-            } else {
-                # Slow path: FORMAT varies -- extract DP/GQ per record (same logic as the loop)
-                for (r in seq_len(nrow_dt)) {
-                    fmt_keys <- strsplit(FORMAT_v[r], ":", fixed = TRUE)[[1]]
-                    smp_vals <- strsplit(SAMPLE_v[r], ":", fixed = TRUE)[[1]]
-                    names(smp_vals) <- fmt_keys[seq_along(smp_vals)]
-                    if (filter_dp) {
-                        sdp <- if ("DP" %in% names(smp_vals)) smp_vals[["DP"]] else NA_character_
-                        # why: as.numeric() on per-sample DP when it is read row-by-row in fallback mode; non-numeric becomes NA and the row is kept.
-                        dp_num <- suppressWarnings(as.numeric(sdp))
-                        if (!is.na(dp_num) && dp_num <= min_DP) keep[r] <- FALSE
-                    }
-                    if (filter_gq) {
-                        sgq <- if ("GQ" %in% names(smp_vals)) smp_vals[["GQ"]] else NA_character_
-                        # why: as.numeric() on per-sample GQ in fallback mode; same NA-keep semantics as DP.
-                        gq_num <- suppressWarnings(as.numeric(sgq))
-                        if (!is.na(gq_num) && gq_num <= min_GQ) keep[r] <- FALSE
-                    }
-                }
-            }
-            n_dropped_dpgq <- sum(!keep)
-            if (n_dropped_dpgq > 0L) {
-                # Subset ALL chunk-level vectors to surviving records only
-                idx <- which(keep)
-                CHROM_v <- CHROM_v[idx]
-                POS_v <- POS_v[idx]
-                ID_v <- ID_v[idx]
-                REF_v <- REF_v[idx]
-                ALT_v <- ALT_v[idx]
-                QUAL_v <- QUAL_v[idx]
-                FILTER_v <- FILTER_v[idx]
-                INFO_v <- INFO_v[idx]
-                FORMAT_v <- FORMAT_v[idx]
-                SAMPLE_v <- SAMPLE_v[idx]
-                alts_all <- alts_all[idx]
-                if (fmt_constant) {
-                    GT_col  <- if (!is.null(GT_col)) GT_col[idx]  else NULL
-                    AD_col  <- if (!is.null(AD_col)) AD_col[idx]  else NULL
-                    DP_col  <- if (!is.null(DP_col)) DP_col[idx]  else NULL
-                    GQ_col  <- if (!is.null(GQ_col)) GQ_col[idx]  else NULL
-                }
-                nrow_dt <- length(idx)
-            }
-        }
-
-
-        # --- O7 (PERF): rough gene pre-filter on raw INFO string -----------------------
-        # When the `genes` argument is active, most records don't carry any of the
-        # requested genes. A cheap grepl on the raw INFO string (which contains the CSQ
-        # field with pipe-delimited SYMBOL sub-fields) catches the vast majority of hits
-        # and drops the rest BEFORE the expensive CSQ expansion.
-        #
-        # CRITICAL: gene names in the CSQ field are pipe-delimited (field 4 of each
-        # CSQ block), e.g. "T|missense_variant|MODIFIER|TP53|ENSG...". A bare
-        # grepl("RET", INFO) would match "INTERVAL", "INTER", etc. -- keeping ~65% of
-        # records instead of ~0.05%. The fix is to match |GENE| (gene name between
-        # pipes), which is precise enough for a rough filter while still being
-        # over-inclusive (a gene name could appear in another pipe-delimited field like
-        # DOMAINS). The exact post-conversion gene filter (step 3d-bis) removes false
-        # positives. The rough filter never drops a record that the exact filter would
-        # keep.
-        n_dropped_gene_rough <- 0L
-        if (!is.null(genes)) {
-            genes_chr <- as.character(genes)
-            genes_chr <- genes_chr[!is.na(genes_chr) & nzchar(genes_chr)]
-            if (length(genes_chr) > 0L) {
-                # Pipe-delimited pattern: |GENE| for each gene.
-                # This matches gene names as CSQ field values (between pipes) without
-                # matching substrings like "RET" inside "INTERVAL".
-                pat <- paste0(paste0("\\|", genes_chr, "\\|"), collapse = "|")
-                gene_hit <- grepl(pat, INFO_v, ignore.case = TRUE)
-                n_dropped_gene_rough <- sum(!gene_hit)
-                if (n_dropped_gene_rough > 0L) {
-                    idx <- which(gene_hit)
-                    CHROM_v <- CHROM_v[idx]
-                    POS_v <- POS_v[idx]
-                    ID_v <- ID_v[idx]
-                    REF_v <- REF_v[idx]
-                    ALT_v <- ALT_v[idx]
-                    QUAL_v <- QUAL_v[idx]
-                    FILTER_v <- FILTER_v[idx]
-                    INFO_v <- INFO_v[idx]
-                    FORMAT_v <- FORMAT_v[idx]
-                    SAMPLE_v <- SAMPLE_v[idx]
-                    alts_all <- alts_all[idx]
-                    if (fmt_constant) {
-                        GT_col  <- if (!is.null(GT_col)) GT_col[idx]  else NULL
-                        AD_col  <- if (!is.null(AD_col)) AD_col[idx]  else NULL
-                        DP_col  <- if (!is.null(DP_col)) DP_col[idx]  else NULL
-                        GQ_col  <- if (!is.null(GQ_col)) GQ_col[idx]  else NULL
-                    }
-                    nrow_dt <- length(idx)
-                }
-            }
-        }
-
-        # --- O8 (PERF): rough vc_nonSyn pre-filter on raw INFO string ------------------
-        # When vc_nonSyn is active, ~90% of records are silent (Intron, Silent, IGR, etc.)
-        # and will be dropped by the post-conversion filter. But by then the expensive CSQ
-        # expansion has already run on ALL of them. The VEP consequence terms that map to
-        # the 9 non-synonymous MAF classes are known and finite. If NONE of these terms
-        # appear anywhere in the CSQ string, the record CANNOT produce a non-synonymous row.
-        # A grepl on the raw INFO string drops ~90% of records before the heavy loop.
-        # The exact post-conversion vc_nonSyn filter (step 3d-ter) then tightens any
-        # edge cases. This is the same rough-grepl + exact-post-filter architecture as O7.
-        n_dropped_vc_rough <- 0L
-        if (!identical(vc_nonSyn, FALSE)) {
-            # VEP consequence terms that map to the 9 non-synonymous MAF classes.
-            # These are the ONLY terms whose most-severe-rank can produce a protein-altering
-            # Variant_Classification. If none appear in the Consequence field (field 2 of
-            # each CSQ block), the record is guaranteed silent.
-            # Note: we use pipe-delimited matching (|TERM| or |TERM&) to avoid false
-            # positives like "variant" inside "splice_region_variant". The Consequence
-            # field (CSQ field #2) is pipe-delimited like all CSQ fields, and compound
-            # consequences use & as separator (e.g. "missense_variant&splice_region_variant").
-            nonSyn_vep_terms <- c(
-                "splice_acceptor_variant", "splice_donor_variant",
-                "transcript_ablation", "exon_loss_variant",
-                "stop_gained", "stop_lost", "start_lost",
-                "initiator_codon_variant",
-                "missense_variant", "conservative_missense_variant",
-                "rare_amino_acid_variant", "protein_altering_variant",
-                "coding_sequence_variant",
-                "frameshift_variant",
-                "inframe_insertion", "inframe_deletion",
-                "disruptive_inframe_insertion", "disruptive_inframe_deletion"
-            )
-            # Unlike gene names (O7), VEP consequence terms are long and specific enough
-            # that bare substring matching is safe -- they do not appear as substrings
-            # of other CSQ field values (verified empirically). Bare matching is also
-            # faster than pipe-delimited matching and correctly handles compound
-            # consequences (e.g. "missense_variant&splice_region_variant") where the
-            # term is preceded by & rather than |.
-            pat_vc <- paste0(nonSyn_vep_terms, collapse = "|")
-            vc_hit <- grepl(pat_vc, INFO_v, ignore.case = FALSE)  # VEP terms are lowercase
-            n_dropped_vc_rough <- sum(!vc_hit)
-            if (n_dropped_vc_rough > 0L) {
-                idx <- which(vc_hit)
-                CHROM_v <- CHROM_v[idx]
-                POS_v <- POS_v[idx]
-                ID_v <- ID_v[idx]
-                REF_v <- REF_v[idx]
-                ALT_v <- ALT_v[idx]
-                QUAL_v <- QUAL_v[idx]
-                FILTER_v <- FILTER_v[idx]
-                INFO_v <- INFO_v[idx]
-                FORMAT_v <- FORMAT_v[idx]
-                SAMPLE_v <- SAMPLE_v[idx]
-                alts_all <- alts_all[idx]
-                if (fmt_constant) {
-                    GT_col  <- if (!is.null(GT_col)) GT_col[idx]  else NULL
-                    AD_col  <- if (!is.null(AD_col)) AD_col[idx]  else NULL
-                    DP_col  <- if (!is.null(DP_col)) DP_col[idx]  else NULL
-                    GQ_col  <- if (!is.null(GQ_col)) GQ_col[idx]  else NULL
-                }
-                nrow_dt <- length(idx)
-            }
-        }
-
-        out <- vector("list", nrow_dt)
-        oi <- 0L
-        n_dropped <- n_dropped_dpgq + n_dropped_gene_rough + n_dropped_vc_rough
+        n_dropped <- dpgq$n_dropped_dpgq + rough$n_dropped_gene + rough$n_dropped_vc
         n_dropped_canonical <- 0L          # vN+4: rows skipped by canonical_only=TRUE
-        for (r in seq_len(nrow_dt)) {
-            chrom <- CHROM_v[r]
-            pos <- POS_v[r]
-            vid <- ID_v[r]
-            ref <- REF_v[r]
-            altf <- ALT_v[r]
-            qual <- QUAL_v[r]
-            filt <- FILTER_v[r]
-            info <- INFO_v[r]
-            fmt <- FORMAT_v[r]
-            smp <- SAMPLE_v[r]
-            alts <- alts_all[[r]]                          # O2: pre-split once per chunk
+        out <- vector("list", state$nrow_dt)
+        oi <- 0L
 
-            ip <- info_parse(info)                       # C1: parse INFO once, then index
-            info_DP <- unname(ip["DP"])
-            info_AC <- unname(ip["AC"])
-            info_AF <- unname(ip["AF"])
-            info_MQ <- unname(ip["MQ"])
-            info_QD <- unname(ip["QD"])
-            info_CNN <- unname(ip["CNN_1D"])
-            ac_vec <- if (!is.na(info_AC)) strsplit(info_AC, ",", fixed = TRUE)[[1]] else NA
-            af_vec <- if (!is.na(info_AF)) strsplit(info_AF, ",", fixed = TRUE)[[1]] else NA
-
-            csq_raw <- unname(ip["CSQ"])
-            csq_blocks <- if (!is.na(csq_raw)) strsplit(csq_raw, ",", fixed = TRUE)[[1]] else character(0)
-            # A3 (PERF): split ALL CSQ blocks in ONE vectorized strsplit() call rather than
-            # one strsplit() per block in an lapply. base strsplit() drops trailing empty
-            # fields, so each result is padded back to n_csq with `length(f) <- n_csq`
-            # (NA fill). Byte-identical to the per-block path (verified on 186k real blocks
-            # + edge cases); ~22% faster on the isolated split. fixed=TRUE, no new deps.
-            block_fields <- lapply(strsplit(csq_blocks, "|", fixed = TRUE), function(f) {
-                length(f) <- n_csq
-                f
-            })
-            block_allele <- vapply(block_fields, function(f) {
-                a <- f[P_Allele]
-                if (is.na(a)) "" else a
-            }, character(1))
-
-            # rank-aware CSQ block -> ALT owner assignment
-            cand_by_alt <- lapply(alts, function(a) vep_allele_candidates(ref, a))
-            block_owner <- integer(length(block_allele))
-            if (length(block_allele) > 0L) {
-                for (bi in seq_along(block_allele)) {
-                    bs <- block_allele[bi]
-                    best_alt <- 0L
-                    best_rank <- .Machine$integer.max
-                    for (ai2 in seq_along(alts)) {
-                        rk <- match(bs, cand_by_alt[[ai2]])
-                        if (!is.na(rk) && rk < best_rank) {
-                            best_rank <- rk
-                            best_alt <- ai2
-                        }
-                    }
-                    block_owner[bi] <- best_alt
-                }
-            }
-
+        # 5) Per-record loop. Scalar per-record extraction stays inline (it consumes
+        # both the chunk state and the loop index r); the CSQ-block expansion + per-ALT
+        # row build is delegated to .gvr_chunk_build_record().
+        fmt_constant <- state$fmt_constant
+        for (r in seq_len(state$nrow_dt)) {
             # O1: GT/AD/DP/GQ extraction. Fast path uses the chunk-level position split when
             # FORMAT is constant; otherwise the exact original per-record name-based path.
             # In BOTH paths, a missing field resolves to the SAME defaults the original used
@@ -1314,14 +636,14 @@ read.gvr <- function(folder = ".",
             # shorter than the position) is treated as "field absent" -> default, which is
             # identical to the original `seq_along(smp_vals)` name-assignment behaviour.
             if (fmt_constant) {
-                gt0  <- if (is.null(GT_col)) NA_character_ else GT_col[r]
+                gt0  <- if (is.null(state$GT_col)) NA_character_ else state$GT_col[r]
                 gt   <- if (is.na(gt0)) "./." else gt0
-                ad   <- if (is.null(AD_col)) NA_character_ else AD_col[r]
-                sdp  <- if (is.null(DP_col)) NA_character_ else DP_col[r]
-                gq   <- if (is.null(GQ_col)) NA_character_ else GQ_col[r]
+                ad   <- if (is.null(state$AD_col)) NA_character_ else state$AD_col[r]
+                sdp  <- if (is.null(state$DP_col)) NA_character_ else state$DP_col[r]
+                gq   <- if (is.null(state$GQ_col)) NA_character_ else state$GQ_col[r]
             } else {
-                fmt_keys <- strsplit(fmt, ":", fixed = TRUE)[[1]]
-                smp_vals <- strsplit(smp, ":", fixed = TRUE)[[1]]
+                fmt_keys <- strsplit(state$FORMAT_v[r], ":", fixed = TRUE)[[1]]
+                smp_vals <- strsplit(state$SAMPLE_v[r], ":", fixed = TRUE)[[1]]
                 names(smp_vals) <- fmt_keys[seq_along(smp_vals)]
                 gt  <- if ("GT" %in% names(smp_vals)) smp_vals[["GT"]] else "./."
                 ad  <- if ("AD" %in% names(smp_vals)) smp_vals[["AD"]] else NA_character_
@@ -1330,127 +652,28 @@ read.gvr <- function(folder = ".",
             }
             ad_vec <- if (!is.na(ad)) strsplit(ad, ",", fixed = TRUE)[[1]] else NA
 
-            for (ai in seq_along(alts)) {
-                alt <- alts[ai]
-                sel <- which(block_owner == ai)
-                coords <- gvr_coords(pos, ref, alt)
-                vt <- coords$var_type
-
-                if (length(sel) > 0L) {
-                    # vN+11 (P1): coalesce the four per-block vapply()s into a single pre-allocated
-                    # walk over `sel`, indexing each block_fields[[k]] exactly once. Replaces 4x
-                    # closure-per-call vapply overhead with one direct loop. Output is byte-identical
-                    # to the original (same scalar logic, same inputs, same order(...)).
-                    ns <- length(sel)
-                    ranks <- integer(ns)
-                    canon <- integer(ns)
-                    mane <- integer(ns)
-                    feat <- character(ns)
-                    for (i in seq_len(ns)) {
-                        bf <- block_fields[[sel[i]]]
-                        ranks[i] <- consequence_rank(bf[P_Cons])
-                        v <- bf[P_CANONICAL]
-                        canon[i] <- if (!is.na(v) && v == "YES") 0L else 1L
-                        v <- bf[P_MANESEL]
-                        mane[i]  <- if (!is.na(v) && v != "") 0L else 1L
-                        v <- bf[P_Feature]
-                        feat[i]  <- if (is.na(v)) "zzz" else v
-                    }
-                    ord <- order(ranks, canon, mane, feat)
-                    chosen <- block_fields[[sel[ord[1]]]]
-                } else {
-                    chosen <- rep(NA_character_, n_csq)
+            record_ctx <- list(
+                chrom = state$CHROM_v[r], pos = state$POS_v[r], vid = state$ID_v[r],
+                ref = state$REF_v[r], altf = state$ALT_v[r], qual = state$QUAL_v[r],
+                filt = state$FILTER_v[r], info = state$INFO_v[r],
+                alts = state$alts_all[[r]],                          # O2: pre-split once per chunk
+                gt = gt, ad = ad, sdp = sdp, gq = gq, ad_vec = ad_vec,
+                sample_name = sample_name
+            )
+            rec <- .gvr_chunk_build_record(
+                record_ctx, csq_fields, state$n_csq, state$P,
+                canonical_only, ncbi_build,
+                .gvr_mstr_cache, .gvr_v2m_cache
+            )
+            n_dropped_canonical <- n_dropped_canonical + rec$n_dropped_canonical
+            if (length(rec$rows) > 0L) {
+                for (row in rec$rows) {
+                    oi <- oi + 1L
+                    out[[oi]] <- row
                 }
-
-                # vN+4: canonical_only filter -- drop rows whose chosen block is not canonical.
-                # Skips the per-ALT row construction entirely (saves Hugo lookup,
-                # HGVSp shortening, AD parsing, list() build). Also skips ALTs with no
-                # CSQ block at all (chosen all-NA), which is desired: no CANONICAL info => drop.
-                if (canonical_only) {
-                    canon_chosen <- chosen[P_CANONICAL]
-                    if (is.na(canon_chosen) || canon_chosen != "YES") {
-                        n_dropped_canonical <- n_dropped_canonical + 1L
-                        next
-                    }
-                }
-
-                cons_str <- chosen[P_Cons]
-                top_term <- most_severe_term(cons_str)
-                var_class <- if (is.na(top_term)) "Targeted_Region" else vep_to_gvr_class(top_term, vt)
-                symbol <- chosen[P_SYMBOL]
-                hugo <- if (is.na(symbol) || symbol == "") "Unknown" else symbol
-
-                gc <- gt_codes_for_alt(gt, ai)
-                # vN+11 (P2): inline what was `map_code` to avoid creating a closure per
-                # (record x alt). Identical scalar branches; output byte-identical.
-                .c1 <- gc$c1
-                t_allele1 <- if (is.na(.c1)) "."
-                else if (.c1 == 0L) coords$ref_allele
-                else if (.c1 == ai) coords$tum_allele2
-                else if (.c1 >= 1L && .c1 <= length(alts)) gvr_coords(pos, ref, alts[.c1])$tum_allele2
-                else "."
-                .c2 <- gc$c2
-                t_allele2 <- if (is.na(.c2)) "."
-                else if (.c2 == 0L) coords$ref_allele
-                else if (.c2 == ai) coords$tum_allele2
-                else if (.c2 >= 1L && .c2 <= length(alts)) gvr_coords(pos, ref, alts[.c2])$tum_allele2
-                else "."
-
-                t_ref_count <- if (length(ad_vec) >= 1 && !any(is.na(ad_vec))) ad_vec[1] else NA_character_
-                t_alt_count <- if (length(ad_vec) >= (ai + 1) && !any(is.na(ad_vec))) ad_vec[ai + 1] else NA_character_
-
-                exist <- chosen[P_Existing]
-                dbsnp <- NA_character_
-                if (!is.na(exist) && exist != "") {
-                    rs <- grep("^rs", strsplit(exist, "&", fixed = TRUE)[[1]], value = TRUE)
-                    if (length(rs)) dbsnp <- rs[1]
-                }
-                if (is.na(dbsnp) && !is.na(vid) && vid != ".") {
-                    rs <- grep("^rs", strsplit(vid, ";", fixed = TRUE)[[1]], value = TRUE)
-                    if (length(rs)) dbsnp <- rs[1]
-                }
-
-                hgvsp <- url_decode(chosen[P_HGVSp])
-                hgvsc <- url_decode(chosen[P_HGVSc])
-                vep_vals <- as.list(chosen)
-                names(vep_vals) <- csq_fields
-
-                oi <- oi + 1L
-                out[[oi]] <- c(
-                    list(
-                        Hugo_Symbol = hugo, Entrez_Gene_Id = "0", Center = ".", NCBI_Build = ncbi_build,
-                        Chromosome = chrom, Start_Position = coords$start, End_Position = coords$end,
-                        Strand = "+", Variant_Classification = var_class, Variant_Type = vt,
-                        Reference_Allele = coords$ref_allele, Tumor_Seq_Allele1 = t_allele1,
-                        Tumor_Seq_Allele2 = t_allele2, dbSNP_RS = if (is.na(dbsnp)) "" else dbsnp,
-                        Tumor_Sample_Barcode = sample_name, Match_Norm_Seq_Allele1 = "",
-                        Match_Norm_Seq_Allele2 = "", HGVSc = if (is.na(hgvsc)) "" else hgvsc,
-                        HGVSp = if (is.na(hgvsp)) "" else hgvsp, HGVSp_Short = make_hgvsp_short(hgvsp),
-                        Transcript_ID = {
-                            v <- chosen[P_Feature]
-                            if (is.na(v)) "" else v
-                        },
-                        Consequence = if (is.na(cons_str)) "" else cons_str,
-                        t_depth = if (is.na(sdp)) "" else sdp,
-                        t_ref_count = if (is.na(t_ref_count)) "" else t_ref_count,
-                        t_alt_count = if (is.na(t_alt_count)) "" else t_alt_count
-                    ),
-                    vep_vals,
-                    list(
-                        FILTER = filt,
-                        QUAL = qual,
-                        INFO_DP = if (is.na(info_DP)) "" else info_DP,
-                        INFO_AC = if (length(ac_vec) >= ai && !any(is.na(ac_vec))) ac_vec[ai] else if (!is.na(info_AC)) info_AC else "",
-                        INFO_AF = if (length(af_vec) >= ai && !any(is.na(af_vec))) af_vec[ai] else if (!is.na(info_AF)) info_AF else "",
-                        INFO_MQ = if (is.na(info_MQ)) "" else info_MQ,
-                        INFO_QD = if (is.na(info_QD)) "" else info_QD,
-                        CNN_1D = if (is.na(info_CNN)) "" else info_CNN,
-                        GT = gt, AD = if (is.na(ad)) "" else ad,
-                        sample_DP = if (is.na(sdp)) "" else sdp, GQ = if (is.na(gq)) "" else gq
-                    )
-                )
             }
         }
+
         res <- data.table::rbindlist(out[seq_len(oi)], use.names = TRUE, fill = TRUE)
         data.table::setattr(res, "n_dropped", n_dropped)   # v4: carry filter drop count to caller
         data.table::setattr(res, "n_dropped_canonical", n_dropped_canonical)  # vN+4
@@ -1460,8 +683,8 @@ read.gvr <- function(folder = ".",
     ## 1j-v2. Convert ONE vcf file end-to-end (header parse + chunked streaming).
     ##        Returns a per-file MAF-like data.table. Progress printed if verbose.
     convert_one_vcf <- function(path, file_idx, file_total, file_total_records = NA_integer_) {
-        csq_fields  <- get_csq_fields(path)
-        sample_name <- get_sample_name(path)
+        csq_fields  <- .gvr_get_csq_fields(path)
+        sample_name <- .gvr_get_sample_name(path)
         if (verbose)
             message(sprintf("[file %d/%d] Converting %s (sample: %s) | CSQ fields: %d",
                 file_idx, file_total, basename(path), sample_name, length(csq_fields)))
@@ -1733,7 +956,7 @@ read.gvr <- function(folder = ".",
         dup_names <- unique(cn[duplicated(cn)])
         dropped <- character(0)
         renamed <- character(0)
-        # Vectorized URL-decode (fast; mirrors the per-element url_decode helper).
+        # Vectorized URL-decode (fast; mirrors the per-element .gvr_url_decode helper).
         url_decode_vec <- function(x) {
             x <- gsub("%3D", "=", x, fixed = TRUE)
             x <- gsub("%3B", ";", x, fixed = TRUE)
