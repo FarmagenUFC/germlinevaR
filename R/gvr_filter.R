@@ -19,7 +19,7 @@
 #'   \item Biotype                - `biotype_keep`
 #'   \item Genotype exclusion     - `gt_exclude`
 #'   \item Variant classification - `vc_nonSyn`
-#'   \item Gene subset            - `genes`
+#'   \item Gene subset            - `genes` and/or HPO-derived genes from `hpo`
 #' }
 #'
 #' Important data notes (true of [read.gvr()] output):
@@ -92,6 +92,19 @@
 #'   subset. Errors with a clear message if `Variant_Classification` is missing.
 #' @param genes Character vector of `Hugo_Symbol`s to keep (exact, case-insensitive),
 #'   or `NULL` (default) to keep all genes.
+#' @param hpo Character vector of Human Phenotype Ontology identifiers, e.g.
+#'   `"HP:0003002"`. When supplied, genes associated with the HPO term(s) are
+#'   retrieved with [gvr_hpo_genes()] and combined with `genes`. Filtering then
+#'   keeps rows whose `Hugo_Symbol` belongs to the union of manually supplied
+#'   genes and HPO-derived genes.
+#' @param hpo_path Optional path to a local HPO `phenotype_to_genes.txt` file.
+#'   If supplied, no download is attempted.
+#' @param hpo_url URL used to retrieve the HPO phenotype-to-gene table when
+#'   `hpo_path = NULL`.
+#' @param hpo_cache_dir Directory used to cache the downloaded HPO table.
+#'   `NULL` uses `tools::R_user_dir("germlinevaR", "cache")`.
+#' @param hpo_refresh_cache Logical. If `TRUE`, force re-download of the HPO
+#'   phenotype-to-gene table. Default `FALSE`.
 #' @param save_excel Logical; if TRUE, also write the FILTERED table to an `.xlsx`
 #'   workbook (single `"Filtered"` sheet) at `<out_dir>/<file_prefix>.xlsx`. Requires
 #'   the \pkg{openxlsx} package (a `Suggests` dependency); if it is not installed the
@@ -166,8 +179,13 @@ gvr_filter <- function(gvr,
                        biotype_keep = NULL,
                        gt_exclude = c("0", "0/0"),
                        vc_nonSyn = FALSE,
-                       missense_only = FALSE,  # vN+5: strict missense-only filter (Variant_Classification == "Missense_Mutation")
+                       missense_only = FALSE,  # vN+5: strict missense-only filter (Variant_Classification == "Missense_Mutation"),
                        genes = NULL,
+                       hpo = NULL,
+                       hpo_path = NULL,
+                       hpo_url = "https://purl.obolibrary.org/obo/hp/hpoa/phenotype_to_genes.txt",
+                       hpo_cache_dir = NULL,
+                       hpo_refresh_cache = FALSE,
                        save_excel = FALSE,
                        out_dir = NULL,
                        file_prefix = "gvr_filter",
@@ -181,7 +199,37 @@ gvr_filter <- function(gvr,
     # --- Work on a copy; never mutate the caller's object -----------------------
     dt <- data.table::as.data.table(gvr)   # copies if input is a data.frame/data.table
     n_in_total <- nrow(dt)
+    
+    # --- Resolve HPO term(s) to genes -------------------------------------------
+    hpo_genes <- character(0)
 
+    if (!is.null(hpo) && length(hpo) > 0L) {
+        hpo_genes <- gvr_hpo_genes(
+            hpo = hpo,
+            hpo_path = hpo_path,
+            hpo_url = hpo_url,
+            cache_dir = hpo_cache_dir,
+            refresh_cache = hpo_refresh_cache,
+            verbose = verbose
+        )
+
+        if (length(hpo_genes) == 0L) {
+            warning(
+                "gvr_filter: no HPO-derived genes found; HPO filter is inactive.",
+                call. = FALSE
+            )
+        } else if (isTRUE(verbose)) {
+            message(sprintf(
+                "gvr_filter: HPO term(s) resolved to %d unique gene(s).",
+                length(hpo_genes)
+            ))
+        }
+    }
+
+    if (length(hpo_genes) > 0L) {
+        genes <- unique(c(genes, hpo_genes))
+    }
+  
     # --- Helper: detect missing (NA OR empty string) ----------------------------
     .is_missing <- function(v) is.na(v) | v == ""
 
