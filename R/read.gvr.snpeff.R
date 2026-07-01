@@ -213,6 +213,11 @@
 #'   Values `> 1` only help when more than one VCF is being read (each file is an
 #'   independent task) and are clamped to `min(ncores, detectCores(), n_files)`. On
 #'   non-fork platforms it falls back to sequential. A single file is unaffected.
+#' @param normalize_alleles Logical; if `TRUE` (default, since 0.99.2) apply
+#'   bcftools-norm-style trimming of common REF/ALT prefix and suffix nucleotides
+#'   before deriving MAF-like coords. See [read.gvr()] for full rationale. Set
+#'   `FALSE` to reproduce pre-0.99.2 coords for reproducibility with an older
+#'   analysis; not recommended for new research.
 #' @param verbose Logical; if `TRUE` (default) print per-file and per-chunk progress
 #'   (file i/N, cumulative records, elapsed seconds).
 #'
@@ -286,6 +291,7 @@ read.gvr.snpeff <- function(folder = ".",
                             vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                             canonical_only    = TRUE,   # vN+4: API symmetry; SnpEff ANN has no CANONICAL -> warn and ignore
                             ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
+                            normalize_alleles = TRUE,   # v0.99.2: bcftools-norm-style trim of common prefix/suffix nt before deriving MAF-like coords (recommended); FALSE reproduces pre-0.99.2 coords for reproducibility with older analyses
                             verbose    = TRUE) {
     # ===========================================================================
     # Nested helpers and constants (previously top-level)
@@ -1385,27 +1391,14 @@ read.gvr.snpeff <- function(folder = ".",
     }
 
     ## 1e. MAF coordinate + allele conversion for one REF/ALT pair
+    # v0.99.2: Delegate to the shared .gvr_coords() helper (formerly a verbatim
+    # inline copy). This ensures the SnpEff-only reader honors the
+    # `normalize_alleles` argument (bcftools-norm-style prefix/suffix trimming
+    # of REF/ALT before deriving MAF coords), which prevents distinct multi-ALT
+    # records from collapsing to the same (chrom, start, ref, alt) MAF key.
+    # Closes over `normalize_alleles` from read.gvr.snpeff()'s signature.
     gvr_coords <- function(pos, ref, alt) {
-        pos <- as.integer(pos)
-        if (alt == "*") return(list(var_type = "DEL", start = pos, end = pos,
-            ref_allele = ref, tum_allele2 = "*"))
-        rl <- nchar(ref)
-        al <- nchar(alt)
-        if (rl == al && rl == 1)
-            return(list(var_type = "SNP", start = pos, end = pos, ref_allele = ref, tum_allele2 = alt))
-        if (rl == al && rl > 1) {
-            vt <- switch(as.character(rl), "2" = "DNP", "3" = "TNP", "ONP")
-            return(list(var_type = vt, start = pos, end = pos + rl - 1, ref_allele = ref, tum_allele2 = alt))
-        }
-        if (al > rl) {                                   # insertion
-            ins <- substr(alt, rl + 1, al)
-            return(list(var_type = "INS", start = pos + rl - 1, end = pos + rl,
-                ref_allele = "-", tum_allele2 = ins))
-        } else {                                         # deletion
-            del <- substr(ref, al + 1, rl)
-            return(list(var_type = "DEL", start = pos + al, end = pos + rl - 1,
-                ref_allele = del, tum_allele2 = "-"))
-        }
+        .gvr_coords(pos, ref, alt, normalize_alleles = normalize_alleles)
     }
 
     ## 1f. INFO field accessor

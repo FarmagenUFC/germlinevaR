@@ -10,9 +10,11 @@
 #' @keywords internal
 utils::globalVariables(c(
     # --- data.table special symbols + rlang .data pronoun (aes() in ggplot2) ----
-    ".", ".N", ".SD", ".data", ".__sample__", ".sr", ".__nsamp__",
+    ".", ".N", ".SD", ".GRP", ".data", ".__sample__", ".sr", ".__nsamp__",
     # --- data.table column-vector prefix (used as `dt[, ..cols]` in gvr_summary)
     "..cols", "..final_cols",
+    # --- read.gvr.dual() dedupe helper: temp scoring/grouping columns (0.99.2) ----
+    "..score", "..orig_ix", "..grp",
 
     # --- read.gvr(): temp/internal columns created via := ---------------------
     ".rs", ".ref", ".alt",

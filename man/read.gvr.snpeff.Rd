@@ -33,6 +33,7 @@ read.gvr.snpeff(
   vc_nonSyn = FALSE,
   canonical_only = TRUE,
   ncores = 1L,
+  normalize_alleles = TRUE,
   verbose = TRUE
 )
 }
@@ -182,6 +183,12 @@ Default \code{1L} runs sequentially and is byte-identical to previous behaviour.
 Values \verb{> 1} only help when more than one VCF is being read (each file is an
 independent task) and are clamped to \code{min(ncores, detectCores(), n_files)}. On
 non-fork platforms it falls back to sequential. A single file is unaffected.}
+
+\item{normalize_alleles}{Logical; if \code{TRUE} (default, since 0.99.2) apply
+bcftools-norm-style trimming of common REF/ALT prefix and suffix nucleotides
+before deriving MAF-like coords. See \code{\link[=read.gvr]{read.gvr()}} for full rationale. Set
+\code{FALSE} to reproduce pre-0.99.2 coords for reproducibility with an older
+analysis; not recommended for new research.}
 
 \item{verbose}{Logical; if \code{TRUE} (default) print per-file and per-chunk progress
 (file i/N, cumulative records, elapsed seconds).}

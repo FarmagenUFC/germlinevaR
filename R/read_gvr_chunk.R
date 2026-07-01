@@ -427,7 +427,8 @@
 #' @noRd
 .gvr_chunk_build_record <- function(record_ctx, csq_fields, n_csq, P,
                                     canonical_only, ncbi_build,
-                                    mstr_cache, v2m_cache) {
+                                    mstr_cache, v2m_cache,
+                                    normalize_alleles = TRUE) {
     chrom <- record_ctx$chrom
     pos <- record_ctx$pos
     vid <- record_ctx$vid
@@ -504,7 +505,7 @@
     for (ai in seq_along(alts)) {
         alt <- alts[ai]
         sel <- which(block_owner == ai)
-        coords <- .gvr_coords(pos, ref, alt)
+        coords <- .gvr_coords(pos, ref, alt, normalize_alleles = normalize_alleles)
         vt <- coords$var_type
 
         if (length(sel) > 0L) {
@@ -558,13 +559,13 @@
         t_allele1 <- if (is.na(.c1)) "."
         else if (.c1 == 0L) coords$ref_allele
         else if (.c1 == ai) coords$tum_allele2
-        else if (.c1 >= 1L && .c1 <= length(alts)) .gvr_coords(pos, ref, alts[.c1])$tum_allele2
+        else if (.c1 >= 1L && .c1 <= length(alts)) .gvr_coords(pos, ref, alts[.c1], normalize_alleles = normalize_alleles)$tum_allele2
         else "."
         .c2 <- gc$c2
         t_allele2 <- if (is.na(.c2)) "."
         else if (.c2 == 0L) coords$ref_allele
         else if (.c2 == ai) coords$tum_allele2
-        else if (.c2 >= 1L && .c2 <= length(alts)) .gvr_coords(pos, ref, alts[.c2])$tum_allele2
+        else if (.c2 >= 1L && .c2 <= length(alts)) .gvr_coords(pos, ref, alts[.c2], normalize_alleles = normalize_alleles)$tum_allele2
         else "."
 
         t_ref_count <- if (length(ad_vec) >= 1 && !any(is.na(ad_vec))) ad_vec[1] else NA_character_

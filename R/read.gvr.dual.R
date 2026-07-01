@@ -142,6 +142,7 @@ read.gvr.dual <- function(folder = ".",
                           vc_nonSyn         = FALSE,
                           canonical_only    = TRUE,
                           ncores            = 1L,
+                          normalize_alleles = TRUE,   # v0.99.2: bcftools-norm-style trim of common prefix/suffix nt before deriving MAF-like coords (recommended); FALSE reproduces pre-0.99.2 coords for reproducibility with older analyses
                           verbose    = TRUE) {
     # ---------------------------------------------------------------------------
     # Phase 1: VEP-driven table construction.
@@ -186,6 +187,7 @@ read.gvr.dual <- function(folder = ".",
         vc_nonSyn         = vc_nonSyn,
         canonical_only    = canonical_only,
         ncores            = ncores,
+        normalize_alleles = normalize_alleles,
         verbose           = verbose
     )
 
@@ -212,9 +214,10 @@ read.gvr.dual <- function(folder = ".",
     # (sample, chrom, pos, ref, alt). Each VCF file is processed in chunks so
     # we never hold the whole decompressed file in memory.
     snpeff_tab <- .gvr_dual_extract_snpeff(
-        vcf_paths   = vcf_paths,
-        chunk_size  = chunk_size,
-        verbose     = verbose
+        vcf_paths         = vcf_paths,
+        chunk_size        = chunk_size,
+        normalize_alleles = normalize_alleles,
+        verbose           = verbose
     )
 
     if (is.null(snpeff_tab) || nrow(snpeff_tab) == 0L) {
@@ -251,6 +254,11 @@ read.gvr.dual <- function(folder = ".",
     # ---------------------------------------------------------------------------
     matched <- .gvr_dual_attach_snpeff(gvr, snpeff_tab, verbose = verbose)
 
+    # Capture the snpeff-collision audit trail from .gvr_dual_attach_snpeff()
+    # BEFORE Phase 4 drops columns (subsetting via `[, .SDcols=]` returns a
+    # fresh data.table that does not carry over our user-defined attribute).
+    snpeff_collisions_discarded <- attr(matched, "snpeff_collisions_discarded")
+
     if (isTRUE(verbose)) {
         n_match_gene <- sum(matched$snpeff_gene != "" & matched$Hugo_Symbol != "" &
             matched$snpeff_gene == matched$Hugo_Symbol, na.rm = TRUE)
@@ -283,6 +291,10 @@ read.gvr.dual <- function(folder = ".",
     # Tag and final-dimension diagnostic
     data.table::setattr(matched, "annotator", "dual")
     data.table::setattr(matched, "ncbi_build", attr(gvr, "ncbi_build"))
+    if (!is.null(snpeff_collisions_discarded) && nrow(snpeff_collisions_discarded) > 0L) {
+        data.table::setattr(matched, "snpeff_collisions_discarded",
+            snpeff_collisions_discarded)
+    }
 
     if (isTRUE(verbose))
         message(sprintf("Final Table Dimensions: %d rows x %d columns.",
@@ -363,38 +375,19 @@ read.gvr.dual <- function(folder = ".",
 }
 
 
-# MAF-like coords for one (pos, ref, alt). VERBATIM COPY of read.gvr.R's
-# nested gvr_coords() helper (defined inside read.gvr() at lines ~910-930).
-# Keeping this identical is REQUIRED so the SnpEff side of the dual reader
-# produces the same join keys (Reference_Allele, Tumor_Seq_Allele2,
-# Start_Position) that VEP path emits. If read.gvr.R's gvr_coords ever
-# changes, mirror the change here.
+# MAF-like coords for one (pos, ref, alt). Delegates to the shared
+# .gvr_coords() helper in read_gvr_vcf_utils.R so the SnpEff side of the
+# dual reader produces the same join keys (Reference_Allele,
+# Tumor_Seq_Allele2, Start_Position) as the VEP path emits.
+#
+# Before 0.99.2 this was a verbatim copy of the VEP-side helper. Making
+# them share code prevents future drift where they could disagree on
+# indel MAF keys and re-introduce the join collision seen at chr1:6095864
+# in the S4 test file (0.99.1 bug).
 #
 # Returns a list: (var_type, start, end, ref_allele, tum_allele2)
-.gvr_dual_gvr_coords <- function(pos, ref, alt) {
-    pos <- as.integer(pos)
-    if (is.na(alt) || alt == "*")
-        return(list(var_type = "DEL", start = pos, end = pos,
-            ref_allele = ref, tum_allele2 = "*"))
-    rl <- nchar(ref)
-    al <- nchar(alt)
-    if (rl == al && rl == 1L)
-        return(list(var_type = "SNP", start = pos, end = pos,
-            ref_allele = ref, tum_allele2 = alt))
-    if (rl == al && rl > 1L) {
-        vt <- switch(as.character(rl), "2" = "DNP", "3" = "TNP", "ONP")
-        return(list(var_type = vt, start = pos, end = pos + rl - 1L,
-            ref_allele = ref, tum_allele2 = alt))
-    }
-    if (al > rl) {                                   # insertion (left-anchored)
-        ins <- substr(alt, rl + 1L, al)
-        return(list(var_type = "INS", start = pos + rl - 1L, end = pos + rl,
-            ref_allele = "-", tum_allele2 = ins))
-    } else {                                         # deletion (left-anchored)
-        del <- substr(ref, al + 1L, rl)
-        return(list(var_type = "DEL", start = pos + al, end = pos + rl - 1L,
-            ref_allele = del, tum_allele2 = "-"))
-    }
+.gvr_dual_gvr_coords <- function(pos, ref, alt, normalize_alleles = TRUE) {
+    .gvr_coords(pos, ref, alt, normalize_alleles = normalize_alleles)
 }
 
 
@@ -490,7 +483,8 @@ read.gvr.dual <- function(folder = ".",
 # LOF/NMD gene-lookup maps as list-columns ("LOF_genes_list",
 # "LOF_pcts_list", "NMD_genes_list", "NMD_pcts_list"). Attach then picks
 # the gene-matching candidate per row.
-.gvr_dual_extract_snpeff <- function(vcf_paths, chunk_size, verbose) {
+.gvr_dual_extract_snpeff <- function(vcf_paths, chunk_size, verbose,
+                                     normalize_alleles = TRUE) {
     all_rows <- vector("list", length(vcf_paths))
 
     for (fi in seq_along(vcf_paths)) {
@@ -570,8 +564,10 @@ read.gvr.dual <- function(folder = ".",
 
                 for (ai in seq_along(alts_ri)) {
                     this_alt <- alts_ri[ai]
-                    # MAF-like coords for this (ref, alt) pair: VERBATIM read.gvr() logic
-                    mc <- .gvr_dual_gvr_coords(pos[ri], ref[ri], this_alt)
+                    # MAF-like coords for this (ref, alt) pair (shares .gvr_coords()
+                    # with read.gvr(); respects the outer `normalize_alleles`).
+                    mc <- .gvr_dual_gvr_coords(pos[ri], ref[ri], this_alt,
+                        normalize_alleles = normalize_alleles)
                     # Find ANN blocks matching this ALT (after SnpEff allele stripping)
                     if (length(block_allele)) {
                         sel <- which(block_allele == this_alt)
@@ -621,6 +617,17 @@ read.gvr.dual <- function(folder = ".",
 #   2) Else the first ANN block matching the ALT allele
 #   3) Else empty
 # LOF/NMD: prefer the gene matching Hugo_Symbol; else first gene listed.
+#
+# 0.99.2: dedupe snpeff_tab on the 5-key tuple before the right-join and
+# force `mult = "first"` on the join itself as belt-and-suspenders. Before
+# the fix, `snpeff_tab[m, on = join_keys, allow.cartesian = FALSE]` could
+# produce more rows than nrow(m) whenever the SnpEff side had duplicated
+# keys (129 duplicated keys on the S4 test file). data.table then refuses
+# to write the joined column back onto m, raising a size-mismatch error
+# ("Fornecidos N itens a serem atribuidos a M itens ..."). The deduper
+# below picks the highest max Annotation_Impact per collision (empty
+# blocks < NA < MODIFIER < LOW < MODERATE < HIGH) and stores the discarded
+# rows in attr(matched, "snpeff_collisions_discarded") as an audit trail.
 .gvr_dual_attach_snpeff <- function(gvr, snpeff_tab, verbose) {
     m <- data.table::copy(gvr)
 
@@ -636,6 +643,12 @@ read.gvr.dual <- function(folder = ".",
 
     if (!nrow(snpeff_tab)) return(m)
 
+    # Collapse snpeff_tab on the 5-key tuple, keeping the row with the
+    # highest max Annotation_Impact per collision (Layer 1 fix).
+    dedupe <- .gvr_dual_dedupe_snpeff(snpeff_tab, verbose = verbose)
+    snpeff_tab_u <- dedupe$kept
+    discarded    <- dedupe$discarded
+
     # Build a left-join: m -> snpeff_tab on the 5 key columns. We want one
     # snpeff_tab row per m row in m's order. data.table syntax x[i, on=]
     # right-joins on x using i's keys, but emits rows in i's order. We use
@@ -646,8 +659,12 @@ read.gvr.dual <- function(folder = ".",
 
     # Only carry the snpeff_tab columns we need (not the m cols, which we
     # already have on `m`). The join result `joined` has all of m's cols PLUS
-    # snpeff_tab's non-key cols, in m's row order.
-    joined <- snpeff_tab[m, on = join_keys, allow.cartesian = FALSE]
+    # snpeff_tab's non-key cols, in m's row order. `mult = "first"` is a
+    # belt-and-suspenders guarantee: if the dedupe missed anything (it
+    # shouldn't; the deduper is exhaustive on the join keys), the join still
+    # returns exactly nrow(m) rows rather than erroring out.
+    joined <- snpeff_tab_u[m, on = join_keys, mult = "first",
+        allow.cartesian = FALSE]
 
     # Per-row resolution: walk the snpeff_blocks list-column, pick best block.
     n <- nrow(joined)
@@ -731,5 +748,92 @@ read.gvr.dual <- function(folder = ".",
     m[, NMD_Gene           := d_gene]
     m[, NMD_Pct_Transcripts := d_pct]
 
+    # Audit trail: attach the rows discarded by the dedupe deduplication so
+    # users can inspect which SnpEff alleles were collapsed by the join
+    # collision resolution. NULL when the dedupe was a no-op.
+    if (!is.null(discarded) && nrow(discarded) > 0L) {
+        data.table::setattr(m, "snpeff_collisions_discarded", discarded)
+    }
+
     m
+}
+
+
+# Collapse snpeff_tab on the 5-key MAF tuple, keeping the row with the
+# highest max ANN Annotation_Impact per collision. Ties broken on first-
+# appearance order (stable). Returns a list(kept, discarded); `discarded`
+# is NULL when the input was already unique on the 5-key tuple.
+#
+# Impact ranking: empty-blocks (no ANN entry matched the ALT) < NA <
+# MODIFIER < LOW < MODERATE < HIGH. This never sacrifices a HIGH/
+# MODERATE/LOW annotation for an empty or MODIFIER one. In the S4 test
+# file, all 6 "coding-impact-differences" collisions have one candidate
+# with 0 SnpEff blocks and one with >= 1 annotated block; the annotated
+# candidate wins every time.
+#
+# Emits a verbose message summarising the resolution (# collisions,
+# # resolved by impact rank, # byte-identical) when `verbose = TRUE`.
+.gvr_dual_dedupe_snpeff <- function(snpeff_tab, verbose = FALSE) {
+    if (!nrow(snpeff_tab)) return(list(kept = snpeff_tab, discarded = NULL))
+
+    join_keys <- c("Tumor_Sample_Barcode", "Chromosome", "Start_Position",
+        "Reference_Allele", "Tumor_Seq_Allele2")
+
+    # Score each row by max Annotation_Impact across its SnpEff blocks.
+    # empty-blocks (0-length list) get -1 so they are strictly worst.
+    impact_rank <- c(MODIFIER = 1L, LOW = 2L, MODERATE = 3L, HIGH = 4L)
+    A_IMPACT_POS <- 3L  # ANN field-position for Annotation_Impact (fixed by spec)
+
+    row_impact_score <- vapply(snpeff_tab$snpeff_blocks, function(bk) {
+        if (length(bk) == 0L) return(-1L)
+        imps <- vapply(bk, function(b) if (length(b) >= A_IMPACT_POS) b[A_IMPACT_POS] else NA_character_,
+            character(1L))
+        imps <- imps[!is.na(imps) & nzchar(imps)]
+        if (length(imps) == 0L) return(0L)
+        as.integer(max(impact_rank[imps], na.rm = TRUE))
+    }, integer(1L))
+
+    # Stable ordering key: score desc, original-row-order asc.
+    orig_ord <- seq_len(nrow(snpeff_tab))
+
+    # data.table setorderv() is faster than order() for large tables. Use
+    # a working copy so the caller's snpeff_tab is not mutated.
+    dt <- data.table::copy(snpeff_tab)
+    dt[, `..score`   := row_impact_score]
+    dt[, `..orig_ix` := orig_ord]
+    data.table::setorderv(dt, c(join_keys, "..score", "..orig_ix"),
+        order = c(rep(1L, length(join_keys)), -1L, 1L))
+
+    # First occurrence per key-group after sorting is the "kept" row.
+    dt[, `..grp` := .GRP, by = join_keys]
+    kept_flag <- !duplicated(dt$`..grp`)
+
+    kept      <- dt[kept_flag]
+    discarded <- dt[!kept_flag]
+
+    # Diagnostic before column cleanup.
+    n_coll_keys <- sum(!kept_flag)  # excess rows discarded
+    n_coll_grps <- length(unique(discarded$`..grp`))
+
+    # Strip helper cols.
+    kept[, c("..score", "..orig_ix", "..grp") := NULL]
+    if (nrow(discarded)) {
+        discarded[, c("..score", "..orig_ix", "..grp") := NULL]
+    } else {
+        discarded <- NULL
+    }
+
+    # Restore the setkey on the returned table (setorderv drops it).
+    data.table::setkeyv(kept, join_keys)
+
+    if (isTRUE(verbose) && n_coll_grps > 0L) {
+        # `discarded` is guaranteed non-NULL here (we entered the branch iff
+        # at least one row was discarded), so nrow() is safe.
+        message(sprintf(
+            "  snpeff collisions: %d MAF-key tuple(s) had %d duplicate row(s); collapsed by Annotation_Impact rank (kept 1 row per key, see attr(<result>, \"snpeff_collisions_discarded\") for %d discarded).",
+            n_coll_grps, n_coll_keys, nrow(discarded)
+        ))
+    }
+
+    list(kept = kept, discarded = discarded)
 }

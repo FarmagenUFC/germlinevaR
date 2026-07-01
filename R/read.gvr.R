@@ -169,6 +169,16 @@
 #'   Values `> 1` only help when more than one VCF is being read (each file is an
 #'   independent task) and are clamped to `min(ncores, detectCores(), n_files)`. On
 #'   non-fork platforms it falls back to sequential. A single file is unaffected.
+#' @param normalize_alleles Logical; if `TRUE` (default, since 0.99.2) apply
+#'   bcftools-norm-style trimming of common REF/ALT prefix and suffix nucleotides
+#'   before deriving MAF-like coords (`Start_Position`, `Reference_Allele`,
+#'   `Tumor_Seq_Allele2`). This is the recommended behaviour: it puts each
+#'   variant on its unique minimal representation and prevents distinct multi-ALT
+#'   records from collapsing to the same MAF key (which could previously drop or
+#'   scramble annotations on the SnpEff side of the dual reader; VEP-only reads
+#'   were unaffected). Set `FALSE` to reproduce pre-0.99.2 coords for
+#'   reproducibility with an older analysis; note this is not recommended for
+#'   new research.
 #' @param verbose Logical; if `TRUE` (default) print per-file and per-chunk progress
 #'   (file i/N, cumulative records, elapsed seconds).
 #' @return An MAF-like `data.table`: one row per variant allele, with MAF-like core columns, all
@@ -248,6 +258,7 @@ read.gvr <- function(folder = ".",
                      vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                      canonical_only    = TRUE,   # vN+4: drop rows whose chosen CSQ block has CANONICAL != "YES"
                      ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
+                     normalize_alleles = TRUE,   # v0.99.2: bcftools-norm-style trim of common prefix/suffix nt before deriving MAF-like coords (recommended); FALSE reproduces pre-0.99.2 coords for reproducibility with older analyses
                      verbose    = TRUE) {
     # ===========================================================================
 
@@ -729,7 +740,8 @@ read.gvr <- function(folder = ".",
             rec <- .gvr_chunk_build_record(
                 record_ctx, csq_fields, state$n_csq, state$P,
                 canonical_only, ncbi_build,
-                .gvr_mstr_cache, .gvr_v2m_cache
+                .gvr_mstr_cache, .gvr_v2m_cache,
+                normalize_alleles = normalize_alleles
             )
             n_dropped_canonical <- n_dropped_canonical + rec$n_dropped_canonical
             if (length(rec$rows) > 0L) {
