@@ -1,5 +1,17 @@
 # germlinevaR walkthrough
 
+***Thiago Loreto Matos***^(1\*) and ***Felipe Pantoja
+Mesquita***^(1\*\*)
+
+¹Pharmacogenetics Laboratory, Drug Research and Development Center,
+Department of Physiology and Pharmacology, Federal University of Ceará,
+Fortaleza, 60430-160, Brazil
+
+^(\*)<thiago-loreto@hotmail.com>  
+^(\*\*)<felipemesquita05@gmail.com>
+
+------------------------------------------------------------------------
+
 ## Introduction
 
 **germlinevaR** is a self-contained R toolchain for single-sample
@@ -370,7 +382,7 @@ top variants) as standalone PNGs.
     #> [1] stats     graphics  grDevices utils     datasets  methods   base     
     #> 
     #> other attached packages:
-    #> [1] data.table_1.18.4  germlinevaR_0.99.1 BiocStyle_2.40.0  
+    #> [1] data.table_1.18.4  germlinevaR_0.99.0 BiocStyle_2.40.0  
     #> 
     #> loaded via a namespace (and not attached):
     #>  [1] sass_0.4.10           generics_0.1.4        shape_1.4.6.1        
