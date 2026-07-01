@@ -9,5 +9,5 @@
 ^\.Rproj\.user$
 ^.*\.Rproj$
 ^doc$
-^META$
+^Meta$
 ^README\.Rmd$
