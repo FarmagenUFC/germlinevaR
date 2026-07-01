@@ -27,7 +27,7 @@ annotator combination."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">germlinevaR</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -99,6 +99,7 @@ annotator combination.</p>
 <span>  min_GQ <span class="op">=</span> <span class="fl">30</span>,</span>
 <span>  genes <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  panel <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  hpo <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  vc_nonSyn <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  canonical_only <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  ncores <span class="op">=</span> <span class="fl">1L</span>,</span>
@@ -263,6 +264,22 @@ An unknown name raises an error listing the available panels. <code>NULL</code>
 omitting the argument.</p></dd>
 
 
+<dt id="arg-hpo">hpo<a class="anchor" aria-label="anchor" href="#arg-hpo"></a></dt>
+<dd><p>Character vector of Human Phenotype Ontology (HPO) term
+identifier(s), e.g. <code>"HP:0003002"</code> (Breast carcinoma) or
+<code>c("HP:0003002", "HP:0025022")</code>. Each term is resolved to a gene
+vector via <code><a href="gvr_hpo_genes.html">gvr_hpo_genes()</a></code> and the union of all resolved genes is
+added to any genes already produced by <code>genes</code> and <code>panel</code>
+(deduplicated, uppercased). Lenient input is accepted: <code>"HP:0003002"</code>,
+<code>"hp:0003002"</code>, <code>"3002"</code>, and <code>"0003002"</code> all normalise to the
+canonical <code>"HP:0003002"</code> form. Only exact-term associations are used
+(no ontology-descendant expansion). The HPO phenotype-to-gene table is
+downloaded and cached under <code>tools::R_user_dir("germlinevaR", "cache")</code>
+and auto-refreshed after 30 days; see <code><a href="gvr_hpo_genes.html">gvr_hpo_genes()</a></code> for offline /
+air-gapped usage via <code>hpo_path=</code>. <code>NULL</code> (default) disables HPO
+filtering; behaviour is then byte-identical to omitting the argument.</p></dd>
+
+
 <dt id="arg-vc-nonsyn">vc_nonSyn<a class="anchor" aria-label="anchor" href="#arg-vc-nonsyn"></a></dt>
 <dd><p>Logical or character vector. Controls which
 <code>Variant_Classification</code> values are retained (mirroring the
@@ -344,6 +361,7 @@ case-insensitive).</p></li>
 VEP and SnpEff annotations.</p>
 <p>Other germlinevaR:
 <code><a href="gvr_filter.html">gvr_filter()</a></code>,
+<code><a href="gvr_hpo_genes.html">gvr_hpo_genes()</a></code>,
 <code><a href="gvr_list_panels.html">gvr_list_panels()</a></code>,
 <code><a href="gvr_panel_genes.html">gvr_panel_genes()</a></code>,
 <code><a href="gvr_plot.html">gvr_plot()</a></code>,

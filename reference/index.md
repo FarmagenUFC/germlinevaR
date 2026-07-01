@@ -27,6 +27,8 @@ Modular filtering and novel-variant subsetting.
   : Genes for a Disease Panel
 - [`gvr_list_panels()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_list_panels.md)
   : List Available Disease Gene Panels
+- [`gvr_hpo_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_hpo_genes.md)
+  : Resolve HPO phenotype terms to associated genes
 
 ## Cohort summary
 

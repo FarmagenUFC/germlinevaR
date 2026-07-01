@@ -28,6 +28,8 @@ gvr_filter(
   vc_nonSyn = FALSE,
   missense_only = FALSE,
   genes = NULL,
+  panel = NULL,
+  hpo = NULL,
   save_excel = FALSE,
   out_dir = NULL,
   file_prefix = "gvr_filter",
@@ -134,6 +136,34 @@ gvr_filter(
   Character vector of `Hugo_Symbol`s to keep (exact, case-insensitive),
   or `NULL` (default) to keep all genes.
 
+- panel:
+
+  Character vector of curated disease panel name(s) (e.g.
+  `"breast cancer"`, `"hereditary prostate cancer"`, `"gist"`). Resolved
+  to gene vectors via
+  [`gvr_panel_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_panel_genes.md)
+  and unioned with `genes` (dedup, uppercased) before the "Gene subset"
+  filter runs. See
+  [`gvr_list_panels()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_list_panels.md)
+  for the full registry. `NULL` (default) disables panel filtering;
+  behaviour is then byte-identical to omitting the argument.
+
+- hpo:
+
+  Character vector of Human Phenotype Ontology (HPO) term id(s), e.g.
+  `"HP:0003002"` (Breast carcinoma). Resolved to gene vectors via
+  [`gvr_hpo_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_hpo_genes.md)
+  and unioned with any genes from `genes` / `panel` before the "Gene
+  subset" filter runs. Lenient input accepted: `"HP:0003002"`,
+  `"hp:0003002"`, `"3002"`, and `"0003002"` all normalise to canonical
+  `"HP:0003002"`. Only exact-term associations are used (no
+  ontology-descendant expansion). The HPO table is downloaded and cached
+  under `tools::R_user_dir("germlinevaR", "cache")`; see
+  [`gvr_hpo_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_hpo_genes.md)
+  for offline / air-gapped use via `hpo_path=`. `NULL` (default)
+  disables HPO filtering; behaviour is then byte-identical to omitting
+  the argument.
+
 - save_excel:
 
   Logical; if TRUE, also write the FILTERED table to an `.xlsx` workbook
@@ -189,7 +219,7 @@ survivors of the previous one:
 
 8.  Variant classification - `vc_nonSyn`
 
-9.  Gene subset - `genes`
+9.  Gene subset - `genes` (unioned with `panel` and `hpo`)
 
 Important data notes (true of
 [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md)
@@ -226,6 +256,7 @@ to build the table,
 to summarise the filtered variants.
 
 Other germlinevaR:
+[`gvr_hpo_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_hpo_genes.md),
 [`gvr_list_panels()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_list_panels.md),
 [`gvr_panel_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_panel_genes.md),
 [`gvr_plot()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_plot.md),

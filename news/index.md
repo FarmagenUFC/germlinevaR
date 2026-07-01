@@ -1,5 +1,46 @@
 # Changelog
 
+## germlinevaR 0.99.1
+
+### New features
+
+- New
+  [`gvr_hpo_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_hpo_genes.md)
+  helper: resolves one or more Human Phenotype Ontology (HPO) term id(s)
+  to their annotated gene vectors using the HPO `phenotype_to_genes.txt`
+  file. Lenient input forms are accepted and normalised (`"HP:0003002"`,
+  `"hp:0003002"`, `"hp:3002"`, `"3002"`, `"0003002"` all resolve to
+  canonical `"HP:0003002"`). Downloads and caches the annotation once
+  per user under `tools::R_user_dir("germlinevaR", "cache")`; the cache
+  is auto-refreshed after 30 days. Descendants are not expanded
+  (exact-term match only). For offline / hermetic runs, point
+  `options(gvr.hpo_path = )` at a local copy of the file.
+- New `hpo` argument on
+  [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md),
+  [`read.gvr.snpeff()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.snpeff.md),
+  [`read.gvr.dual()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.dual.md),
+  and
+  [`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md).
+  Each accepts one or more HPO term id(s); resolved genes are UNION-ed
+  with the existing `genes` and `panel` vectors before the downstream
+  filtering machinery runs. Passing `hpo = NULL` (the default) is
+  byte-identical to omitting the argument. Verbose mode prints a
+  post-filter `hpo subset:` coverage line showing which HPO-derived
+  genes survived filtering, alongside the existing `panel subset:` line.
+- [`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md)
+  gains a `panel` argument for API symmetry with the readers. Previously
+  only
+  [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md)
+  /
+  [`read.gvr.snpeff()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.snpeff.md)
+  /
+  [`read.gvr.dual()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.dual.md)
+  accepted `panel`.
+  [`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md)
+  now unions `genes`, `panel`, and `hpo` identically, so a pre-loaded
+  table can be sliced by disease panel or phenotype without going
+  through the readers again.
+
 ## germlinevaR 0.99.0
 
 ### New features

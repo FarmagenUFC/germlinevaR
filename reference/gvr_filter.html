@@ -15,7 +15,7 @@ called-genotype pipeline (AF filters + CLIN_SIG + GT exclusion)."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">germlinevaR</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -72,6 +72,8 @@ called-genotype pipeline (AF filters + CLIN_SIG + GT exclusion).</p>
 <span>  vc_nonSyn <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  missense_only <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  genes <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  panel <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  hpo <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  save_excel <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  out_dir <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  file_prefix <span class="op">=</span> <span class="st">"gvr_filter"</span>,</span>
@@ -178,6 +180,28 @@ subset. Errors with a clear message if <code>Variant_Classification</code> is mi
 or <code>NULL</code> (default) to keep all genes.</p></dd>
 
 
+<dt id="arg-panel">panel<a class="anchor" aria-label="anchor" href="#arg-panel"></a></dt>
+<dd><p>Character vector of curated disease panel name(s) (e.g.
+<code>"breast cancer"</code>, <code>"hereditary prostate cancer"</code>, <code>"gist"</code>). Resolved to
+gene vectors via <code><a href="gvr_panel_genes.html">gvr_panel_genes()</a></code> and unioned with <code>genes</code> (dedup,
+uppercased) before the "Gene subset" filter runs. See
+<code><a href="gvr_list_panels.html">gvr_list_panels()</a></code> for the full registry. <code>NULL</code> (default) disables
+panel filtering; behaviour is then byte-identical to omitting the argument.</p></dd>
+
+
+<dt id="arg-hpo">hpo<a class="anchor" aria-label="anchor" href="#arg-hpo"></a></dt>
+<dd><p>Character vector of Human Phenotype Ontology (HPO) term id(s),
+e.g. <code>"HP:0003002"</code> (Breast carcinoma). Resolved to gene vectors via
+<code><a href="gvr_hpo_genes.html">gvr_hpo_genes()</a></code> and unioned with any genes from <code>genes</code> / <code>panel</code>
+before the "Gene subset" filter runs. Lenient input accepted:
+<code>"HP:0003002"</code>, <code>"hp:0003002"</code>, <code>"3002"</code>, and <code>"0003002"</code> all normalise
+to canonical <code>"HP:0003002"</code>. Only exact-term associations are used (no
+ontology-descendant expansion). The HPO table is downloaded and cached
+under <code>tools::R_user_dir("germlinevaR", "cache")</code>; see <code><a href="gvr_hpo_genes.html">gvr_hpo_genes()</a></code>
+for offline / air-gapped use via <code>hpo_path=</code>. <code>NULL</code> (default) disables
+HPO filtering; behaviour is then byte-identical to omitting the argument.</p></dd>
+
+
 <dt id="arg-save-excel">save_excel<a class="anchor" aria-label="anchor" href="#arg-save-excel"></a></dt>
 <dd><p>Logical; if TRUE, also write the FILTERED table to an <code>.xlsx</code>
 workbook (single <code>"Filtered"</code> sheet) at <code>&lt;out_dir&gt;/&lt;file_prefix&gt;.xlsx</code>. Requires
@@ -220,7 +244,7 @@ previous one:</p><ol><li><p>gnomAD exome AF        - <code>gnomADe_AF</code>    
 <li><p>Biotype                - <code>biotype_keep</code></p></li>
 <li><p>Genotype exclusion     - <code>gt_exclude</code></p></li>
 <li><p>Variant classification - <code>vc_nonSyn</code></p></li>
-<li><p>Gene subset            - <code>genes</code></p></li>
+<li><p>Gene subset            - <code>genes</code> (unioned with <code>panel</code> and <code>hpo</code>)</p></li>
 </ol><p>Important data notes (true of <code><a href="read.gvr.html">read.gvr()</a></code> output):</p><ul><li><p>AF columns are CHARACTER (e.g. <code>"0.8781"</code>), so they are coerced with
 <code><a href="https://rdrr.io/r/base/numeric.html" class="external-link">as.numeric()</a></code> before comparison.</p></li>
 <li><p>"Missing" means EITHER <code>NA</code> OR empty string <code>""</code> (<code><a href="read.gvr.html">read.gvr()</a></code> uses <code>""</code>
@@ -240,6 +264,7 @@ retained for portability to data that does carry <code>"0"</code>/<code>"0/0"</c
     <div class="dont-index"><p><code><a href="read.gvr.html">read.gvr()</a></code> to build the table, <code><a href="gvr_summary.html">gvr_summary()</a></code> to summarise the filtered
 variants.</p>
 <p>Other germlinevaR:
+<code><a href="gvr_hpo_genes.html">gvr_hpo_genes()</a></code>,
 <code><a href="gvr_list_panels.html">gvr_list_panels()</a></code>,
 <code><a href="gvr_panel_genes.html">gvr_panel_genes()</a></code>,
 <code><a href="gvr_plot.html">gvr_plot()</a></code>,

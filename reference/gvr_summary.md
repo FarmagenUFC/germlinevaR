@@ -205,6 +205,7 @@ for a cohort top-genes variant matrix.
 
 Other germlinevaR:
 [`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md),
+[`gvr_hpo_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_hpo_genes.md),
 [`gvr_list_panels()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_list_panels.md),
 [`gvr_panel_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_panel_genes.md),
 [`gvr_plot()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_plot.md),

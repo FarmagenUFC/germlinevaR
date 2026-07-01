@@ -31,7 +31,7 @@ pipelines."></head><body>
 
     <a class="navbar-brand me-2" href="../index.html">germlinevaR</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -105,6 +105,7 @@ pipelines.</p>
 <span>  min_GQ <span class="op">=</span> <span class="fl">30</span>,</span>
 <span>  genes <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  panel <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  hpo <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  vc_nonSyn <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  canonical_only <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  ncores <span class="op">=</span> <span class="fl">1L</span>,</span>
@@ -268,6 +269,24 @@ An unknown name raises an error listing the available panels. <code>NULL</code>
 omitting the argument.</p></dd>
 
 
+<dt id="arg-hpo">hpo<a class="anchor" aria-label="anchor" href="#arg-hpo"></a></dt>
+<dd><p>Character vector of Human Phenotype Ontology term id(s)
+(e.g. <code>"HP:0003002"</code>, <code>c("HP:0003002", "HP:0025022")</code>). Each id is
+resolved to its gene vector via <code><a href="gvr_hpo_genes.html">gvr_hpo_genes()</a></code> using the HPO
+<code>phenotype_to_genes.txt</code> annotation file, and the union of all
+resolved genes is taken with <code>genes</code> and any panel genes
+(deduplicated, uppercased). Lenient input forms are accepted and
+normalised: <code>"HP:0003002"</code>, <code>"hp:0003002"</code>, <code>"hp:3002"</code>, <code>"3002"</code>,
+and <code>"0003002"</code> all coerce to canonical <code>"HP:0003002"</code>. Only the
+exact terms are used; descendants in the ontology are NOT expanded.
+The annotation file is fetched once per session and cached under
+<code><a href="https://rdrr.io/r/tools/userdir.html" class="external-link">tools::R_user_dir()</a></code> <code>"germlinevaR"</code> <code>"cache"</code>; the cache is
+auto-refreshed after 30 days. For offline / hermetic runs, point
+<code>options(gvr.hpo_path = )</code> at a local copy. <code>NULL</code> (default)
+disables HPO filtering; behaviour is then byte-identical to omitting
+the argument.</p></dd>
+
+
 <dt id="arg-vc-nonsyn">vc_nonSyn<a class="anchor" aria-label="anchor" href="#arg-vc-nonsyn"></a></dt>
 <dd><p>Logical or character vector. Controls which
 <code>Variant_Classification</code> values are retained (mirroring the
@@ -370,6 +389,7 @@ entrypoint, which auto-routes SnpEff input to this function),
 <code><a href="gvr_filter.html">gvr_filter()</a></code> to filter the returned table, <code><a href="gvr_summary.html">gvr_summary()</a></code> to summarise it.</p>
 <p>Other germlinevaR:
 <code><a href="gvr_filter.html">gvr_filter()</a></code>,
+<code><a href="gvr_hpo_genes.html">gvr_hpo_genes()</a></code>,
 <code><a href="gvr_list_panels.html">gvr_list_panels()</a></code>,
 <code><a href="gvr_panel_genes.html">gvr_panel_genes()</a></code>,
 <code><a href="gvr_plot.html">gvr_plot()</a></code>,

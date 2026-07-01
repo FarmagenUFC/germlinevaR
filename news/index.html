@@ -7,7 +7,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">germlinevaR</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.1</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -37,6 +37,16 @@
       <small>Source: <a href="https://github.com/FarmagenUFC/germlinevaR/blob/main/NEWS.md" class="external-link"><code>NEWS.md</code></a></small>
     </div>
 
+    <div class="section level2">
+<h2 class="pkg-version" data-toc-text="0.99.1" id="germlinevar-0991">germlinevaR 0.99.1<a class="anchor" aria-label="anchor" href="#germlinevar-0991"></a></h2>
+<div class="section level3">
+<h3 id="new-features-0-99-1">New features<a class="anchor" aria-label="anchor" href="#new-features-0-99-1"></a></h3>
+<ul><li>New <code><a href="../reference/gvr_hpo_genes.html">gvr_hpo_genes()</a></code> helper: resolves one or more Human Phenotype Ontology (HPO) term id(s) to their annotated gene vectors using the HPO <code>phenotype_to_genes.txt</code> file. Lenient input forms are accepted and normalised (<code>"HP:0003002"</code>, <code>"hp:0003002"</code>, <code>"hp:3002"</code>, <code>"3002"</code>, <code>"0003002"</code> all resolve to canonical <code>"HP:0003002"</code>). Downloads and caches the annotation once per user under <code>tools::R_user_dir("germlinevaR", "cache")</code>; the cache is auto-refreshed after 30 days. Descendants are not expanded (exact-term match only). For offline / hermetic runs, point <code>options(gvr.hpo_path = )</code> at a local copy of the file.</li>
+<li>New <code>hpo</code> argument on <code><a href="../reference/read.gvr.html">read.gvr()</a></code>, <code><a href="../reference/read.gvr.snpeff.html">read.gvr.snpeff()</a></code>, <code><a href="../reference/read.gvr.dual.html">read.gvr.dual()</a></code>, and <code><a href="../reference/gvr_filter.html">gvr_filter()</a></code>. Each accepts one or more HPO term id(s); resolved genes are UNION-ed with the existing <code>genes</code> and <code>panel</code> vectors before the downstream filtering machinery runs. Passing <code>hpo = NULL</code> (the default) is byte-identical to omitting the argument. Verbose mode prints a post-filter <code>hpo subset:</code> coverage line showing which HPO-derived genes survived filtering, alongside the existing <code>panel subset:</code> line.</li>
+<li>
+<code><a href="../reference/gvr_filter.html">gvr_filter()</a></code> gains a <code>panel</code> argument for API symmetry with the readers. Previously only <code><a href="../reference/read.gvr.html">read.gvr()</a></code> / <code><a href="../reference/read.gvr.snpeff.html">read.gvr.snpeff()</a></code> / <code><a href="../reference/read.gvr.dual.html">read.gvr.dual()</a></code> accepted <code>panel</code>. <code><a href="../reference/gvr_filter.html">gvr_filter()</a></code> now unions <code>genes</code>, <code>panel</code>, and <code>hpo</code> identically, so a pre-loaded table can be sliced by disease panel or phenotype without going through the readers again.</li>
+</ul></div>
+</div>
     <div class="section level2">
 <h2 class="pkg-version" data-toc-text="0.99.0" id="germlinevar-0990">germlinevaR 0.99.0<a class="anchor" aria-label="anchor" href="#germlinevar-0990"></a></h2>
 <div class="section level3">

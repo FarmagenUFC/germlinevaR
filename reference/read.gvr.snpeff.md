@@ -50,6 +50,7 @@ read.gvr.snpeff(
   min_GQ = 30,
   genes = NULL,
   panel = NULL,
+  hpo = NULL,
   vc_nonSyn = FALSE,
   canonical_only = TRUE,
   ncores = 1L,
@@ -217,6 +218,25 @@ read.gvr.snpeff(
   available panels. `NULL` (default) disables panel filtering; behaviour
   is then byte-identical to omitting the argument.
 
+- hpo:
+
+  Character vector of Human Phenotype Ontology term id(s) (e.g.
+  `"HP:0003002"`, `c("HP:0003002", "HP:0025022")`). Each id is resolved
+  to its gene vector via
+  [`gvr_hpo_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_hpo_genes.md)
+  using the HPO `phenotype_to_genes.txt` annotation file, and the union
+  of all resolved genes is taken with `genes` and any panel genes
+  (deduplicated, uppercased). Lenient input forms are accepted and
+  normalised: `"HP:0003002"`, `"hp:0003002"`, `"hp:3002"`, `"3002"`, and
+  `"0003002"` all coerce to canonical `"HP:0003002"`. Only the exact
+  terms are used; descendants in the ontology are NOT expanded. The
+  annotation file is fetched once per session and cached under
+  [`tools::R_user_dir()`](https://rdrr.io/r/tools/userdir.html)
+  `"germlinevaR"` `"cache"`; the cache is auto-refreshed after 30 days.
+  For offline / hermetic runs, point `options(gvr.hpo_path = )` at a
+  local copy. `NULL` (default) disables HPO filtering; behaviour is then
+  byte-identical to omitting the argument.
+
 - vc_nonSyn:
 
   Logical or character vector. Controls which `Variant_Classification`
@@ -358,6 +378,7 @@ to summarise it.
 
 Other germlinevaR:
 [`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md),
+[`gvr_hpo_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_hpo_genes.md),
 [`gvr_list_panels()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_list_panels.md),
 [`gvr_panel_genes()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_panel_genes.md),
 [`gvr_plot()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_plot.md),
