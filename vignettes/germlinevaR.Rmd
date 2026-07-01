@@ -1,18 +1,6 @@
 ---
 title: "germlinevaR walkthrough"
-author:
-  - name: Thiago Loreto Matos
-    affiliation: |
-      Pharmacogenetics Laboratory, Drug Research and Development Center,
-      Department of Physiology and Pharmacology, Federal University of Ceará,
-      Fortaleza, 60430-160, Brazil
-    email: thiago-loreto@hotmail.com
-  - name: Felipe Pantoja Mesquita
-    affiliation: |
-      Pharmacogenetics Laboratory, Drug Research and Development Center,
-      Department of Physiology and Pharmacology, Federal University of Ceará,
-      Fortaleza, 60430-160, Brazil
-    email: felipemesquita05@gmail.com
+author: "Thiago Loreto Matos, Felipe Pantoja Mesquita"
 date: "`r Sys.Date()`"
 package: germlinevaR
 output:
@@ -33,6 +21,25 @@ knitr::opts_chunk$set(
     fig.align = "center"
 )
 ```
+
+<p style="font-size:1.05em; margin-top:-0.5em;">
+<strong><em>Thiago Loreto Matos</em></strong><sup>1*</sup>
+and
+<strong><em>Felipe Pantoja Mesquita</em></strong><sup>1**</sup>
+</p>
+
+<p style="font-size:0.88em; color:#444; margin-top:0.2em;">
+<sup>1</sup>Pharmacogenetics Laboratory, Drug Research and Development Center,
+Department of Physiology and Pharmacology, Federal University of Ceará,
+Fortaleza, 60430-160, Brazil
+</p>
+
+<p style="font-size:0.88em; margin-top:0.2em;">
+<sup>*</sup><a href="mailto:thiago-loreto@hotmail.com">thiago-loreto@hotmail.com</a><br/>
+<sup>**</sup><a href="mailto:felipemesquita05@gmail.com">felipemesquita05@gmail.com</a>
+</p>
+
+---
 
 # Introduction
 

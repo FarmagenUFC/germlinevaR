@@ -1,6 +1,6 @@
 Package: germlinevaR
 Title: End-to-End Germline VCF Analysis, Filtering and Visualisation
-Version: 0.99.1
+Version: 0.99.0
 Date: 2026-07-01
 Authors@R: 
     c(person("Thiago", "Loreto Matos",
@@ -32,7 +32,7 @@ Description:
     local GTF sources (cached); and a unified 52-palette colour system
     with colourblind-safe defaults shared across every figure.
 License: MIT + file LICENSE
-URL: https://github.com/FarmagenUFC/germlinevaR
+URL: https://farmagenufc.github.io/germlinevaR, https://github.com/FarmagenUFC/germlinevaR
 BugReports: https://github.com/FarmagenUFC/germlinevaR/issues
 biocViews: Software, Genetics, VariantAnnotation, Sequencing,
         WholeGenome, Visualization, DataImport, ReportWriting
@@ -48,9 +48,3 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Config/roxygen2/version: 8.0.0
 RoxygenNote: 7.3.3
-NeedsCompilation: no
-Packaged: 2026-07-01 16:38:22 UTC; root
-Author: Thiago Loreto Matos [aut, cre]
-    (<https://orcid.org/0000-0003-4531-9616>),
-  Felipe Pantoja Mesquita [aut]
-Maintainer: Thiago Loreto Matos <thiago-loreto@hotmail.com>
