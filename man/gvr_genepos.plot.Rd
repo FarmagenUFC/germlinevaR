@@ -41,7 +41,7 @@ gvr_genepos.plot(
 )
 }
 \arguments{
-\item{gvr}{A MAF-like data.table produced by \code{\link[=read.gvr]{read.gvr()}}. Required columns:
+\item{gvr}{A tabular variant data.table produced by \code{\link[=read.gvr]{read.gvr()}}. Required columns:
 \code{Hugo_Symbol}, \code{Transcript_ID}, \code{HGVSc}, \code{Variant_Classification},
 \code{Tumor_Sample_Barcode}, \code{NCBI_Build}. \code{MANE_SELECT} and \code{CANONICAL}
 are used when \code{transcript_id} is auto-resolved.}

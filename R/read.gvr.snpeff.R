@@ -15,11 +15,11 @@
 # =============================================================================
 
 
-#' Convert SnpEff-annotated germline VCF(s) to an MAF-like data.table
+#' Convert SnpEff-annotated germline VCF(s) to a tabular variant data.table
 #'
 #' @description
 #' Converts SnpEff-annotated, single-sample germline VCFs (GATK HaplotypeCaller ->
-#' CNN tranches -> SnpEff, hg38) into an MAF-like table and returns it as
+#' CNN tranches -> SnpEff, hg38) into a tabular variant table and returns it as
 #' an in-memory `data.table` for downstream filtering ([gvr_filter()]) and
 #' summarisation ([gvr_summary()]). In folder mode it finds every per-sample VCF,
 #' converts each, and row-binds them into one combined gvr table. Emits the SAME
@@ -36,10 +36,10 @@
 #' @details
 #' Output and behaviour:
 #' \itemize{
-#'   \item Returns the final MAF-like `data.table`, one row per variant ALLELE
+#'   \item Returns the final tabular variant `data.table`, one row per variant ALLELE
 #'     (multi-allelic sites are split). Multiple `ANN` annotation blocks per
 #'     allele are reduced to one most-severe transcript per allele.
-#'   \item Columns include the MAF-like core fields, the canonical 80 VEP CSQ field
+#'   \item Columns include the canonical MAF-style core fields (Hugo_Symbol, Variant_Classification, Start_Position, Reference_Allele, Tumor_Seq_Allele2, Tumor_Sample_Barcode, HGVSp_Short, IMPACT), the canonical 80 VEP CSQ field
 #'     names (populated from the equivalent SnpEff ANN fields where available;
 #'     blank for fields SnpEff does not supply), and key GATK QC fields.
 #'     `FILTER` is retained as a column and ALL variants (PASS and non-PASS) are
@@ -215,13 +215,13 @@
 #'   non-fork platforms it falls back to sequential. A single file is unaffected.
 #' @param normalize_alleles Logical; if `TRUE` (default, since 0.99.2) apply
 #'   bcftools-norm-style trimming of common REF/ALT prefix and suffix nucleotides
-#'   before deriving MAF-like coords. See [read.gvr()] for full rationale. Set
+#'   before deriving the trimmed (Start_Position, Reference_Allele, Tumor_Seq_Allele2) coordinates. See [read.gvr()] for full rationale. Set
 #'   `FALSE` to reproduce pre-0.99.2 coords for reproducibility with an older
 #'   analysis; not recommended for new research.
 #' @param verbose Logical; if `TRUE` (default) print per-file and per-chunk progress
 #'   (file i/N, cumulative records, elapsed seconds).
 #'
-#' @return An MAF-like `data.table`: one row per variant allele, with MAF-like core columns,
+#' @return A tabular variant `data.table`: one row per variant allele, with the canonical variant table columns,
 #'   the canonical 80 VEP CSQ field names (populated from SnpEff ANN where
 #'   available; blank otherwise), key GATK QC fields, `Tumor_Sample_Barcode`, and
 #'   (when enabled) the `Genotype` and `ABraOM_AF` columns.
@@ -291,7 +291,7 @@ read.gvr.snpeff <- function(folder = ".",
                             vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                             canonical_only    = TRUE,   # vN+4: API symmetry; SnpEff ANN has no CANONICAL -> warn and ignore
                             ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
-                            normalize_alleles = TRUE,   # v0.99.2: bcftools-norm-style trim of common prefix/suffix nt before deriving MAF-like coords (recommended); FALSE reproduces pre-0.99.2 coords for reproducibility with older analyses
+                            normalize_alleles = TRUE,   # v0.99.2: bcftools-norm-style trim of common prefix/suffix nt before deriving the (Start_Position, Reference_Allele, Tumor_Seq_Allele2) coordinates (recommended); FALSE reproduces pre-0.99.2 coords for reproducibility with older analyses
                             verbose    = TRUE) {
     # ===========================================================================
     # Nested helpers and constants (previously top-level)
@@ -1390,12 +1390,12 @@ read.gvr.snpeff <- function(folder = ".",
         sub("^[^:]*:", "", x)
     }
 
-    ## 1e. MAF coordinate + allele conversion for one REF/ALT pair
+    ## 1e. Coordinate + allele conversion for one REF/ALT pair
     # v0.99.2: Delegate to the shared .gvr_coords() helper (formerly a verbatim
     # inline copy). This ensures the SnpEff-only reader honors the
     # `normalize_alleles` argument (bcftools-norm-style prefix/suffix trimming
-    # of REF/ALT before deriving MAF coords), which prevents distinct multi-ALT
-    # records from collapsing to the same (chrom, start, ref, alt) MAF key.
+    # of REF/ALT before deriving the trimmed coords), which prevents distinct multi-ALT
+    # records from collapsing to the same (chrom, start, ref, alt) join key.
     # Closes over `normalize_alleles` from read.gvr.snpeff()'s signature.
     gvr_coords <- function(pos, ref, alt) {
         .gvr_coords(pos, ref, alt, normalize_alleles = normalize_alleles)
@@ -1449,7 +1449,7 @@ read.gvr.snpeff <- function(folder = ".",
         }
     }
 
-    ## 1j. Convert ONE snpeff-annotated vcf file end-to-end. Returns a per-file MAF-like data.table
+    ## 1j. Convert ONE snpeff-annotated vcf file end-to-end. Returns a per-file variant data.table
     ##     data.table. Mirrors the VEP convert_one_vcf in read.gvr.R; the only
     ##     differences are (a) get_ann_fields instead of get_csq_fields, (b)
     ##     convert_chunk_snpeff instead of convert_chunk, and (c) the verbose
@@ -1669,7 +1669,7 @@ read.gvr.snpeff <- function(folder = ".",
             keep <- idx[1]
             # Columns are "identical" iff, after URL-decoding and treating ""/NA as the
             # SAME 'missing' token, every row matches. This is the correct equivalence:
-            # the MAF-like-core copy writes "" for missing while the raw CSQ copy writes NA,
+            # the core-columns copy writes "" for missing while the raw CSQ copy writes NA,
             # so a naive (a==b) leaves NA at those rows and must not count as a difference.
             identical_to_keep <- function(j) {
                 a <- url_decode_vec(gvr[[keep]])

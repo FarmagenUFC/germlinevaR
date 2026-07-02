@@ -4,7 +4,7 @@
 # Internal helpers used by read.gvr() to parse generic VCF fields:
 #   * INFO column accessors (single-key and parse-once-look-up-many)
 #   * Per-ALT genotype code extraction
-#   * Indel-aware MAF coordinate / allele conversion
+#   * Indel-aware coordinate / allele conversion
 #
 # All helpers are package-internal: not exported, no Rd man page generated
 # (@keywords internal + @noRd). Promoted from read.gvr()'s body in the
@@ -109,7 +109,7 @@
 #' prefix / suffix with REF (e.g. `REF=TCCCCCCCCCTGCCC`,
 #' `ALT1=TCCCCCCCCCCTGCCC`, `ALT2=TCCCCACCCCCTGCCC` at chr1:6095864) are
 #' semantically distinct variants but the pre-0.99.2 code flattened both
-#' onto the same MAF key `(pos, "-", "C")` by assuming
+#' onto the same join key `(pos, "-", "C")` by assuming
 #' `nchar(alt) > nchar(ref)` implied a pure left-anchored insertion.
 #' Trimming shared prefix/suffix first yields the biologically distinct
 #' representations `(pos=X, "-", "T", INS)` and `(pos=Y, "-", "C", INS)`.
@@ -146,7 +146,7 @@
 }
 
 
-#' MAF-style coordinates and alleles for a single REF/ALT pair
+#' Trimmed coordinates and alleles for a single REF/ALT pair
 #'
 #' Converts a (POS, REF, ALT) triple into the MAF-style fields
 #' (`Variant_Type`, `Start_Position`, `End_Position`, `Reference_Allele`,
@@ -158,7 +158,7 @@
 #' bases via the private `.gvr_trim_alleles()` helper before classifying
 #' the variant type.
 #' This matches `bcftools norm` semantics and prevents multi-ALT records
-#' from producing colliding MAF keys. Set `normalize_alleles = FALSE` to
+#' from producing colliding join keys. Set `normalize_alleles = FALSE` to
 #' reproduce the pre-0.99.2 behaviour (kept as an escape hatch for users
 #' with existing RDS outputs; not recommended for new analyses).
 #'
@@ -172,7 +172,7 @@
 #'
 #' @return A list of length 5: `var_type`, `start`, `end`, `ref_allele`,
 #'   `tum_allele2`. For insertions, `ref_allele` is `"-"`; for deletions,
-#'   `tum_allele2` is `"-"`, mirroring the MAF convention.
+#'   `tum_allele2` is `"-"`, mirroring the maftools MAF convention.
 #'
 #' @keywords internal
 #' @noRd

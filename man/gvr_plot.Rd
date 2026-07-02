@@ -22,7 +22,7 @@ gvr_plot(
 )
 }
 \arguments{
-\item{gvr}{An MAF-like \code{data.table}/\code{data.frame} from \code{\link[=read.gvr]{read.gvr()}} or \code{\link[=gvr_filter]{gvr_filter()}}.
+\item{gvr}{A tabular variant \code{data.table}/\code{data.frame} from \code{\link[=read.gvr]{read.gvr()}} or \code{\link[=gvr_filter]{gvr_filter()}}.
 Required columns: \code{Hugo_Symbol}, \code{Variant_Classification}.}
 
 \item{top_n}{Integer; number of genes (rows) shown, ranked by number of distinct
@@ -85,7 +85,7 @@ Invisibly, the path of the written PNG (character), or \code{NA_character_} if
 no known-gene variants are present in the table.
 }
 \description{
-Draws a top-genes variant matrix from an MAF-like table - the output of
+Draws a top-genes variant matrix from a tabular variant table - the output of
 \code{\link[=read.gvr]{read.gvr()}}, or of \code{\link[=gvr_filter]{gvr_filter()}} - and writes it to a PNG file. Rows are the
 top-\code{top_n} genes (ranked by number of distinct samples mutated, then by variant
 count); columns are samples. Each gene x sample cell shows the single MOST-SEVERE
@@ -114,7 +114,7 @@ Data conventions:
 \item "Missing" means \code{NA} OR empty string \code{""}.
 \item Unknown/blank gene symbols are \code{Hugo_Symbol} in \code{c(".", "", "Unknown")};
 these are excluded from the top-genes variant matrix.
-\item Works on ANY MAF-like table; it makes no assumption about prior
+\item Works on ANY tabular variant table; it makes no assumption about prior
 filtering. It is commonly run on \code{\link[=gvr_filter]{gvr_filter()}} output.
 }
 }

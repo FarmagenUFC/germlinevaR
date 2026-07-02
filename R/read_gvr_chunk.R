@@ -392,7 +392,7 @@
 
 
 ## ---- Helper 5 -------------------------------------------------------------
-#' Build per-ALT MAF-like row lists for a single VCF record.
+#' Build per-ALT variant-row lists for a single VCF record.
 #'
 #' Internal helper for `read.gvr()`'s `convert_chunk()`. Runs the CSQ-block
 #' expansion (A3 PERF trick: one vectorised `strsplit()` over all blocks,

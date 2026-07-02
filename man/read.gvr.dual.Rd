@@ -2,7 +2,7 @@
 % Please edit documentation in R/read.gvr.dual.R
 \name{read.gvr.dual}
 \alias{read.gvr.dual}
-\title{Convert dual-annotated germline VCF(s) (VEP + SnpEff) to an MAF-like data.table}
+\title{Convert dual-annotated germline VCF(s) (VEP + SnpEff) to a tabular variant data.table}
 \usage{
 read.gvr.dual(
   folder = ".",
@@ -187,10 +187,10 @@ non-fork platforms it falls back to sequential. A single file is unaffected.}
 
 \item{normalize_alleles}{Logical; if \code{TRUE} (default, since 0.99.2) apply
 bcftools-norm-style trimming of common REF/ALT prefix and suffix nucleotides
-before deriving MAF-like coords (\code{Start_Position}, \code{Reference_Allele},
+before deriving the trimmed (\code{Start_Position}, \code{Reference_Allele},
 \code{Tumor_Seq_Allele2}). This is the recommended behaviour: it puts each
 variant on its unique minimal representation and prevents distinct multi-ALT
-records from collapsing to the same MAF key (which could previously drop or
+records from collapsing to the same join key (which could previously drop or
 scramble annotations on the SnpEff side of the dual reader; VEP-only reads
 were unaffected). Set \code{FALSE} to reproduce pre-0.99.2 coords for
 reproducibility with an older analysis; note this is not recommended for
@@ -206,7 +206,7 @@ A \code{data.table} with one row per ALT allele, ~124 columns. Carries
 \description{
 Converts single-sample germline VCFs that carry \strong{both} Ensembl VEP \code{CSQ}
 and SnpEff \code{ANN} annotation INFO fields on the same records (typical
-workflow: SnpEff -> VEP, or vice versa). Returns an MAF-like
+workflow: SnpEff -> VEP, or vice versa). Returns a tabular variant
 \code{data.table} with one row per ALT allele, using VEP's transcript pick as
 the spine and adding SnpEff-derived comparison columns and LoF/NMD
 predictions.

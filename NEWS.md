@@ -1,3 +1,26 @@
+# germlinevaR 0.99.3
+
+## Documentation
+
+- Renamed "MAF-like table" terminology to "tabular variant table"
+  across function documentation, DESCRIPTION, READMEs, vignette, and
+  pkgdown site. Function titles, argument descriptions, and return
+  values now use the plain-English name. No API or behavior change.
+
+- The `maftools` interoperability note in the vignette now explicitly
+  states that `read.gvr()` output has MAF-compatible core columns,
+  documenting the design decision rather than hedging with "MAF-like".
+
+- Roxygen `@details` blocks in `read.gvr()`, `read.gvr.snpeff()`, and
+  `read.gvr.dual()` now spell out the tuple
+  `(Start_Position, Reference_Allele, Tumor_Seq_Allele2)` in place of
+  the shorthand "MAF-like coords", clarifying what `normalize_alleles`
+  operates on.
+
+- Internal comments referring to the SnpEff/VEP join key now say
+  "join key" instead of "MAF key", removing ambiguous vocabulary from
+  test comments and developer-facing docs.
+
 # germlinevaR 0.99.2
 
 ## Bug fixes
@@ -8,13 +31,13 @@
   which collapsed real distinct ALT alleles onto the same key and threw a
   duplicate-key error at the join step. The reader now trims common
   left-anchor and right-anchor bases from each `(ref, alt)` pair before
-  computing MAF-style coordinates (see below), so each ALT allele gets a
+  computing the trimmed coordinates (see below), so each ALT allele gets a
   unique key that matches the canonical form used by the VEP side.
 
 ## Breaking changes
 
 - Coordinates emitted by `read.gvr()`, `read.gvr.snpeff()`, and
-  `read.gvr.dual()` for indel ALT alleles are now MAF-normalised via a
+  `read.gvr.dual()` for indel ALT alleles are now normalised via a
   `bcftools norm`-equivalent trim before conversion. Downstream tables
   (`Start_Position`, `Reference_Allele`, `Tumor_Seq_Allele2`) reflect the
   trimmed representation. SNVs are unaffected.
@@ -36,22 +59,22 @@
 
 - New `normalize_alleles` argument (default `TRUE`) on `read.gvr()`,
   `read.gvr.snpeff()`, and `read.gvr.dual()`. Controls whether ALT-allele
-  coordinates are MAF-normalised via `bcftools norm`-style left-and-right
+  coordinates are normalised via `bcftools norm`-style left-and-right
   trimming before conversion. Setting `FALSE` restores pre-0.99.2 output
   for byte-level comparison against legacy tables.
 - `read.gvr.dual()` output now carries an `snpeff_collisions_discarded`
   attribute (via `attr()`) when the SnpEff side-table has residual
-  `(chrom, pos, ref, alt)` collisions after MAF-normalisation. The
+  `(chrom, pos, ref, alt)` collisions after trimming. The
   attribute is a `data.table` of the rows that were dropped by the
   Annotation_Impact-ranked deduper, so downstream code can audit which
   SnpEff annotations were superseded. Absent when no collisions occur.
   Residual collisions are expected on homopolymer runs where two ALT
-  alleles collapse to the same MAF-key even after trimming
+  alleles collapse to the same join key even after trimming
   (e.g. `chr10:68173832` in the accompanying test fixture).
 - Verbose mode on `read.gvr.dual()` prints a new one-line summary of the
   Annotation_Impact-ranked dedupe pass on the SnpEff side-table when
   residual collisions are collapsed (format: `snpeff collisions: N
-  MAF-key tuple(s) had M duplicate row(s); collapsed by Annotation_Impact
+  join-key tuple(s) had M duplicate row(s); collapsed by Annotation_Impact
   rank`).
 
 ## Internal

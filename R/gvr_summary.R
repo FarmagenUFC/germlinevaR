@@ -1,7 +1,7 @@
 #' Multi-section summary of a germline gvr table (read.gvr / gvr_filter output)
 #'
 #' @description
-#' Produces a multi-section overview of a MAF-like table - the output of
+#' Produces a multi-section overview of a tabular variant table - the output of
 #' [read.gvr()], or of [gvr_filter()] - covering variant burden, affected genes,
 #' functional classes, clinical significance and predicted impact. Every section is
 #' returned as a tidy `data.table` with one column per sample plus a `Total` column.
@@ -47,12 +47,12 @@
 #'     these are excluded from the distinct-gene tally and from `top_genes`, but their
 #'     variants are still counted in the totals (and reported as "variants with no
 #'     gene symbol").
-#'   \item Works on ANY MAF-like table; it makes no assumption about prior
+#'   \item Works on ANY tabular variant table; it makes no assumption about prior
 #'     filtering. It is commonly run on [gvr_filter()] output to summarise the
 #'     retained hits.
 #' }
 #'
-#' @param gvr An MAF-like `data.table`/`data.frame` from [read.gvr()] or [gvr_filter()].
+#' @param gvr A tabular variant `data.table`/`data.frame` from [read.gvr()] or [gvr_filter()].
 #'   Required columns: `Hugo_Symbol`, `Variant_Classification`, `Variant_Type`,
 #'   `IMPACT`, `CLIN_SIG`.
 #' @param sample_col Name of the per-sample column. Default `"Tumor_Sample_Barcode"`.

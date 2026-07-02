@@ -224,7 +224,7 @@
 #' return only the ggplot2 object. The function always returns the ggplot2
 #' object regardless of whether files were written.
 #'
-#' @param gvr An MAF-like `data.table` / `data.frame` from [read.gvr()], or any
+#' @param gvr A tabular variant `data.table` / `data.frame` from [read.gvr()], or any
 #'   compatible table with at least `Hugo_Symbol`, `HGVSp_Short`,
 #'   `Variant_Classification`, `Tumor_Sample_Barcode`, `Protein_position`.
 #' @param gene Character(1). The gene symbol (matched against `Hugo_Symbol`).

@@ -18,7 +18,7 @@ gvr_summary(
 )
 }
 \arguments{
-\item{gvr}{An MAF-like \code{data.table}/\code{data.frame} from \code{\link[=read.gvr]{read.gvr()}} or \code{\link[=gvr_filter]{gvr_filter()}}.
+\item{gvr}{A tabular variant \code{data.table}/\code{data.frame} from \code{\link[=read.gvr]{read.gvr()}} or \code{\link[=gvr_filter]{gvr_filter()}}.
 Required columns: \code{Hugo_Symbol}, \code{Variant_Classification}, \code{Variant_Type},
 \code{IMPACT}, \code{CLIN_SIG}.}
 
@@ -84,7 +84,7 @@ list (one data.table per sample). The \code{top_variants} section is absent if
 whether the Excel/PDF/HTML files are written.
 }
 \description{
-Produces a multi-section overview of a MAF-like table - the output of
+Produces a multi-section overview of a tabular variant table - the output of
 \code{\link[=read.gvr]{read.gvr()}}, or of \code{\link[=gvr_filter]{gvr_filter()}} - covering variant burden, affected genes,
 functional classes, clinical significance and predicted impact. Every section is
 returned as a tidy \code{data.table} with one column per sample plus a \code{Total} column.
@@ -130,7 +130,7 @@ Data conventions:
 these are excluded from the distinct-gene tally and from \code{top_genes}, but their
 variants are still counted in the totals (and reported as "variants with no
 gene symbol").
-\item Works on ANY MAF-like table; it makes no assumption about prior
+\item Works on ANY tabular variant table; it makes no assumption about prior
 filtering. It is commonly run on \code{\link[=gvr_filter]{gvr_filter()}} output to summarise the
 retained hits.
 }

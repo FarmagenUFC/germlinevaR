@@ -1834,7 +1834,7 @@ Fortaleza, 60430-160, Brazil
 <p class="author-email"><span class="affil-mark">*</span><a href="mailto:thiago-loreto@hotmail.com">thiago-loreto@hotmail.com</a><br><span class="affil-mark">**</span><a href="mailto:felipemesquita05@gmail.com">felipemesquita05@gmail.com</a></p>
 <h4 class="date">2026-07-02</h4>
 <h4 class="package">Package</h4>
-<p>germlinevaR 0.99.2</p>
+<p>germlinevaR 0.99.3</p>
 
 </div>
 
@@ -1851,7 +1851,7 @@ p.author-email .affil-mark { font-style: normal; font-weight: normal; }
 <h1><span class="header-section-number">1</span> Introduction</h1>
 <p><strong>germlinevaR</strong> is a self-contained R toolchain for single-sample
 germline VCFs annotated with Ensembl VEP, SnpEff, or both. It turns
-on-disk VCFs into an MAF-like <code>data.table</code>, filters them with
+on-disk VCFs into a tabular variant <code>data.table</code>, filters them with
 a modular set of toggles, isolates candidate novel variants, summarises
 a cohort, and renders publication-ready per-gene plots — all inside one
 R session, without an external pipeline.</p>
@@ -1883,7 +1883,8 @@ manipulate <code>VCF</code> or <code>GRanges</code> objects.</li>
 <li><strong><code>maftools</code></strong> (Bioconductor): a comprehensive somatic mutation
 analysis toolkit centred on the MAF format. germlinevaR is
 complementary: it targets the <strong>germline</strong> single-sample case,
-produces an MAF-like table for compatibility, and adds VEP/SnpEff
+produces a tabular variant table with MAF-compatible core
+columns for interoperability with maftools, and adds VEP/SnpEff
 multi-annotator support and population-frequency filtering that
 maftools does not provide.</li>
 <li><strong><code>vcfR</code></strong> (CRAN): focuses on VCF import and manipulation.
@@ -1923,15 +1924,15 @@ remotes::install_github(&quot;FarmagenUFC/germlinevaR&quot;)</code></pre>
 library(data.table)
 #&gt; Warning: pacote &#39;data.table&#39; foi compilado no R versão 4.4.3</code></pre>
 </div>
-<div id="reading-a-vcf-into-an-maf-like-table" class="section level1" number="4">
-<h1><span class="header-section-number">4</span> Reading a VCF into an MAF-like table</h1>
+<div id="reading-a-vcf-into-a-tabular-variant-table" class="section level1" number="4">
+<h1><span class="header-section-number">4</span> Reading a VCF into a tabular variant table</h1>
 <p><code>read.gvr()</code> is the auto-routing entry point: it inspects the VCF header,
 detects whether annotations come from VEP, SnpEff, or both, and dispatches
 to the correct sibling reader (<code>read.gvr</code>, <code>read.gvr.snpeff</code>, or
 <code>read.gvr.dual</code>). When you read your own data, point <code>read.gvr()</code> at the
 folder containing your VCF file(s) — the function discovers every
 <code>*.vcf.gz</code> in that directory, auto-detects the annotator on each file,
-and returns one MAF-like row per ALT allele. All files in a batch must share
+and returns one tabular variant row per ALT allele. All files in a batch must share
 the same annotator; mixed VEP/SnpEff folders are rejected. For this
 vignette we stage the shipped example into a temporary directory and
 read it from there:</p>
@@ -2080,9 +2081,9 @@ summ$top_genes
 <strong>HTML-dashboard panels</strong> that <code>gvr_summary(save_html = TRUE)</code> embeds
 in its interactive output (also writable as standalone PNGs via
 <code>gvr_sum_plots()</code>). The figures below were rendered from a real cohort
-— the tiny example MAF-like table shipped with the package is too sparse for a
+— the tiny example tabular variant table shipped with the package is too sparse for a
 meaningful top-genes variant matrix or dashboard, so those two families are described
-in the text only; call the functions yourself against your own MAF-like table to
+in the text only; call the functions yourself against your own tabular variant table to
 reproduce the layouts.</p>
 <p><strong>Protein-domain lollipop</strong> — <code>gvr_lollipop(gvr, gene = &quot;TP53&quot;)</code>
 draws variants along the protein, with InterPro domains fetched and
@@ -2171,7 +2172,7 @@ PDF, and HTML outputs</li>
 #&gt; [1] stats     graphics  grDevices utils     datasets  methods   base     
 #&gt; 
 #&gt; other attached packages:
-#&gt; [1] data.table_1.18.2.1 germlinevaR_0.99.2  BiocStyle_2.34.0   
+#&gt; [1] data.table_1.18.2.1 germlinevaR_0.99.3  BiocStyle_2.34.0   
 #&gt; 
 #&gt; loaded via a namespace (and not attached):
 #&gt;  [1] generics_0.1.4        sass_0.4.10           shape_1.4.6.1        

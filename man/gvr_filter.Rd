@@ -135,7 +135,7 @@ modified. With \code{verbose = TRUE}, a per-filter breakdown (rows in -> out, an
 removed by each active step) is printed as it runs.
 }
 \description{
-Applies a set of independent variant filters to the MAF-like table produced by
+Applies a set of independent variant filters to the tabular variant table produced by
 \code{\link[=read.gvr]{read.gvr()}}. Each distinct filter is its own argument; setting an argument to
 \code{NULL} disables that filter entirely (no rows removed by it). With all defaults,
 \code{gvr_filter(gvr)} reproduces the canonical rare / clinically-relevant /

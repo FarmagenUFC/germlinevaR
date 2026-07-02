@@ -53,8 +53,8 @@ but is not required to read them.
 ## What it does
 
 germlinevaR turns one or more per-sample VEP- or SnpEff-annotated VCFs
-into an MAF-like `data.table` (one row per ALT allele, one most-severe
-transcript per allele) using three sibling readers that share a
+into a tabular variant `data.table` (one row per ALT allele, one
+most-severe transcript per allele) using three sibling readers that share a
 canonical 80-field schema and are auto-routed from the VCF header. From
 there you get:
 

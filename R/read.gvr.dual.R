@@ -32,12 +32,12 @@
 # =============================================================================
 
 
-#' Convert dual-annotated germline VCF(s) (VEP + SnpEff) to an MAF-like data.table
+#' Convert dual-annotated germline VCF(s) (VEP + SnpEff) to a tabular variant data.table
 #'
 #' @description
 #' Converts single-sample germline VCFs that carry **both** Ensembl VEP `CSQ`
 #' and SnpEff `ANN` annotation INFO fields on the same records (typical
-#' workflow: SnpEff -> VEP, or vice versa). Returns an MAF-like
+#' workflow: SnpEff -> VEP, or vice versa). Returns a tabular variant
 #' `data.table` with one row per ALT allele, using VEP's transcript pick as
 #' the spine and adding SnpEff-derived comparison columns and LoF/NMD
 #' predictions.
@@ -142,7 +142,7 @@ read.gvr.dual <- function(folder = ".",
                           vc_nonSyn         = FALSE,
                           canonical_only    = TRUE,
                           ncores            = 1L,
-                          normalize_alleles = TRUE,   # v0.99.2: bcftools-norm-style trim of common prefix/suffix nt before deriving MAF-like coords (recommended); FALSE reproduces pre-0.99.2 coords for reproducibility with older analyses
+                          normalize_alleles = TRUE,   # v0.99.2: bcftools-norm-style trim of common prefix/suffix nt before deriving the (Start_Position, Reference_Allele, Tumor_Seq_Allele2) coordinates (recommended); FALSE reproduces pre-0.99.2 coords for reproducibility with older analyses
                           verbose    = TRUE) {
     # ---------------------------------------------------------------------------
     # Phase 1: VEP-driven table construction.
@@ -246,10 +246,10 @@ read.gvr.dual <- function(folder = ".",
     # Key: (Tumor_Sample_Barcode, Chromosome, Start_Position, Reference_Allele,
     #       Tumor_Seq_Allele2).
     #
-    # NOTE: read.gvr()'s gvr_coords() converts indels to an MAF-like
+    # NOTE: read.gvr()'s gvr_coords() converts indels to a trimmed
     # representation (e.g. deletion "TC->-", insertion "-AT"). We must apply
     # the SAME normalization to the SnpEff side before joining.
-    # .gvr_dual_extract_snpeff() already emits MAF-like ref/alt using a
+    # .gvr_dual_extract_snpeff() already emits trimmed ref/alt using a
     # verbatim copy of gvr_coords(), so the keys align.
     # ---------------------------------------------------------------------------
     matched <- .gvr_dual_attach_snpeff(gvr, snpeff_tab, verbose = verbose)
@@ -338,7 +338,7 @@ read.gvr.dual <- function(folder = ".",
 # .gvr_dual_resolve_files()       -- locate VCFs from folder/pattern/file/vcf_path
 # .gvr_dual_extract_snpeff()      -- second-pass parse: ANN + LOF + NMD per record
 # .gvr_dual_attach_snpeff()       -- join SnpEff lookup onto VEP MAF spine
-# .gvr_dual_gvr_coords()          -- pos/ref/alt -> MAF-like (start, ref, alt)
+# .gvr_dual_gvr_coords()          -- pos/ref/alt -> trimmed (start, ref, alt)
 # .gvr_dual_strip_snpeff_allele() -- normalize SnpEff non-standard allele forms
 # .gvr_dual_pull_info()           -- vectorised extractor for ;-separated INFO KEY=VAL
 # .gvr_dual_header_sample()       -- sample name from #CHROM header
@@ -375,14 +375,14 @@ read.gvr.dual <- function(folder = ".",
 }
 
 
-# MAF-like coords for one (pos, ref, alt). Delegates to the shared
+# Trimmed coords for one (pos, ref, alt). Delegates to the shared
 # .gvr_coords() helper in read_gvr_vcf_utils.R so the SnpEff side of the
 # dual reader produces the same join keys (Reference_Allele,
 # Tumor_Seq_Allele2, Start_Position) as the VEP path emits.
 #
 # Before 0.99.2 this was a verbatim copy of the VEP-side helper. Making
 # them share code prevents future drift where they could disagree on
-# indel MAF keys and re-introduce the join collision seen at chr1:6095864
+# indel join keys and re-introduce the join collision seen at chr1:6095864
 # in the S4 test file (0.99.1 bug).
 #
 # Returns a list: (var_type, start, end, ref_allele, tum_allele2)
@@ -472,7 +472,7 @@ read.gvr.dual <- function(folder = ".",
 
 
 # Extract SnpEff ANN + LOF + NMD from VCF files, returning a long-format
-# data.table keyed by (sample, chrom, pos, ref, alt) using MAF-like alleles
+# data.table keyed by (sample, chrom, pos, ref, alt) using trimmed alleles
 # (deletions as "TC"->"-", insertions as "-"->"AT"; matches read.gvr()'s
 # gvr_coords() output exactly).
 #
@@ -564,7 +564,7 @@ read.gvr.dual <- function(folder = ".",
 
                 for (ai in seq_along(alts_ri)) {
                     this_alt <- alts_ri[ai]
-                    # MAF-like coords for this (ref, alt) pair (shares .gvr_coords()
+                    # Trimmed coords for this (ref, alt) pair (shares .gvr_coords()
                     # with read.gvr(); respects the outer `normalize_alleles`).
                     mc <- .gvr_dual_gvr_coords(pos[ri], ref[ri], this_alt,
                         normalize_alleles = normalize_alleles)

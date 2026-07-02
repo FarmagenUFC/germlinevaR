@@ -644,7 +644,7 @@ GVR_CLASS_COLORS <- c(
 #' `gtf_path` to a Gencode/Ensembl GTF to skip REST entirely; this requires
 #' suggesting `rtracklayer` or falls back to a tiny streaming parser.
 #'
-#' @param gvr A MAF-like data.table produced by [read.gvr()]. Required columns:
+#' @param gvr A tabular variant data.table produced by [read.gvr()]. Required columns:
 #'   `Hugo_Symbol`, `Transcript_ID`, `HGVSc`, `Variant_Classification`,
 #'   `Tumor_Sample_Barcode`, `NCBI_Build`. `MANE_SELECT` and `CANONICAL`
 #'   are used when `transcript_id` is auto-resolved.

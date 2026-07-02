@@ -1,7 +1,7 @@
 #' Modular, individually-toggleable filtering of a read.gvr table
 #'
 #' @description
-#' Applies a set of independent variant filters to the MAF-like table produced by
+#' Applies a set of independent variant filters to the tabular variant table produced by
 #' [read.gvr()]. Each distinct filter is its own argument; setting an argument to
 #' `NULL` disables that filter entirely (no rows removed by it). With all defaults,
 #' `gvr_filter(gvr)` reproduces the canonical rare / clinically-relevant /

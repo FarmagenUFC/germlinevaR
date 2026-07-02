@@ -1,8 +1,8 @@
-#' Convert VEP-annotated germline VCF(s) to an MAF-like data.table
+#' Convert VEP-annotated germline VCF(s) to a tabular variant data.table
 #'
 #' @description
 #' Converts VEP-annotated, single-sample germline VCFs (GATK HaplotypeCaller ->
-#' CNN tranches -> Ensembl VEP, hg38) into an MAF-like table and returns it as
+#' CNN tranches -> Ensembl VEP, hg38) into a tabular variant table and returns it as
 #' an in-memory `data.table` for downstream filtering ([gvr_filter()]) and
 #' summarisation ([gvr_summary()]). In folder mode it finds every per-sample VCF,
 #' converts each, and row-binds them into one combined gvr table. The conversion
@@ -16,11 +16,11 @@
 #' @details
 #' Output and behaviour:
 #' \itemize{
-#'   \item Returns the final MAF-like `data.table`, one row per variant ALLELE
+#'   \item Returns the final tabular variant `data.table`, one row per variant ALLELE
 #'     (multi-allelic sites are split).
 #'   \item A single most-severe transcript is chosen per allele (VEP severity ->
 #'     `CANONICAL` -> `MANE_SELECT` -> transcript id).
-#'   \item Columns include the MAF-like core fields, ALL VEP CSQ fields (read from the VCF
+#'   \item Columns include the canonical MAF-style core fields (Hugo_Symbol, Variant_Classification, Start_Position, Reference_Allele, Tumor_Seq_Allele2, Tumor_Sample_Barcode, HGVSp_Short, IMPACT), ALL VEP CSQ fields (read from the VCF
 #'     header), and key GATK QC fields. `FILTER` is retained as a column and ALL
 #'     variants (PASS and non-PASS) are kept.
 #'   \item `Tumor_Seq_Allele1`/`Tumor_Seq_Allele2` are zygosity-aware (vcf2maf-style),
@@ -171,17 +171,17 @@
 #'   non-fork platforms it falls back to sequential. A single file is unaffected.
 #' @param normalize_alleles Logical; if `TRUE` (default, since 0.99.2) apply
 #'   bcftools-norm-style trimming of common REF/ALT prefix and suffix nucleotides
-#'   before deriving MAF-like coords (`Start_Position`, `Reference_Allele`,
+#'   before deriving the trimmed (`Start_Position`, `Reference_Allele`,
 #'   `Tumor_Seq_Allele2`). This is the recommended behaviour: it puts each
 #'   variant on its unique minimal representation and prevents distinct multi-ALT
-#'   records from collapsing to the same MAF key (which could previously drop or
+#'   records from collapsing to the same join key (which could previously drop or
 #'   scramble annotations on the SnpEff side of the dual reader; VEP-only reads
 #'   were unaffected). Set `FALSE` to reproduce pre-0.99.2 coords for
 #'   reproducibility with an older analysis; note this is not recommended for
 #'   new research.
 #' @param verbose Logical; if `TRUE` (default) print per-file and per-chunk progress
 #'   (file i/N, cumulative records, elapsed seconds).
-#' @return An MAF-like `data.table`: one row per variant allele, with MAF-like core columns, all
+#' @return A tabular variant `data.table`: one row per variant allele, with the canonical variant table columns, all
 #'   VEP CSQ fields, key GATK QC fields, `Tumor_Sample_Barcode`, and (when enabled) the
 #'   `Genotype` and `ABraOM_AF` columns. TSV/RDS files are written as a side
 #'   effect when `write_tsv`/`write_rds` is `TRUE`.
@@ -258,7 +258,7 @@ read.gvr <- function(folder = ".",
                      vc_nonSyn         = FALSE,  # v8: keep only protein-altering Variant_Classification
                      canonical_only    = TRUE,   # vN+4: drop rows whose chosen CSQ block has CANONICAL != "YES"
                      ncores            = 1L,     # v6: parallel files (>1 forks mclapply; 1 = sequential, default)
-                     normalize_alleles = TRUE,   # v0.99.2: bcftools-norm-style trim of common prefix/suffix nt before deriving MAF-like coords (recommended); FALSE reproduces pre-0.99.2 coords for reproducibility with older analyses
+                     normalize_alleles = TRUE,   # v0.99.2: bcftools-norm-style trim of common prefix/suffix nt before deriving the (Start_Position, Reference_Allele, Tumor_Seq_Allele2) coordinates (recommended); FALSE reproduces pre-0.99.2 coords for reproducibility with older analyses
                      verbose    = TRUE) {
     # ===========================================================================
 
@@ -668,7 +668,7 @@ read.gvr <- function(folder = ".",
     ## plain atomic vectors ONCE per chunk, so the hot loop indexes vectors (chrom_v[r])
     ## instead of doing data.table `$`/is.factor dispatch on every field of every record
     ## (~4.7x faster for the indexing step in isolation). Output is identical.
-    ## 1j. Convert ONE chunk of a VCF file to a MAF-like data.table.
+    ## 1j. Convert ONE chunk of a VCF file to a variant data.table.
     ##
     ## Turn-5b refactor: the per-chunk parsing pipeline (originally a single 454-line
     ## function body) was lifted into 5 themed package-internal helpers in
@@ -759,7 +759,7 @@ read.gvr <- function(folder = ".",
     }
 
     ## 1j-v2. Convert ONE vcf file end-to-end (header parse + chunked streaming).
-    ##        Returns a per-file MAF-like data.table. Progress printed if verbose.
+    ##        Returns a per-file variant data.table. Progress printed if verbose.
     convert_one_vcf <- function(path, file_idx, file_total, file_total_records = NA_integer_) {
         csq_fields  <- .gvr_get_csq_fields(path)
         sample_name <- .gvr_get_sample_name(path)
@@ -1047,7 +1047,7 @@ read.gvr <- function(folder = ".",
             keep <- idx[1]
             # Columns are "identical" iff, after URL-decoding and treating ""/NA as the
             # SAME 'missing' token, every row matches. This is the correct equivalence:
-            # the MAF-like-core copy writes "" for missing while the raw CSQ copy writes NA,
+            # the core-columns copy writes "" for missing while the raw CSQ copy writes NA,
             # so a naive (a==b) leaves NA at those rows and must not count as a difference.
             identical_to_keep <- function(j) {
                 a <- url_decode_vec(gvr[[keep]])

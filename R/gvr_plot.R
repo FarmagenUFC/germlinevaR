@@ -1,7 +1,7 @@
 #' Cohort top-genes variant matrix from a germline gvr table (read.gvr / gvr_filter output)
 #'
 #' @description
-#' Draws a top-genes variant matrix from an MAF-like table - the output of
+#' Draws a top-genes variant matrix from a tabular variant table - the output of
 #' [read.gvr()], or of [gvr_filter()] - and writes it to a PNG file. Rows are the
 #' top-`top_n` genes (ranked by number of distinct samples mutated, then by variant
 #' count); columns are samples. Each gene x sample cell shows the single MOST-SEVERE
@@ -30,11 +30,11 @@
 #'   \item "Missing" means `NA` OR empty string `""`.
 #'   \item Unknown/blank gene symbols are `Hugo_Symbol` in `c(".", "", "Unknown")`;
 #'     these are excluded from the top-genes variant matrix.
-#'   \item Works on ANY MAF-like table; it makes no assumption about prior
+#'   \item Works on ANY tabular variant table; it makes no assumption about prior
 #'     filtering. It is commonly run on [gvr_filter()] output.
 #' }
 #'
-#' @param gvr An MAF-like `data.table`/`data.frame` from [read.gvr()] or [gvr_filter()].
+#' @param gvr A tabular variant `data.table`/`data.frame` from [read.gvr()] or [gvr_filter()].
 #'   Required columns: `Hugo_Symbol`, `Variant_Classification`.
 #' @param top_n Integer; number of genes (rows) shown, ranked by number of distinct
 #'   samples mutated then by variant count. Default `20`.

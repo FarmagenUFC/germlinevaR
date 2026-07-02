@@ -45,7 +45,7 @@ gvr_lollipop(
 )
 }
 \arguments{
-\item{gvr}{An MAF-like \code{data.table} / \code{data.frame} from \code{\link[=read.gvr]{read.gvr()}}, or any
+\item{gvr}{A tabular variant \code{data.table} / \code{data.frame} from \code{\link[=read.gvr]{read.gvr()}}, or any
 compatible table with at least \code{Hugo_Symbol}, \code{HGVSp_Short},
 \code{Variant_Classification}, \code{Tumor_Sample_Barcode}, \code{Protein_position}.}
 

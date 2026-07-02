@@ -60,7 +60,7 @@
 
 #' Build HGVSp_Short from a VEP HGVSp string
 #'
-#' Converts a VEP "HGVSp" string into the short, MAF-compatible form: drops
+#' Converts a VEP "HGVSp" string into the short `p.<oneletter>` form: drops
 #' any transcript prefix (`ENSP00012345.6:p.Arg175His` -> `p.Arg175His`),
 #' strips parentheses, then replaces every 3-letter amino-acid code with its
 #' 1-letter equivalent in a single regex pass.
