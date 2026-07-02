@@ -1,5 +1,18 @@
 ---
 title: "germlinevaR walkthrough"
+author:
+  - name: Thiago Loreto Matos
+    affiliation: |
+      Pharmacogenetics Laboratory, Drug Research and Development Center,
+      Department of Physiology and Pharmacology, Federal University of Ceará,
+      Fortaleza, 60430-160, Brazil
+    email: thiago-loreto@hotmail.com
+  - name: Felipe Pantoja Mesquita
+    affiliation: |
+      Pharmacogenetics Laboratory, Drug Research and Development Center,
+      Department of Physiology and Pharmacology, Federal University of Ceará,
+      Fortaleza, 60430-160, Brazil
+    email: felipemesquita05@gmail.com
 date: "`r Sys.Date()`"
 package: germlinevaR
 output:
@@ -21,24 +34,19 @@ knitr::opts_chunk$set(
 )
 ```
 
-<p style="font-size:1.05em; margin-top:-0.5em;">
-<strong><em>Thiago Loreto Matos</em></strong><sup>1*</sup>
-and
-<strong><em>Felipe Pantoja Mesquita</em></strong><sup>1**</sup>
-</p>
+```{=html}
+<style>
+/* Typography tuning for BiocStyle's semantic author block.
+   Selectors match p.author-name, p.author-affiliation, p.author-email
+   produced by BiocStyle::html_document (verified against rendered DOM). */
+p.author-name       { font-size: 1.05em; margin-top: -0.5em; font-style: italic; font-weight: 700; }
+p.author-affiliation{ font-size: 0.88em; color: #444; margin-top: 0.2em; font-style: normal; font-weight: normal; }
+p.author-email      { font-size: 0.88em; margin-top: 0.2em; font-style: normal; font-weight: normal; }
+p.author-affiliation .affil-mark,
+p.author-email .affil-mark { font-style: normal; font-weight: normal; }
+</style>
+```
 
-<p style="font-size:0.88em; color:#444; margin-top:0.2em;">
-<sup>1</sup>Pharmacogenetics Laboratory, Drug Research and Development Center,
-Department of Physiology and Pharmacology, Federal University of Ceará,
-Fortaleza, 60430-160, Brazil
-</p>
-
-<p style="font-size:0.88em; margin-top:0.2em;">
-<sup>*</sup><a href="mailto:thiago-loreto@hotmail.com">thiago-loreto@hotmail.com</a><br/>
-<sup>**</sup><a href="mailto:felipemesquita05@gmail.com">felipemesquita05@gmail.com</a>
-</p>
-
----
 
 # Introduction
 
@@ -265,10 +273,29 @@ demonstrate the layout:
 knitr::include_graphics("figures/gvr_plot_demo.png")
 ```
 
+**HTML cohort dashboard** — `gvr_summary(gvr, save_html = TRUE, out_dir = ".")`
+writes a self-contained interactive HTML dashboard with plotly drill-downs
+and DT tables. It opens with four KPI cards (total variants, samples,
+distinct genes, HIGH-impact count) followed by three bar charts (top
+mutated genes, variant classification, IMPACT) and a top-variants table.
+The figure below is a screenshot of a dashboard rendered from a
+**synthetic 8-sample cohort** fabricated purely to demonstrate the
+layout; do not read biological meaning into any specific value.
+
+```{r gvr-dashboard-demo, echo=FALSE, out.width="100%", fig.cap="Screenshot of gvr_summary(save_html = TRUE) output — synthetic 8-sample cohort rendered for layout demonstration only, not real data."}
+knitr::include_graphics("figures/gvr_summary_dashboard.png")
+```
+
 `gvr_sum_plots()` writes the same panels that
 `gvr_summary(save_html = TRUE)` embeds in its interactive dashboard
 (top genes, variant classification, IMPACT, top variants) as
 standalone PNGs.
+
+The demo cohort shown above is fabricated by
+`inst/scripts/build_synthetic_dashboard.R` (also reachable via
+`system.file("scripts", "build_synthetic_dashboard.R", package = "germlinevaR")`).
+Source that script in a fresh R session to reproduce the exact
+106-variant / 19-gene / 8-sample `gvr` table used here.
 
 # Where to next
 

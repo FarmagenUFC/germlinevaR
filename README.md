@@ -1,4 +1,6 @@
 
+<!-- README.md is generated from README.Rmd. Please edit that file. -->
+
 # germlinevaR <img src="man/figures/logo.png" align="right" height="120" alt="" />
 
 <!-- badges: start -->
@@ -27,20 +29,21 @@ gvr_plot(filt, top_n = 20, out_dir = tempdir())    # top-genes variant matrix (P
 
 ## Installation
 
-germlinevaR is submitted to Bioconductor. Once accepted, install the
-release version with:
+Install the development version from GitHub:
+
+``` r
+# install.packages("remotes")
+remotes::install_github("FarmagenUFC/germlinevaR")
+```
+
+germlinevaR will be submitted to Bioconductor once the accompanying
+manuscript is published. Once accepted, install the release version
+with:
 
 ``` r
 if (!require("BiocManager", quietly = TRUE))
     install.packages("BiocManager")
 BiocManager::install("germlinevaR")
-```
-
-The in-development version on GitHub:
-
-``` r
-# install.packages("remotes")
-remotes::install_github("FarmagenUFC/germlinevaR")
 ```
 
 System requirements: R (\>= 4.4.0). Optional: `bgzip` from
@@ -85,7 +88,7 @@ around the **germline single-sample** case.
 |----|----|
 | Readers | `read.gvr` (auto-routed) `read.gvr.dual` `read.gvr.snpeff` |
 | Filtering | `gvr_filter` `gvr_novel` |
-| Panels | `gvr_panel_genes` `gvr_list_panels` `gvr_hpo_genes` |
+| Panels | `gvr_panel_genes` `gvr_list_panels` |
 | Summary | `gvr_summary` `gvr_sum_plots` |
 | Per-gene plots | `gvr_plot` (top-genes variant matrix) `gvr_lollipop` `gvr_genepos.plot` |
 | Palette / cache | `gvr_color_palette` `gvr_list_palettes` `gvr_domain_cache_clear` |
@@ -105,6 +108,32 @@ total burden. The figure below uses illustrative multi-sample data:
        width="90%" />
 </p>
 
+## HTML cohort dashboard
+
+`gvr_summary(gvr, save_html = TRUE, out_dir = ".")` writes a
+self-contained interactive HTML dashboard with plotly drill-downs and DT
+tables. It opens with four KPI cards (total variants, samples, distinct
+genes, HIGH-impact count) followed by three bar charts (top mutated
+genes, variant classification, IMPACT) and a top-variants table. The
+screenshot below shows a dashboard rendered from a **synthetic 8-sample
+cohort** fabricated purely to demonstrate the layout; do not read
+biological meaning into any specific value.
+
+<p>
+
+<img src="vignettes/figures/gvr_summary_dashboard.png"
+       alt="Screenshot of gvr_summary(save_html = TRUE) — synthetic cohort, layout demonstration only"
+       width="90%" />
+</p>
+
+`gvr_sum_plots()` writes the same panels that
+`gvr_summary(save_html = TRUE)` embeds in its interactive dashboard (top
+genes, variant classification, IMPACT, top variants) as standalone PNGs.
+
+The script used to fabricate the demo cohort is bundled with the package
+at `inst/scripts/build_synthetic_dashboard.R` (also reachable via
+`system.file("scripts", "build_synthetic_dashboard.R", package = "germlinevaR")`).
+
 ## Per-gene plots
 
 Protein-domain lollipop (`gvr_lollipop`) and gene-structure lollipop
@@ -118,10 +147,8 @@ Protein-domain lollipop (`gvr_lollipop`) and gene-structure lollipop
        width="48%" />
 </p>
 
-`gvr_summary()` also writes the same panels into a multi-page PDF and a
-self-contained interactive HTML dashboard with plotly drill-downs and DT
-tables. Call `gvr_summary(..., save_html = TRUE)` against your own
-cohort to render them.
+`gvr_summary()` also writes the same panels as a multi-page PDF
+(`gvr_summary(..., save_pdf = TRUE)`) if you prefer a static report.
 
 ## Documentation
 

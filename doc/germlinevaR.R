@@ -70,6 +70,9 @@ knitr::include_graphics("figures/genepos_BRCA1.png")
 ## ----gvr-plot-demo, echo=FALSE, out.width="100%", fig.cap="Top-genes variant matrix from gvr_plot() — illustrative multi-sample data (8 samples, 20 cancer genes). In a real cohort, replace with your own gvr table."----
 knitr::include_graphics("figures/gvr_plot_demo.png")
 
+## ----gvr-dashboard-demo, echo=FALSE, out.width="100%", fig.cap="Screenshot of gvr_summary(save_html = TRUE) output — synthetic 8-sample cohort rendered for layout demonstration only, not real data."----
+knitr::include_graphics("figures/gvr_summary_dashboard.png")
+
 ## ----session-info, echo=FALSE-------------------------------------------------
 sessionInfo()
 
