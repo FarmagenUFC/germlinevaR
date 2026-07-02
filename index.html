@@ -24,7 +24,7 @@
 
     <a class="navbar-brand me-2" href="index.html">germlinevaR</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.3</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -91,7 +91,7 @@
 <div class="section level2">
 <h2 id="what-it-does">What it does<a class="anchor" aria-label="anchor" href="#what-it-does"></a>
 </h2>
-<p>germlinevaR turns one or more per-sample VEP- or SnpEff-annotated VCFs into an MAF-like <code>data.table</code> (one row per ALT allele, one most-severe transcript per allele) using three sibling readers that share a canonical 80-field schema and are auto-routed from the VCF header. From there you get:</p>
+<p>germlinevaR turns one or more per-sample VEP- or SnpEff-annotated VCFs into a tabular variant <code>data.table</code> (one row per ALT allele, one most-severe transcript per allele) using three sibling readers that share a canonical 80-field schema and are auto-routed from the VCF header. From there you get:</p>
 <ul>
 <li>a tunable, modular filter (<code>gvr_filter</code>) over population AF, clinical significance, biotype, variant classification, genotype, and panel;</li>
 <li>a dedicated subsetter (<code>gvr_novel</code>) for candidate novel variants (no rsID and no allele frequency in any catalogue);</li>

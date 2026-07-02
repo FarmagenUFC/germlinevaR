@@ -50,7 +50,7 @@ gvr_genepos.plot(
 
 - gvr:
 
-  A MAF-like data.table produced by
+  A tabular variant data.table produced by
   [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md).
   Required columns: `Hugo_Symbol`, `Transcript_ID`, `HGVSc`,
   `Variant_Classification`, `Tumor_Sample_Barcode`, `NCBI_Build`.

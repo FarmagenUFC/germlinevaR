@@ -5,12 +5,14 @@
 Read VEP-, SnpEff-, or dual-annotated VCFs into an MAF-like data.table.
 
 - [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md)
-  : Convert VEP-annotated germline VCF(s) to an MAF-like data.table
-- [`read.gvr.snpeff()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.snpeff.md)
-  : Convert SnpEff-annotated germline VCF(s) to an MAF-like data.table
-- [`read.gvr.dual()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.dual.md)
-  : Convert dual-annotated germline VCF(s) (VEP + SnpEff) to an MAF-like
+  : Convert VEP-annotated germline VCF(s) to a tabular variant
   data.table
+- [`read.gvr.snpeff()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.snpeff.md)
+  : Convert SnpEff-annotated germline VCF(s) to a tabular variant
+  data.table
+- [`read.gvr.dual()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.dual.md)
+  : Convert dual-annotated germline VCF(s) (VEP + SnpEff) to a tabular
+  variant data.table
 
 ## Filtering
 

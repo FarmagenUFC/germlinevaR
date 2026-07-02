@@ -1,8 +1,8 @@
-# Convert SnpEff-annotated germline VCF(s) to an MAF-like data.table
+# Convert SnpEff-annotated germline VCF(s) to a tabular variant data.table
 
 Converts SnpEff-annotated, single-sample germline VCFs (GATK
-HaplotypeCaller -\> CNN tranches -\> SnpEff, hg38) into an MAF-like
-table and returns it as an in-memory `data.table` for downstream
+HaplotypeCaller -\> CNN tranches -\> SnpEff, hg38) into a tabular
+variant table and returns it as an in-memory `data.table` for downstream
 filtering
 ([`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md))
 and summarisation
@@ -276,7 +276,8 @@ read.gvr.snpeff(
 
   Logical; if `TRUE` (default, since 0.99.2) apply bcftools-norm-style
   trimming of common REF/ALT prefix and suffix nucleotides before
-  deriving MAF-like coords. See
+  deriving the trimmed (Start_Position, Reference_Allele,
+  Tumor_Seq_Allele2) coordinates. See
   [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md)
   for full rationale. Set `FALSE` to reproduce pre-0.99.2 coords for
   reproducibility with an older analysis; not recommended for new
@@ -289,10 +290,10 @@ read.gvr.snpeff(
 
 ## Value
 
-An MAF-like `data.table`: one row per variant allele, with MAF-like core
-columns, the canonical 80 VEP CSQ field names (populated from SnpEff ANN
-where available; blank otherwise), key GATK QC fields,
-`Tumor_Sample_Barcode`, and (when enabled) the `Genotype` and
+A tabular variant `data.table`: one row per variant allele, with the
+canonical variant table columns, the canonical 80 VEP CSQ field names
+(populated from SnpEff ANN where available; blank otherwise), key GATK
+QC fields, `Tumor_Sample_Barcode`, and (when enabled) the `Genotype` and
 `ABraOM_AF` columns. `attr(., "annotator") = "snpeff"`. TSV/RDS/XLSX
 files are written as a side effect when
 `write_tsv`/`write_rds`/`write_xlsx` is `TRUE`.
@@ -301,15 +302,18 @@ files are written as a side effect when
 
 Output and behaviour:
 
-- Returns the final MAF-like `data.table`, one row per variant ALLELE
-  (multi-allelic sites are split). Multiple `ANN` annotation blocks per
-  allele are reduced to one most-severe transcript per allele.
+- Returns the final tabular variant `data.table`, one row per variant
+  ALLELE (multi-allelic sites are split). Multiple `ANN` annotation
+  blocks per allele are reduced to one most-severe transcript per
+  allele.
 
-- Columns include the MAF-like core fields, the canonical 80 VEP CSQ
-  field names (populated from the equivalent SnpEff ANN fields where
-  available; blank for fields SnpEff does not supply), and key GATK QC
-  fields. `FILTER` is retained as a column and ALL variants (PASS and
-  non-PASS) are kept.
+- Columns include the canonical MAF-style core fields (Hugo_Symbol,
+  Variant_Classification, Start_Position, Reference_Allele,
+  Tumor_Seq_Allele2, Tumor_Sample_Barcode, HGVSp_Short, IMPACT), the
+  canonical 80 VEP CSQ field names (populated from the equivalent SnpEff
+  ANN fields where available; blank for fields SnpEff does not supply),
+  and key GATK QC fields. `FILTER` is retained as a column and ALL
+  variants (PASS and non-PASS) are kept.
 
 - `Tumor_Seq_Allele1`/`Tumor_Seq_Allele2` are zygosity-aware (vcf2maf-
   style), and an optional `Genotype` column

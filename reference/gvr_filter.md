@@ -1,7 +1,7 @@
 # Modular, individually-toggleable filtering of a read.gvr table
 
-Applies a set of independent variant filters to the MAF-like table
-produced by
+Applies a set of independent variant filters to the tabular variant
+table produced by
 [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md).
 Each distinct filter is its own argument; setting an argument to `NULL`
 disables that filter entirely (no rows removed by it). With all

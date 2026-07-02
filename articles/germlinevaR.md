@@ -4,10 +4,10 @@
 
 **germlinevaR** is a self-contained R toolchain for single-sample
 germline VCFs annotated with Ensembl VEP, SnpEff, or both. It turns
-on-disk VCFs into an MAF-like `data.table`, filters them with a modular
-set of toggles, isolates candidate novel variants, summarises a cohort,
-and renders publication-ready per-gene plots — all inside one R session,
-without an external pipeline.
+on-disk VCFs into a tabular variant `data.table`, filters them with a
+modular set of toggles, isolates candidate novel variants, summarises a
+cohort, and renders publication-ready per-gene plots — all inside one R
+session, without an external pipeline.
 
 ### Motivation for Bioconductor
 
@@ -37,9 +37,10 @@ variant analysis workflow:
 - **`maftools`** (Bioconductor): a comprehensive somatic mutation
   analysis toolkit centred on the MAF format. germlinevaR is
   complementary: it targets the **germline** single-sample case,
-  produces an MAF-like table for compatibility, and adds VEP/SnpEff
-  multi-annotator support and population-frequency filtering that
-  maftools does not provide.
+  produces a tabular variant table with MAF-compatible core columns for
+  interoperability with maftools, and adds VEP/SnpEff multi-annotator
+  support and population-frequency filtering that maftools does not
+  provide.
 - **`vcfR`** (CRAN): focuses on VCF import and manipulation. germlinevaR
   goes further downstream: after reading the VCF it applies
   clinical-significance and population-frequency filters, generates a
@@ -92,7 +93,7 @@ library(data.table)
 #>     %notin%
 ```
 
-## Reading a VCF into an MAF-like table
+## Reading a VCF into a tabular variant table
 
 [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md)
 is the auto-routing entry point: it inspects the VCF header, detects
@@ -102,10 +103,10 @@ the correct sibling reader (`read.gvr`, `read.gvr.snpeff`, or
 [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md)
 at the folder containing your VCF file(s) — the function discovers every
 `*.vcf.gz` in that directory, auto-detects the annotator on each file,
-and returns one MAF-like row per ALT allele. All files in a batch must
-share the same annotator; mixed VEP/SnpEff folders are rejected. For
-this vignette we stage the shipped example into a temporary directory
-and read it from there:
+and returns one tabular variant row per ALT allele. All files in a batch
+must share the same annotator; mixed VEP/SnpEff folders are rejected.
+For this vignette we stage the shipped example into a temporary
+directory and read it from there:
 
 ``` r
 
@@ -286,10 +287,10 @@ variant matrix** (`gvr_plot`), and the **HTML-dashboard panels** that
 writable as standalone PNGs via
 [`gvr_sum_plots()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_sum_plots.md)).
 The figures below were rendered from a real cohort — the tiny example
-MAF-like table shipped with the package is too sparse for a meaningful
-top-genes variant matrix or dashboard, so those two families are
-described in the text only; call the functions yourself against your own
-MAF-like table to reproduce the layouts.
+tabular variant table shipped with the package is too sparse for a
+meaningful top-genes variant matrix or dashboard, so those two families
+are described in the text only; call the functions yourself against your
+own tabular variant table to reproduce the layouts.
 
 **Protein-domain lollipop** — `gvr_lollipop(gvr, gene = "TP53")` draws
 variants along the protein, with InterPro domains fetched and cached on
@@ -393,7 +394,7 @@ Source that script in a fresh R session to reproduce the exact
     #> [1] stats     graphics  grDevices utils     datasets  methods   base     
     #> 
     #> other attached packages:
-    #> [1] data.table_1.18.4  germlinevaR_0.99.2 BiocStyle_2.40.0  
+    #> [1] data.table_1.18.4  germlinevaR_0.99.3 BiocStyle_2.40.0  
     #> 
     #> loaded via a namespace (and not attached):
     #>  [1] sass_0.4.10           generics_0.1.4        shape_1.4.6.1        

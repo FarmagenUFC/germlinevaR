@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">germlinevaR</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.2</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.3</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -100,10 +100,10 @@ p.author-email .affil-mark { font-style: normal; font-weight: normal; }
 </h2>
 <p><strong>germlinevaR</strong> is a self-contained R toolchain for
 single-sample germline VCFs annotated with Ensembl VEP, SnpEff, or both.
-It turns on-disk VCFs into an MAF-like <code>data.table</code>, filters
-them with a modular set of toggles, isolates candidate novel variants,
-summarises a cohort, and renders publication-ready per-gene plots — all
-inside one R session, without an external pipeline.</p>
+It turns on-disk VCFs into a tabular variant <code>data.table</code>,
+filters them with a modular set of toggles, isolates candidate novel
+variants, summarises a cohort, and renders publication-ready per-gene
+plots — all inside one R session, without an external pipeline.</p>
 <div class="section level3">
 <h3 id="motivation-for-bioconductor">Motivation for Bioconductor<a class="anchor" aria-label="anchor" href="#motivation-for-bioconductor"></a>
 </h3>
@@ -137,8 +137,9 @@ without requiring users to manipulate <code>VCF</code> or
 <strong><code>maftools</code></strong> (Bioconductor): a
 comprehensive somatic mutation analysis toolkit centred on the MAF
 format. germlinevaR is complementary: it targets the
-<strong>germline</strong> single-sample case, produces an MAF-like table
-for compatibility, and adds VEP/SnpEff multi-annotator support and
+<strong>germline</strong> single-sample case, produces a tabular variant
+table with MAF-compatible core columns for interoperability with
+maftools, and adds VEP/SnpEff multi-annotator support and
 population-frequency filtering that maftools does not provide.</li>
 <li>
 <strong><code>vcfR</code></strong> (CRAN): focuses on VCF import and
@@ -191,7 +192,7 @@ analyses.</p>
 <span><span class="co">#&gt;     %notin%</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="reading-a-vcf-into-an-maf-like-table">Reading a VCF into an MAF-like table<a class="anchor" aria-label="anchor" href="#reading-a-vcf-into-an-maf-like-table"></a>
+<h2 id="reading-a-vcf-into-a-tabular-variant-table">Reading a VCF into a tabular variant table<a class="anchor" aria-label="anchor" href="#reading-a-vcf-into-a-tabular-variant-table"></a>
 </h2>
 <p><code><a href="../reference/read.gvr.html">read.gvr()</a></code> is the auto-routing entry point: it inspects
 the VCF header, detects whether annotations come from VEP, SnpEff, or
@@ -200,8 +201,8 @@ both, and dispatches to the correct sibling reader
 <code>read.gvr.dual</code>). When you read your own data, point
 <code><a href="../reference/read.gvr.html">read.gvr()</a></code> at the folder containing your VCF file(s) — the
 function discovers every <code>*.vcf.gz</code> in that directory,
-auto-detects the annotator on each file, and returns one MAF-like row
-per ALT allele. All files in a batch must share the same annotator;
+auto-detects the annotator on each file, and returns one tabular variant
+row per ALT allele. All files in a batch must share the same annotator;
 mixed VEP/SnpEff folders are rejected. For this vignette we stage the
 shipped example into a temporary directory and read it from there:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
@@ -366,10 +367,11 @@ the <strong>HTML-dashboard panels</strong> that
 <code>gvr_summary(save_html = TRUE)</code> embeds in its interactive
 output (also writable as standalone PNGs via
 <code><a href="../reference/gvr_sum_plots.html">gvr_sum_plots()</a></code>). The figures below were rendered from a
-real cohort — the tiny example MAF-like table shipped with the package
-is too sparse for a meaningful top-genes variant matrix or dashboard, so
-those two families are described in the text only; call the functions
-yourself against your own MAF-like table to reproduce the layouts.</p>
+real cohort — the tiny example tabular variant table shipped with the
+package is too sparse for a meaningful top-genes variant matrix or
+dashboard, so those two families are described in the text only; call
+the functions yourself against your own tabular variant table to
+reproduce the layouts.</p>
 <p><strong>Protein-domain lollipop</strong> —
 <code>gvr_lollipop(gvr, gene = "TP53")</code> draws variants along the
 protein, with InterPro domains fetched and cached on the fly:</p>
@@ -473,7 +475,7 @@ per-gene plotting</li>
 <span><span class="co">#&gt; [1] stats     graphics  grDevices utils     datasets  methods   base     </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; other attached packages:</span></span>
-<span><span class="co">#&gt; [1] data.table_1.18.4  germlinevaR_0.99.2 BiocStyle_2.40.0  </span></span>
+<span><span class="co">#&gt; [1] data.table_1.18.4  germlinevaR_0.99.3 BiocStyle_2.40.0  </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; loaded via a namespace (and not attached):</span></span>
 <span><span class="co">#&gt;  [1] sass_0.4.10           generics_0.1.4        shape_1.4.6.1        </span></span>

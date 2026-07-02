@@ -1,6 +1,7 @@
 # Cohort top-genes variant matrix from a germline gvr table (read.gvr / gvr_filter output)
 
-Draws a top-genes variant matrix from an MAF-like table - the output of
+Draws a top-genes variant matrix from a tabular variant table - the
+output of
 [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md),
 or of
 [`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md) -
@@ -35,7 +36,7 @@ gvr_plot(
 
 - gvr:
 
-  An MAF-like `data.table`/`data.frame` from
+  A tabular variant `data.table`/`data.frame` from
   [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md)
   or
   [`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md).
@@ -156,7 +157,7 @@ Data conventions:
   `c(".", "", "Unknown")`; these are excluded from the top-genes variant
   matrix.
 
-- Works on ANY MAF-like table; it makes no assumption about prior
+- Works on ANY tabular variant table; it makes no assumption about prior
   filtering. It is commonly run on
   [`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md)
   output.

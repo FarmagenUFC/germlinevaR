@@ -1,6 +1,7 @@
 # Multi-section summary of a germline gvr table (read.gvr / gvr_filter output)
 
-Produces a multi-section overview of a MAF-like table - the output of
+Produces a multi-section overview of a tabular variant table - the
+output of
 [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md),
 or of
 [`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md) -
@@ -33,7 +34,7 @@ gvr_summary(
 
 - gvr:
 
-  An MAF-like `data.table`/`data.frame` from
+  A tabular variant `data.table`/`data.frame` from
   [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md)
   or
   [`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md).
@@ -175,7 +176,7 @@ Data conventions:
   tally and from `top_genes`, but their variants are still counted in
   the totals (and reported as "variants with no gene symbol").
 
-- Works on ANY MAF-like table; it makes no assumption about prior
+- Works on ANY tabular variant table; it makes no assumption about prior
   filtering. It is commonly run on
   [`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md)
   output to summarise the retained hits.

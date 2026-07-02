@@ -1,8 +1,8 @@
-# Convert VEP-annotated germline VCF(s) to an MAF-like data.table
+# Convert VEP-annotated germline VCF(s) to a tabular variant data.table
 
 Converts VEP-annotated, single-sample germline VCFs (GATK
-HaplotypeCaller -\> CNN tranches -\> Ensembl VEP, hg38) into an MAF-like
-table and returns it as an in-memory `data.table` for downstream
+HaplotypeCaller -\> CNN tranches -\> Ensembl VEP, hg38) into a tabular
+variant table and returns it as an in-memory `data.table` for downstream
 filtering
 ([`gvr_filter()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_filter.md))
 and summarisation
@@ -276,10 +276,10 @@ read.gvr(
 
   Logical; if `TRUE` (default, since 0.99.2) apply bcftools-norm-style
   trimming of common REF/ALT prefix and suffix nucleotides before
-  deriving MAF-like coords (`Start_Position`, `Reference_Allele`,
+  deriving the trimmed (`Start_Position`, `Reference_Allele`,
   `Tumor_Seq_Allele2`). This is the recommended behaviour: it puts each
   variant on its unique minimal representation and prevents distinct
-  multi-ALT records from collapsing to the same MAF key (which could
+  multi-ALT records from collapsing to the same join key (which could
   previously drop or scramble annotations on the SnpEff side of the dual
   reader; VEP-only reads were unaffected). Set `FALSE` to reproduce
   pre-0.99.2 coords for reproducibility with an older analysis; note
@@ -292,24 +292,28 @@ read.gvr(
 
 ## Value
 
-An MAF-like `data.table`: one row per variant allele, with MAF-like core
-columns, all VEP CSQ fields, key GATK QC fields, `Tumor_Sample_Barcode`,
-and (when enabled) the `Genotype` and `ABraOM_AF` columns. TSV/RDS files
-are written as a side effect when `write_tsv`/`write_rds` is `TRUE`.
+A tabular variant `data.table`: one row per variant allele, with the
+canonical variant table columns, all VEP CSQ fields, key GATK QC fields,
+`Tumor_Sample_Barcode`, and (when enabled) the `Genotype` and
+`ABraOM_AF` columns. TSV/RDS files are written as a side effect when
+`write_tsv`/`write_rds` is `TRUE`.
 
 ## Details
 
 Output and behaviour:
 
-- Returns the final MAF-like `data.table`, one row per variant ALLELE
-  (multi-allelic sites are split).
+- Returns the final tabular variant `data.table`, one row per variant
+  ALLELE (multi-allelic sites are split).
 
 - A single most-severe transcript is chosen per allele (VEP severity -\>
   `CANONICAL` -\> `MANE_SELECT` -\> transcript id).
 
-- Columns include the MAF-like core fields, ALL VEP CSQ fields (read
-  from the VCF header), and key GATK QC fields. `FILTER` is retained as
-  a column and ALL variants (PASS and non-PASS) are kept.
+- Columns include the canonical MAF-style core fields (Hugo_Symbol,
+  Variant_Classification, Start_Position, Reference_Allele,
+  Tumor_Seq_Allele2, Tumor_Sample_Barcode, HGVSp_Short, IMPACT), ALL VEP
+  CSQ fields (read from the VCF header), and key GATK QC fields.
+  `FILTER` is retained as a column and ALL variants (PASS and non-PASS)
+  are kept.
 
 - `Tumor_Seq_Allele1`/`Tumor_Seq_Allele2` are zygosity-aware
   (vcf2maf-style), and an optional `Genotype` column

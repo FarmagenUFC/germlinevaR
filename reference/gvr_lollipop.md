@@ -67,7 +67,7 @@ gvr_lollipop(
 
 - gvr:
 
-  An MAF-like `data.table` / `data.frame` from
+  A tabular variant `data.table` / `data.frame` from
   [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md),
   or any compatible table with at least `Hugo_Symbol`, `HGVSp_Short`,
   `Variant_Classification`, `Tumor_Sample_Barcode`, `Protein_position`.

@@ -47,10 +47,10 @@ but is not required to read them.
 ## What it does
 
 germlinevaR turns one or more per-sample VEP- or SnpEff-annotated VCFs
-into an MAF-like `data.table` (one row per ALT allele, one most-severe
-transcript per allele) using three sibling readers that share a
-canonical 80-field schema and are auto-routed from the VCF header. From
-there you get:
+into a tabular variant `data.table` (one row per ALT allele, one
+most-severe transcript per allele) using three sibling readers that
+share a canonical 80-field schema and are auto-routed from the VCF
+header. From there you get:
 
 - a tunable, modular filter (`gvr_filter`) over population AF, clinical
   significance, biotype, variant classification, genotype, and panel;
@@ -163,12 +163,14 @@ MIT (c) 2026 Thiago Loreto Matos, Felipe Pantoja Mesquita. See
 Read VEP-, SnpEff-, or dual-annotated VCFs into an MAF-like data.table.
 
 - [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md)
-  : Convert VEP-annotated germline VCF(s) to an MAF-like data.table
-- [`read.gvr.snpeff()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.snpeff.md)
-  : Convert SnpEff-annotated germline VCF(s) to an MAF-like data.table
-- [`read.gvr.dual()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.dual.md)
-  : Convert dual-annotated germline VCF(s) (VEP + SnpEff) to an MAF-like
+  : Convert VEP-annotated germline VCF(s) to a tabular variant
   data.table
+- [`read.gvr.snpeff()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.snpeff.md)
+  : Convert SnpEff-annotated germline VCF(s) to a tabular variant
+  data.table
+- [`read.gvr.dual()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.dual.md)
+  : Convert dual-annotated germline VCF(s) (VEP + SnpEff) to a tabular
+  variant data.table
 
 ## Filtering
 

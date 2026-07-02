@@ -1,11 +1,11 @@
-# Convert dual-annotated germline VCF(s) (VEP + SnpEff) to an MAF-like data.table
+# Convert dual-annotated germline VCF(s) (VEP + SnpEff) to a tabular variant data.table
 
 Converts single-sample germline VCFs that carry **both** Ensembl VEP
 `CSQ` and SnpEff `ANN` annotation INFO fields on the same records
-(typical workflow: SnpEff -\> VEP, or vice versa). Returns an MAF-like
-`data.table` with one row per ALT allele, using VEP's transcript pick as
-the spine and adding SnpEff-derived comparison columns and LoF/NMD
-predictions.
+(typical workflow: SnpEff -\> VEP, or vice versa). Returns a tabular
+variant `data.table` with one row per ALT allele, using VEP's transcript
+pick as the spine and adding SnpEff-derived comparison columns and
+LoF/NMD predictions.
 
 This function is the dual-annotator sibling of
 [`read.gvr()`](https://farmagenufc.github.io/germlinevaR/reference/read.gvr.md)
@@ -273,10 +273,10 @@ read.gvr.dual(
 
   Logical; if `TRUE` (default, since 0.99.2) apply bcftools-norm-style
   trimming of common REF/ALT prefix and suffix nucleotides before
-  deriving MAF-like coords (`Start_Position`, `Reference_Allele`,
+  deriving the trimmed (`Start_Position`, `Reference_Allele`,
   `Tumor_Seq_Allele2`). This is the recommended behaviour: it puts each
   variant on its unique minimal representation and prevents distinct
-  multi-ALT records from collapsing to the same MAF key (which could
+  multi-ALT records from collapsing to the same join key (which could
   previously drop or scramble annotations on the SnpEff side of the dual
   reader; VEP-only reads were unaffected). Set `FALSE` to reproduce
   pre-0.99.2 coords for reproducibility with an older analysis; note
