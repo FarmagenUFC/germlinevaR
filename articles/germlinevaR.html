@@ -94,6 +94,19 @@ p.author-affiliation{ font-size: 0.88em; color: #444; margin-top: 0.2em; font-st
 p.author-email      { font-size: 0.88em; margin-top: 0.2em; font-style: normal; font-weight: normal; }
 p.author-affiliation .affil-mark,
 p.author-email .affil-mark { font-style: normal; font-weight: normal; }
+
+/* Pkgdown produces different author-block markup than BiocStyle
+   (h4.author + address.author_afil + <a class=email>).
+   These rules tighten the pkgdown site's author block only; they have
+   no effect on BiocStyle's own vignette render because the selectors
+   don't match BiocStyle's DOM. */
+h4.author           { font-size: 1.05em; margin: 0.9em 0 0.05em 0; font-style: italic; font-weight: 700; }
+address.author_afil { display: block; font-style: normal; margin: 0 0 0.1em 0; }
+address.author_afil p { font-size: 0.88em; color: #444; margin: 0 0 0.05em 0; }
+address.author_afil br { display: none; }
+a.author_email[href="mailto:#"] { display: none; }
+address.author_afil a.email { font-size: 0.88em; }
+h4.date             { font-size: 0.95em; margin-top: 1em; font-weight: 500; }
 </style>
 <div class="section level2">
 <h2 id="introduction">Introduction<a class="anchor" aria-label="anchor" href="#introduction"></a>

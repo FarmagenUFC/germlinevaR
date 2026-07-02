@@ -45,6 +45,7 @@
 <li><p>The <code>maftools</code> interoperability note in the vignette now explicitly states that <code><a href="../reference/read.gvr.html">read.gvr()</a></code> output has MAF-compatible core columns, documenting the design decision rather than hedging with “MAF-like”.</p></li>
 <li><p>Roxygen <code>@details</code> blocks in <code><a href="../reference/read.gvr.html">read.gvr()</a></code>, <code><a href="../reference/read.gvr.snpeff.html">read.gvr.snpeff()</a></code>, and <code><a href="../reference/read.gvr.dual.html">read.gvr.dual()</a></code> now spell out the tuple <code>(Start_Position, Reference_Allele, Tumor_Seq_Allele2)</code> in place of the shorthand “MAF-like coords”, clarifying what <code>normalize_alleles</code> operates on.</p></li>
 <li><p>Internal comments referring to the SnpEff/VEP join key now say “join key” instead of “MAF key”, removing ambiguous vocabulary from test comments and developer-facing docs.</p></li>
+<li><p>Tightened the pkgdown site’s author block (<code>h4.author</code> + <code>address.author_afil</code>) with a small, well-commented CSS overlay in the vignette. Removes excess whitespace between affiliation and email lines on <code>farmagenufc.github.io/germlinevaR/</code> while leaving the BiocStyle vignette render (inside <code>inst/doc/</code>) unchanged.</p></li>
 </ul></div>
 </div>
     <div class="section level2">

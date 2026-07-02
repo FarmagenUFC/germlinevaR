@@ -29,6 +29,12 @@
   key” instead of “MAF key”, removing ambiguous vocabulary from test
   comments and developer-facing docs.
 
+- Tightened the pkgdown site’s author block (`h4.author` +
+  `address.author_afil`) with a small, well-commented CSS overlay in the
+  vignette. Removes excess whitespace between affiliation and email
+  lines on `farmagenufc.github.io/germlinevaR/` while leaving the
+  BiocStyle vignette render (inside `inst/doc/`) unchanged.
+
 ## germlinevaR 0.99.2
 
 ### Bug fixes
