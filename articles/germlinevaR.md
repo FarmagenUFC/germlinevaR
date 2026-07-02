@@ -1,17 +1,5 @@
 # germlinevaR walkthrough
 
-***Thiago Loreto Matos***^(1\*) and ***Felipe Pantoja
-Mesquita***^(1\*\*)
-
-¹Pharmacogenetics Laboratory, Drug Research and Development Center,
-Department of Physiology and Pharmacology, Federal University of Ceará,
-Fortaleza, 60430-160, Brazil
-
-^(\*)<thiago-loreto@hotmail.com>  
-^(\*\*)<felipemesquita05@gmail.com>
-
-------------------------------------------------------------------------
-
 ## Introduction
 
 **germlinevaR** is a self-contained R toolchain for single-sample
@@ -338,10 +326,33 @@ Top-genes variant matrix from gvr_plot() — illustrative multi-sample
 data (8 samples, 20 cancer genes). In a real cohort, replace with your
 own gvr table.
 
+**HTML cohort dashboard** —
+`gvr_summary(gvr, save_html = TRUE, out_dir = ".")` writes a
+self-contained interactive HTML dashboard with plotly drill-downs and DT
+tables. It opens with four KPI cards (total variants, samples, distinct
+genes, HIGH-impact count) followed by three bar charts (top mutated
+genes, variant classification, IMPACT) and a top-variants table. The
+figure below is a screenshot of a dashboard rendered from a **synthetic
+8-sample cohort** fabricated purely to demonstrate the layout; do not
+read biological meaning into any specific value.
+
+![Screenshot of gvr_summary(save_html = TRUE) output — synthetic
+8-sample cohort rendered for layout demonstration only, not real
+data.](figures/gvr_summary_dashboard.png)
+
+Screenshot of gvr_summary(save_html = TRUE) output — synthetic 8-sample
+cohort rendered for layout demonstration only, not real data.
+
 [`gvr_sum_plots()`](https://farmagenufc.github.io/germlinevaR/reference/gvr_sum_plots.md)
 writes the same panels that `gvr_summary(save_html = TRUE)` embeds in
 its interactive dashboard (top genes, variant classification, IMPACT,
 top variants) as standalone PNGs.
+
+The demo cohort shown above is fabricated by
+`inst/scripts/build_synthetic_dashboard.R` (also reachable via
+`system.file("scripts", "build_synthetic_dashboard.R", package = "germlinevaR")`).
+Source that script in a fresh R session to reproduce the exact
+106-variant / 19-gene / 8-sample `gvr` table used here.
 
 ## Where to next
 
@@ -382,7 +393,7 @@ top variants) as standalone PNGs.
     #> [1] stats     graphics  grDevices utils     datasets  methods   base     
     #> 
     #> other attached packages:
-    #> [1] data.table_1.18.4  germlinevaR_0.99.0 BiocStyle_2.40.0  
+    #> [1] data.table_1.18.4  germlinevaR_0.99.2 BiocStyle_2.40.0  
     #> 
     #> loaded via a namespace (and not attached):
     #>  [1] sass_0.4.10           generics_0.1.4        shape_1.4.6.1        

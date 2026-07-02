@@ -20,7 +20,7 @@
 
     <a class="navbar-brand me-2" href="../index.html">germlinevaR</a>
 
-    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.0</small>
+    <small class="nav-text text-muted me-auto" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Released version">0.99.2</small>
 
 
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbar" aria-controls="navbar" aria-expanded="false" aria-label="Toggle navigation">
@@ -58,8 +58,26 @@
   <main id="main" class="col-md-9"><div class="page-header">
 
       <h1>germlinevaR walkthrough</h1>
-            
-            <h4 data-toc-skip class="date">2026-07-01</h4>
+                        <h4 data-toc-skip class="author">Thiago Loreto
+Matos</h4>
+            <address class="author_afil">
+      <p>Pharmacogenetics Laboratory, Drug Research and Development
+Center, Department of Physiology and Pharmacology, Federal University of
+Ceará, Fortaleza, 60430-160,
+Brazil</p>
+<br><a class="author_email" href="mailto:#"></a><a href="mailto:thiago-loreto@hotmail.com" class="email">thiago-loreto@hotmail.com</a>
+      </address>
+                              <h4 data-toc-skip class="author">Felipe
+Pantoja Mesquita</h4>
+            <address class="author_afil">
+      <p>Pharmacogenetics Laboratory, Drug Research and Development
+Center, Department of Physiology and Pharmacology, Federal University of
+Ceará, Fortaleza, 60430-160,
+Brazil</p>
+<br><a class="author_email" href="mailto:#"></a><a href="mailto:felipemesquita05@gmail.com" class="email">felipemesquita05@gmail.com</a>
+      </address>
+                  
+            <h4 data-toc-skip class="date">2026-07-02</h4>
       
       <small class="dont-index">Source: <a href="https://github.com/FarmagenUFC/germlinevaR/blob/main/vignettes/germlinevaR.Rmd" class="external-link"><code>vignettes/germlinevaR.Rmd</code></a></small>
       <div class="d-none name"><code>germlinevaR.Rmd</code></div>
@@ -67,18 +85,16 @@
 
     
     
-<p style="font-size:1.05em; margin-top:-0.5em;">
-<strong><em>Thiago Loreto Matos</em></strong><sup>1*</sup> and
-<strong><em>Felipe Pantoja Mesquita</em></strong><sup>1**</sup></p>
-<p style="font-size:0.88em; color:#444; margin-top:0.2em;">
-<sup>1</sup>Pharmacogenetics Laboratory, Drug Research and Development
-Center, Department of Physiology and Pharmacology, Federal University of
-Ceará, Fortaleza, 60430-160, Brazil
-</p>
-<p style="font-size:0.88em; margin-top:0.2em;">
-<sup>*</sup><a href="mailto:thiago-loreto@hotmail.com">thiago-loreto@hotmail.com</a><br><sup>**</sup><a href="mailto:felipemesquita05@gmail.com">felipemesquita05@gmail.com</a>
-</p>
-<hr>
+<style>
+/* Typography tuning for BiocStyle's semantic author block.
+   Selectors match p.author-name, p.author-affiliation, p.author-email
+   produced by BiocStyle::html_document (verified against rendered DOM). */
+p.author-name       { font-size: 1.05em; margin-top: -0.5em; font-style: italic; font-weight: 700; }
+p.author-affiliation{ font-size: 0.88em; color: #444; margin-top: 0.2em; font-style: normal; font-weight: normal; }
+p.author-email      { font-size: 0.88em; margin-top: 0.2em; font-style: normal; font-weight: normal; }
+p.author-affiliation .affil-mark,
+p.author-email .affil-mark { font-style: normal; font-weight: normal; }
+</style>
 <div class="section level2">
 <h2 id="introduction">Introduction<a class="anchor" aria-label="anchor" href="#introduction"></a>
 </h2>
@@ -166,7 +182,7 @@ analyses.</p>
 <h2 id="quick-start">Quick start<a class="anchor" aria-label="anchor" href="#quick-start"></a>
 </h2>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://farmagenufc.github.io/germlinevaR">germlinevaR</a></span><span class="op">)</span></span>
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://farmagenufc.github.io/germlinevaR/">germlinevaR</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://r-datatable.com" class="external-link">data.table</a></span><span class="op">)</span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; Attaching package: 'data.table'</span></span>
@@ -386,10 +402,32 @@ data (8 samples, 20 cancer genes). In a real cohort, replace with your
 own gvr table.
 </p>
 </div>
+<p><strong>HTML cohort dashboard</strong> —
+<code>gvr_summary(gvr, save_html = TRUE, out_dir = ".")</code> writes a
+self-contained interactive HTML dashboard with plotly drill-downs and DT
+tables. It opens with four KPI cards (total variants, samples, distinct
+genes, HIGH-impact count) followed by three bar charts (top mutated
+genes, variant classification, IMPACT) and a top-variants table. The
+figure below is a screenshot of a dashboard rendered from a
+<strong>synthetic 8-sample cohort</strong> fabricated purely to
+demonstrate the layout; do not read biological meaning into any specific
+value.</p>
+<div class="figure" style="text-align: center">
+<img src="figures/gvr_summary_dashboard.png" class="r-plt" alt="Screenshot of gvr_summary(save_html = TRUE) output — synthetic 8-sample cohort rendered for layout demonstration only, not real data." width="100%"><p class="caption">
+Screenshot of gvr_summary(save_html = TRUE) output — synthetic 8-sample
+cohort rendered for layout demonstration only, not real data.
+</p>
+</div>
 <p><code><a href="../reference/gvr_sum_plots.html">gvr_sum_plots()</a></code> writes the same panels that
 <code>gvr_summary(save_html = TRUE)</code> embeds in its interactive
 dashboard (top genes, variant classification, IMPACT, top variants) as
 standalone PNGs.</p>
+<p>The demo cohort shown above is fabricated by
+<code>inst/scripts/build_synthetic_dashboard.R</code> (also reachable
+via
+<code>system.file("scripts", "build_synthetic_dashboard.R", package = "germlinevaR")</code>).
+Source that script in a fresh R session to reproduce the exact
+106-variant / 19-gene / 8-sample <code>gvr</code> table used here.</p>
 </div>
 <div class="section level2">
 <h2 id="where-to-next">Where to next<a class="anchor" aria-label="anchor" href="#where-to-next"></a>
@@ -435,7 +473,7 @@ per-gene plotting</li>
 <span><span class="co">#&gt; [1] stats     graphics  grDevices utils     datasets  methods   base     </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; other attached packages:</span></span>
-<span><span class="co">#&gt; [1] data.table_1.18.4  germlinevaR_0.99.0 BiocStyle_2.40.0  </span></span>
+<span><span class="co">#&gt; [1] data.table_1.18.4  germlinevaR_0.99.2 BiocStyle_2.40.0  </span></span>
 <span><span class="co">#&gt; </span></span>
 <span><span class="co">#&gt; loaded via a namespace (and not attached):</span></span>
 <span><span class="co">#&gt;  [1] sass_0.4.10           generics_0.1.4        shape_1.4.6.1        </span></span>
